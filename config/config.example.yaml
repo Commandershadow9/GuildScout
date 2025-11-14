@@ -49,6 +49,21 @@ export:
   csv_delimiter: ","
   csv_encoding: "utf-8-sig"  # Works well with Excel
 
+guild_management:
+  # Maximum guild spots available
+  max_spots: 50              # Total number of guild spots you have
+
+  # Guild role ID to assign to selected users
+  guild_role_id: null        # e.g., 123456789012345678 - The actual guild role
+
+  # Roles that indicate user already has a spot (exclude from ranking)
+  exclusion_roles:           # Users with these roles are NOT ranked
+    - 111222333444555666     # e.g., "Gilde-Platz-Reserviert" role ID
+    # - 777888999000111222   # Add more reserved spot role IDs here
+
+  # Individual user IDs to exclude (manual reservations)
+  exclusion_users: []        # e.g., [123456789, 987654321]
+
 logging:
   # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
   level: "INFO"

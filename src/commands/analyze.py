@@ -97,7 +97,11 @@ class AnalyzeCommand(commands.Cog):
 
             # Initialize components
             guild = interaction.guild
-            role_scanner = RoleScanner(guild)
+            role_scanner = RoleScanner(
+                guild,
+                exclusion_role_ids=self.config.exclusion_roles,
+                exclusion_user_ids=self.config.exclusion_users
+            )
             activity_tracker = ActivityTracker(
                 guild,
                 excluded_channels=self.config.excluded_channels,
@@ -121,16 +125,33 @@ class AnalyzeCommand(commands.Cog):
                 f"Starting analysis for role {role.name} by user {interaction.user.name}"
             )
 
-            # Step 1: Get members with role
-            members = await role_scanner.get_members_with_role(role)
+            # Step 1: Get members with role (excluding those who already have spots)
+            members, excluded_members = await role_scanner.get_members_with_role(role)
+
+            total_with_role = len(members) + len(excluded_members)
+            logger.info(
+                f"Total users with role: {total_with_role} "
+                f"(Ranking: {len(members)}, Already have spots: {len(excluded_members)})"
+            )
 
             if not members:
-                await interaction.followup.send(
-                    embed=discord_exporter.create_error_embed(
-                        f"No members found with role @{role.name}",
-                        "No Users Found"
+                # Check if there are only excluded members
+                if excluded_members:
+                    await interaction.followup.send(
+                        embed=discord_exporter.create_error_embed(
+                            f"All {len(excluded_members)} members with role @{role.name} "
+                            f"already have reserved guild spots.\n\n"
+                            f"No users available for ranking.",
+                            "All Spots Reserved"
+                        )
                     )
-                )
+                else:
+                    await interaction.followup.send(
+                        embed=discord_exporter.create_error_embed(
+                            f"No members found with role @{role.name}",
+                            "No Users Found"
+                        )
+                    )
                 return
 
             # Step 2: Count messages
@@ -227,7 +248,9 @@ class AnalyzeCommand(commands.Cog):
                 scoring_info,
                 duration,
                 csv_path,
-                cache_stats
+                cache_stats,
+                excluded_members,
+                self.config.max_guild_spots
             )
 
             logger.info(
@@ -260,7 +283,9 @@ class AnalyzeCommand(commands.Cog):
         scoring_info: dict,
         duration: float,
         csv_path: str,
-        cache_stats: dict
+        cache_stats: dict,
+        excluded_members: list,
+        max_guild_spots: int
     ):
         """
         Post ranking results to dedicated ranking channel if configured.
@@ -293,12 +318,21 @@ class AnalyzeCommand(commands.Cog):
             # Create detailed ranking post
             timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
+            # Calculate spot management info
+            spots_already_filled = len(excluded_members)
+            spots_available = max_guild_spots - spots_already_filled
+            total_candidates = len(ranked_users)
+
             # Main embed
             main_embed = discord.Embed(
-                title=f"📊 Ranking Results: @{role.name}",
+                title=f"📊 Guild Selection Ranking: @{role.name}",
                 description=(
                     f"**Analysis completed at {timestamp}**\n\n"
-                    f"🔍 **Total Users Scanned:** {stats['total_users']}\n"
+                    f"🎯 **Guild Spot Management:**\n"
+                    f"   • Total Spots: **{max_guild_spots}**\n"
+                    f"   • Already Filled: {spots_already_filled} (reserved/manual)\n"
+                    f"   • **Available: {spots_available}**\n"
+                    f"   • Candidates Ranked: **{total_candidates}**\n\n"
                     f"⏱️ **Analysis Duration:** {duration:.1f}s\n"
                     f"💾 **Cache Hit Rate:** {cache_stats.get('cache_hit_rate', 0):.1f}%\n"
                 ),
@@ -413,18 +447,53 @@ class AnalyzeCommand(commands.Cog):
             except Exception as e:
                 logger.error(f"Failed to send CSV to ranking channel: {e}")
 
+            # Send excluded members info if any
+            if excluded_members:
+                excluded_embed = discord.Embed(
+                    title=f"🔒 Reserved Spots ({len(excluded_members)})",
+                    description=(
+                        f"These users already have reserved guild spots and were **not included** in the ranking:\n\n"
+                        f"*These spots count towards your {max_guild_spots} total spots.*"
+                    ),
+                    color=discord.Color.orange()
+                )
+
+                excluded_text = []
+                for exc in excluded_members[:25]:  # Limit to 25 for embed
+                    excluded_text.append(
+                        f"• **{exc['name']}** (ID: {exc['id']})\n"
+                        f"  └ Reason: {exc['reason']}"
+                    )
+
+                excluded_embed.add_field(
+                    name="Excluded Members",
+                    value="\n\n".join(excluded_text) if excluded_text else "None",
+                    inline=False
+                )
+
+                if len(excluded_members) > 25:
+                    excluded_embed.set_footer(
+                        text=f"Showing 25 of {len(excluded_members)} excluded members"
+                    )
+
+                await channel.send(embed=excluded_embed)
+
             # Send decision helper
             decision_embed = discord.Embed(
                 title="✅ Next Steps: Making Fair Decisions",
                 description=(
+                    f"**You have {spots_available} guild spots available:**\n\n"
                     "**How to use this ranking:**\n\n"
                     "1️⃣ **Review the scores** - Higher = more deserving (longer membership + more active)\n"
                     "2️⃣ **Download the CSV** - For detailed analysis in Excel/Sheets\n"
-                    "3️⃣ **Draw the line** - Decide cutoff score based on available guild spots\n"
-                    "4️⃣ **Communicate clearly** - Users can check their own score with `/my-score`\n\n"
+                    f"3️⃣ **Draw the line** - You have {spots_available} spots available\n"
+                    f"   • Option A: Take Top {min(spots_available, total_candidates)} from ranking\n"
+                    f"   • Option B: Set score cutoff (e.g., all users ≥85 score)\n"
+                    "4️⃣ **Assign roles** - Use `/assign-guild-role` to give selected users the guild role\n"
+                    "5️⃣ **Communicate clearly** - Users can check their own score with `/my-score`\n\n"
                     "**Score Calculation:**\n"
-                    f"• 40% based on days in server (loyalty/commitment)\n"
-                    f"• 60% based on message count (activity/engagement)\n\n"
+                    f"• {scoring_info['weight_days']:.0%} based on days in server (loyalty/commitment)\n"
+                    f"• {scoring_info['weight_messages']:.0%} based on message count (activity/engagement)\n\n"
                     "**All users can verify their score** using `/my-score` command for full transparency!"
                 ),
                 color=discord.Color.blurple()

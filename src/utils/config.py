@@ -2,7 +2,7 @@
 
 import yaml
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
 class Config:
@@ -146,3 +146,24 @@ class Config:
             "logging.format",
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
+
+    @property
+    def max_guild_spots(self) -> int:
+        """Get maximum guild spots available."""
+        return self.get("guild_management.max_spots", 50)
+
+    @property
+    def guild_role_id(self) -> Optional[int]:
+        """Get guild role ID to assign."""
+        role_id = self.get("guild_management.guild_role_id")
+        return int(role_id) if role_id else None
+
+    @property
+    def exclusion_roles(self) -> list:
+        """Get list of role IDs to exclude from ranking (already have spots)."""
+        return self.get("guild_management.exclusion_roles", [])
+
+    @property
+    def exclusion_users(self) -> list:
+        """Get list of user IDs to exclude from ranking (manual reservations)."""
+        return self.get("guild_management.exclusion_users", [])
