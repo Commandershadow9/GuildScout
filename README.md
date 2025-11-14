@@ -21,11 +21,25 @@ Perfect for content creators who need to fairly select members for limited guild
 - **🔒 Permission System**: Role-based access control
 - **⚡ Progress Updates**: Real-time progress during analysis
 
-### Phase 2 Features (NEW!)
+### Performance & Caching
 - **💾 Smart Caching**: SQLite-based cache for blazing-fast repeated analysis
+- **🚀 5x Faster**: Channel-first algorithm with parallel processing
+- **⚡ Batch Progress**: Real-time batch updates during long operations
+- **🔄 Auto-Retry**: Robust rate-limit handling with exponential backoff
+- **📊 Cache Stats**: 60-70% hit rate on repeated analyses
+
+### Guild Management (V2.0)
+- **🎮 WWM Release Timer**: Auto-updating countdown (every 10s) with dynamic hype text
+- **✅ Interactive Role Assignment**: Button confirmation before mass role changes
+- **📊 Guild Status**: View all guild members with scores & CSV export
+- **🎯 Auto Spot Management**: Correctly counts all exclusion roles
+- **💬 Welcome Messages**: Auto-updating channel info with debouncing
+- **🔧 Set Max Spots**: Configure maximum guild size
+
+### User Features
 - **📊 /my-score**: Users can check their own ranking and detailed breakdown
-- **⚙️ Admin Commands**: Cache management and bot statistics
-- **🚀 Performance**: 10-100x faster analysis with cache (first run: 30s, cached: <1s)
+- **🏆 Transparent Scoring**: See exactly how your score is calculated
+- **📈 Percentile Ranking**: Know where you stand compared to others
 
 ## 🚀 Quick Start
 
@@ -164,7 +178,53 @@ Check your own ranking score with detailed breakdown.
 - Transparent calculation formula
 - Comparison with all users or role-specific users
 
-### Admin Commands (Phase 2)
+### Guild Management Commands (V2.0)
+
+#### `/assign-guild-role`
+Assign guild role to top-ranked users (admin only)
+
+**Syntax:**
+```
+/assign-guild-role ranking_role:<@Role> count:<number>
+```
+
+**Features:**
+- Interactive button confirmation
+- Shows preview of all affected users
+- Prevents accidental mass changes
+- 60-second timeout
+
+#### `/guild-status`
+View current guild members and spot availability (admin only)
+
+**Shows:**
+- Total and available spots
+- All guild members with scores (sorted highest first)
+- CSV export of all members
+- Visual progress bar
+
+#### `/setup-ranking-channel`
+Create or update the ranking channel (admin only)
+
+#### `/set-max-spots`
+Set maximum guild spots (admin only)
+
+**Syntax:**
+```
+/set-max-spots value:<number>
+```
+
+#### `/setup-wwm-timer`
+Setup Where Winds Meet release countdown timer (admin only)
+
+**Features:**
+- Auto-creates dedicated countdown channel
+- Updates every 10 seconds
+- Dynamic hype text based on time remaining
+- Shows both GMT and MEZ time zones
+- Progress bar to release
+
+### Admin Commands
 
 #### `/cache-stats`
 View cache performance statistics (admin only)
@@ -190,6 +250,19 @@ View bot information and system statistics (admin only)
 
 Edit `config/config.yaml` to customize the bot:
 
+### Guild Management (V2.0)
+
+```yaml
+guild_management:
+  guild_role_id: 1234567890    # The role ID for guild members
+  max_guild_spots: 60          # Maximum guild size
+  exclusion_roles:             # Roles that reserve spots (leaders, etc.)
+    - 9876543210
+  exclusion_users:             # Specific users to exclude
+    - 1111111111
+  ranking_channel_id: null     # Auto-filled by /setup-ranking-channel
+```
+
 ### Scoring Weights
 
 ```yaml
@@ -197,16 +270,10 @@ scoring:
   weights:
     days_in_server: 0.4      # 40% weight for membership duration
     message_count: 0.6       # 60% weight for activity
+  min_messages: 0            # Users with fewer messages are excluded (0 = no minimum)
 ```
 
 **Important:** Weights should sum to 1.0!
-
-### Minimum Requirements
-
-```yaml
-scoring:
-  min_messages: 10           # Users with fewer messages are excluded
-```
 
 ### Channel Exclusions
 
@@ -217,16 +284,26 @@ analytics:
   excluded_channel_names:    # Exclude channels with these name patterns
     - "nsfw"
     - "bot-spam"
+  cache_ttl: null           # Cache time-to-live (null = infinite)
 ```
 
 ### Permissions
 
 ```yaml
 permissions:
-  admin_roles:               # Role IDs that can use /analyze
+  admin_roles:               # Role IDs that can use admin commands
     - 987654321
-  admin_users:               # User IDs that can use /analyze (overrides roles)
+  admin_users:               # User IDs that can use admin commands (overrides roles)
     - 123456789
+```
+
+### Logging
+
+```yaml
+logging:
+  level: "INFO"             # DEBUG, INFO, WARNING, ERROR
+  log_file: "logs/guildscout.log"
+  log_format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 ```
 
 ## 📊 Scoring Algorithm
@@ -374,14 +451,28 @@ cp config/config.example.yaml config/config.yaml
 
 ## 🚀 Version History
 
-### Phase 2 (Current) ✅
-**Major Performance & User Features Update**
+### Version 2.0.0 (Current) ✅
+**Major Performance, Guild Management & Features Update**
 
-- ✅ **SQLite Caching**: Smart cache system for 10-100x faster analysis
-- ✅ **`/my-score` Command**: Users can check their own ranking
-- ✅ **Admin Commands**: `/cache-stats`, `/cache-clear`, `/bot-info`
-- ✅ **Performance Metrics**: Cache hit rate tracking and statistics
-- ✅ **System Monitoring**: Resource usage and uptime tracking
+See [CHANGELOG.md](CHANGELOG.md) for detailed changes.
+
+**Performance:**
+- ✅ **5x Faster**: Channel-first message counting algorithm
+- ✅ **Smart Caching**: Infinite TTL SQLite cache (60-70% hit rate)
+- ✅ **Parallel Processing**: Configurable batch parallelism
+- ✅ **Robust Rate Limiting**: Auto-retry with exponential backoff
+
+**Guild Management:**
+- ✅ **WWM Release Timer**: Auto-updating countdown (10s intervals)
+- ✅ **Interactive Role Assignment**: Button confirmation system
+- ✅ **Guild Status Command**: Full member overview with CSV
+- ✅ **Welcome Messages**: Auto-updating with debouncing
+- ✅ **Spot Management**: Correct exclusion role counting
+
+**User Features:**
+- ✅ **`/my-score`**: Personal score checking
+- ✅ **Enhanced Logging**: Batch progress updates
+- ✅ **Better UI**: Improved embeds and formatting
 
 ### Phase 1 (Initial Release) ✅
 - ✅ `/analyze` command with role-based ranking
@@ -390,15 +481,19 @@ cp config/config.example.yaml config/config.yaml
 - ✅ Progress updates during analysis
 - ✅ Role-based permissions
 
-## 🚀 Future Enhancements (Phase 3+)
+## 🛠️ Service Script
 
-Potential future features:
+Run the bot with auto-restart on crash:
 
-- **Historical Tracking**: Track score changes over time
-- **Web Dashboard**: View rankings in a web interface
-- **Multi-Guild Support**: Manage multiple servers from one bot
-- **Leaderboards**: Persistent leaderboards with auto-updates
-- **Custom Metrics**: Add custom scoring factors (reactions, voice time, etc.)
+```bash
+./scripts/run_bot_service.sh
+```
+
+**Features:**
+- Automatic restart on bot crash
+- PID file management
+- Prevents multiple instances
+- Logging to `logs/bot-service.log`
 
 ## 📄 License
 
