@@ -21,6 +21,7 @@ wheels/
 *.egg
 MANIFEST
 venv/
+.venv/
 env/
 ENV/
 
@@ -42,6 +43,9 @@ exports/
 # Logs
 logs/
 *.log
+
+# Process IDs
+*.pid
 
 # IDE
 .vscode/
