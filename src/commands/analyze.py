@@ -6,6 +6,7 @@ from discord import app_commands
 from discord.ext import commands
 import time
 from typing import Optional
+from datetime import datetime
 
 from ..analytics import RoleScanner, ActivityTracker, Scorer, Ranker
 from ..exporters import DiscordExporter, CSVExporter
@@ -201,7 +202,7 @@ class AnalyzeCommand(commands.Cog):
             # Step 7: Send results
             await progress_msg.delete()
 
-            # Send embed
+            # Send embed to command channel
             await interaction.followup.send(embed=embed)
 
             # Send CSV file
@@ -216,6 +217,18 @@ class AnalyzeCommand(commands.Cog):
                 await interaction.followup.send(
                     f"⚠️ CSV saved to: `{csv_path}` (failed to upload)"
                 )
+
+            # Step 8: Post to ranking channel if configured
+            await self._post_to_ranking_channel(
+                guild,
+                role,
+                ranked_users,
+                stats,
+                scoring_info,
+                duration,
+                csv_path,
+                cache_stats
+            )
 
             logger.info(
                 f"Analysis completed in {duration:.1f}s - "
@@ -237,6 +250,194 @@ class AnalyzeCommand(commands.Cog):
                 pass
 
             await interaction.followup.send(embed=error_embed)
+
+    async def _post_to_ranking_channel(
+        self,
+        guild: discord.Guild,
+        role: discord.Role,
+        ranked_users: list,
+        stats: dict,
+        scoring_info: dict,
+        duration: float,
+        csv_path: str,
+        cache_stats: dict
+    ):
+        """
+        Post ranking results to dedicated ranking channel if configured.
+
+        Args:
+            guild: Discord guild
+            role: Role that was analyzed
+            ranked_users: List of ranked users
+            stats: Statistics dictionary
+            scoring_info: Scoring information
+            duration: Analysis duration
+            csv_path: Path to CSV file
+            cache_stats: Cache statistics
+        """
+        try:
+            # Check if ranking channel is configured
+            if not hasattr(self.bot, 'ranking_channels'):
+                return
+
+            if guild.id not in self.bot.ranking_channels:
+                return
+
+            channel_id = self.bot.ranking_channels[guild.id]
+            channel = guild.get_channel(channel_id)
+
+            if not channel:
+                logger.warning(f"Ranking channel {channel_id} not found")
+                return
+
+            # Create detailed ranking post
+            timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+
+            # Main embed
+            main_embed = discord.Embed(
+                title=f"📊 Ranking Results: @{role.name}",
+                description=(
+                    f"**Analysis completed at {timestamp}**\n\n"
+                    f"🔍 **Total Users Scanned:** {stats['total_users']}\n"
+                    f"⏱️ **Analysis Duration:** {duration:.1f}s\n"
+                    f"💾 **Cache Hit Rate:** {cache_stats.get('cache_hit_rate', 0):.1f}%\n"
+                ),
+                color=discord.Color.gold(),
+                timestamp=datetime.utcnow()
+            )
+
+            # Scoring formula
+            main_embed.add_field(
+                name="📐 Scoring Formula",
+                value=(
+                    f"```\n"
+                    f"Score = (Days × {scoring_info['weight_days']:.0%}) + "
+                    f"(Messages × {scoring_info['weight_messages']:.0%})\n"
+                    f"```"
+                ),
+                inline=False
+            )
+
+            # Statistics
+            main_embed.add_field(
+                name="📈 Statistics",
+                value=(
+                    f"**Average Score:** {stats['avg_score']:.1f}\n"
+                    f"**Average Days:** {stats['avg_days']:.1f}\n"
+                    f"**Average Messages:** {stats['avg_messages']:.1f}\n"
+                    f"**Highest Score:** {stats['max_score']:.1f}\n"
+                    f"**Lowest Score:** {stats['min_score']:.1f}"
+                ),
+                inline=True
+            )
+
+            main_embed.set_footer(text="Scroll down for complete ranking list ⬇️")
+
+            await channel.send(embed=main_embed)
+
+            # Send detailed rankings in chunks
+            chunk_size = 25
+            total_users = len(ranked_users)
+
+            for chunk_start in range(0, total_users, chunk_size):
+                chunk_end = min(chunk_start + chunk_size, total_users)
+                chunk = ranked_users[chunk_start:chunk_end]
+
+                chunk_embed = discord.Embed(
+                    title=f"🏆 Rankings {chunk_start + 1}-{chunk_end} of {total_users}",
+                    color=discord.Color.blue()
+                )
+
+                ranking_text = []
+                for rank, score in chunk:
+                    # Medal for top 3
+                    if rank == 1:
+                        medal = "🥇"
+                    elif rank == 2:
+                        medal = "🥈"
+                    elif rank == 3:
+                        medal = "🥉"
+                    else:
+                        medal = f"`#{rank:02d}`"
+
+                    ranking_text.append(
+                        f"{medal} **{score.display_name}**\n"
+                        f"    Score: **{score.final_score}** | "
+                        f"Days: {score.days_in_server} | "
+                        f"Messages: {score.message_count:,}"
+                    )
+
+                chunk_embed.description = "\n\n".join(ranking_text)
+
+                if chunk_end == total_users:
+                    chunk_embed.set_footer(text="End of rankings ✓")
+
+                await channel.send(embed=chunk_embed)
+
+            # Send transparency breakdown for top 10
+            transparency_embed = discord.Embed(
+                title="🔍 Score Breakdown (Top 10)",
+                description="Detailed calculation for transparency",
+                color=discord.Color.green()
+            )
+
+            top_10 = ranked_users[:10]
+            for rank, score in top_10:
+                medal = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"][rank - 1]
+
+                breakdown = (
+                    f"{medal} **{score.display_name}**\n"
+                    f"```\n"
+                    f"Days Score:     {score.days_score:.1f}/100 × 0.4 = {score.days_score * 0.4:.1f}\n"
+                    f"Activity Score: {score.activity_score:.1f}/100 × 0.6 = {score.activity_score * 0.6:.1f}\n"
+                    f"                                    ───────────\n"
+                    f"Final Score:                         {score.final_score:.1f}\n"
+                    f"```"
+                )
+
+                transparency_embed.add_field(
+                    name=f"Rank {rank}",
+                    value=breakdown,
+                    inline=False
+                )
+
+            await channel.send(embed=transparency_embed)
+
+            # Send CSV file
+            try:
+                file = discord.File(csv_path)
+                await channel.send(
+                    content="📥 **Complete ranking data (CSV)**",
+                    file=file
+                )
+            except Exception as e:
+                logger.error(f"Failed to send CSV to ranking channel: {e}")
+
+            # Send decision helper
+            decision_embed = discord.Embed(
+                title="✅ Next Steps: Making Fair Decisions",
+                description=(
+                    "**How to use this ranking:**\n\n"
+                    "1️⃣ **Review the scores** - Higher = more deserving (longer membership + more active)\n"
+                    "2️⃣ **Download the CSV** - For detailed analysis in Excel/Sheets\n"
+                    "3️⃣ **Draw the line** - Decide cutoff score based on available guild spots\n"
+                    "4️⃣ **Communicate clearly** - Users can check their own score with `/my-score`\n\n"
+                    "**Score Calculation:**\n"
+                    f"• 40% based on days in server (loyalty/commitment)\n"
+                    f"• 60% based on message count (activity/engagement)\n\n"
+                    "**All users can verify their score** using `/my-score` command for full transparency!"
+                ),
+                color=discord.Color.blurple()
+            )
+
+            decision_embed.set_footer(text="GuildScout - Fair & Transparent Rankings")
+
+            await channel.send(embed=decision_embed)
+
+            logger.info(f"Posted rankings to channel {channel.name} (ID: {channel.id})")
+
+        except Exception as e:
+            logger.error(f"Error posting to ranking channel: {e}", exc_info=True)
 
 
 async def setup(bot: commands.Bot, config: Config, cache: MessageCache):

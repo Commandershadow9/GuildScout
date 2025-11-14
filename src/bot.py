@@ -14,6 +14,7 @@ from src.database import MessageCache
 from src.commands.analyze import setup as setup_analyze
 from src.commands.my_score import setup as setup_my_score
 from src.commands.admin import setup as setup_admin
+from src.commands.ranking_channel import setup as setup_ranking_channel
 
 
 class GuildScoutBot(commands.Bot):
@@ -55,6 +56,7 @@ class GuildScoutBot(commands.Bot):
         await setup_analyze(self, self.config, self.cache)
         await setup_my_score(self, self.config, self.cache)
         await setup_admin(self, self.config, self.cache)
+        await setup_ranking_channel(self, self.config)
         self.logger.info("Commands loaded")
 
         # Sync commands to guild
