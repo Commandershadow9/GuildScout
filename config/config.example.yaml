@@ -36,7 +36,7 @@ analytics:
 permissions:
   # Role IDs that can use admin commands like /analyze
   admin_roles:
-    - 987654321012345678    # Replace with your admin role ID
+    - 1391813795113996408   # Admin role ID
 
   # User IDs that can use admin commands (overrides role requirement)
   admin_users: []            # e.g., [123456789012345678]
@@ -54,12 +54,13 @@ guild_management:
   max_spots: 50              # Total number of guild spots you have
 
   # Guild role ID to assign to selected users
-  guild_role_id: null        # e.g., 123456789012345678 - The actual guild role
+  guild_role_id: 1438703780362321991  # The actual guild role to assign
 
   # Roles that indicate user already has a spot (exclude from ranking)
   exclusion_roles:           # Users with these roles are NOT ranked
-    - 111222333444555666     # e.g., "Gilde-Platz-Reserviert" role ID
-    # - 777888999000111222   # Add more reserved spot role IDs here
+    - 1438703780362321991    # Guild role (users who already have it)
+    - 1434664835760783531    # Leader role (3 current leaders)
+    # Add more role IDs here if needed
 
   # Individual user IDs to exclude (manual reservations)
   exclusion_users: []        # e.g., [123456789, 987654321]

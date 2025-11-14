@@ -16,6 +16,9 @@ from src.commands.my_score import setup as setup_my_score
 from src.commands.admin import setup as setup_admin
 from src.commands.ranking_channel import setup as setup_ranking_channel
 from src.commands.assign_guild_role import setup as setup_assign_guild_role
+from src.commands.guild_status import setup as setup_guild_status
+from src.commands.set_max_spots import setup as setup_set_max_spots
+from src.events.guild_events import setup as setup_guild_events
 
 
 class GuildScoutBot(commands.Bot):
@@ -59,7 +62,13 @@ class GuildScoutBot(commands.Bot):
         await setup_admin(self, self.config, self.cache)
         await setup_ranking_channel(self, self.config)
         await setup_assign_guild_role(self, self.config, self.cache)
+        await setup_guild_status(self, self.config)
+        await setup_set_max_spots(self, self.config)
         self.logger.info("Commands loaded")
+
+        # Load event handlers
+        await setup_guild_events(self, self.config)
+        self.logger.info("Event handlers loaded")
 
         # Sync commands to guild
         try:

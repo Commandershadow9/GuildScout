@@ -30,6 +30,10 @@ class Config:
         with open(self.config_path, "r", encoding="utf-8") as f:
             self._config = yaml.safe_load(f)
 
+    def reload(self) -> None:
+        """Reload configuration from YAML file."""
+        self.load()
+
     def get(self, key: str, default: Any = None) -> Any:
         """
         Get a configuration value using dot notation.
