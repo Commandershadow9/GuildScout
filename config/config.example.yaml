@@ -1,0 +1,60 @@
+# GuildScout Bot Configuration
+# Copy this file to config.yaml and fill in your values
+
+discord:
+  # Your Discord Bot Token from https://discord.com/developers/applications
+  token: "YOUR_BOT_TOKEN_HERE"
+
+  # Your Discord Server (Guild) ID
+  # Enable Developer Mode in Discord, right-click your server, Copy ID
+  guild_id: 123456789012345678
+
+scoring:
+  # Scoring weights (must sum to 1.0)
+  weights:
+    days_in_server: 0.4      # 40% - Membership duration weight
+    message_count: 0.6       # 60% - Activity weight
+
+  # Minimum messages required to be included in ranking
+  min_messages: 10
+
+  # Maximum days to look back for activity (null = all time)
+  max_days_lookback: null    # e.g., 365 for last year only
+
+analytics:
+  # Cache TTL in seconds (how long to cache message counts)
+  cache_ttl: 3600            # 1 hour
+
+  # Exclude these channel IDs from message counting
+  excluded_channels: []      # e.g., [123456789, 987654321]
+
+  # Exclude these channel names (partial match)
+  excluded_channel_names:
+    - "nsfw"
+    - "bot-spam"
+
+permissions:
+  # Role IDs that can use admin commands like /analyze
+  admin_roles:
+    - 987654321012345678    # Replace with your admin role ID
+
+  # User IDs that can use admin commands (overrides role requirement)
+  admin_users: []            # e.g., [123456789012345678]
+
+export:
+  # Maximum users to show in Discord embed
+  max_users_per_embed: 25
+
+  # CSV export settings
+  csv_delimiter: ","
+  csv_encoding: "utf-8-sig"  # Works well with Excel
+
+logging:
+  # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: "INFO"
+
+  # Log file path (relative to project root)
+  file: "logs/guildscout.log"
+
+  # Log format
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
