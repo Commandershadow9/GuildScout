@@ -56,6 +56,11 @@ guild_management:
   # Guild role ID to assign to selected users
   guild_role_id: 1438703780362321991  # The actual guild role to assign
 
+  # Ranking channel ID where analysis results are posted (auto-filled)
+  ranking_channel_id: null
+  ranking_channel_message_id: null
+  ranking_channel_message_version: 0
+
   # Roles that indicate user already has a spot (exclude from ranking)
   exclusion_roles:           # Users with these roles are NOT ranked
     - 1438703780362321991    # Guild role (users who already have it)
@@ -74,3 +79,9 @@ logging:
 
   # Log format
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+  # Discord log channel (auto-managed)
+  discord_channel_id: null
+
+  # Whether to log startup/shutdown events to Discord
+  enable_discord_service_logs: true

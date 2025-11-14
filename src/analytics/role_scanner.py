@@ -159,3 +159,32 @@ class RoleScanner:
             raise ValueError(f"Role with ID {role_id} not found in guild")
 
         return await self.get_members_with_role(role, exclude_bots)
+
+    def count_all_excluded_members(self, exclude_bots: bool = True) -> int:
+        """
+        Count ALL members who have any exclusion role (reserved spots).
+
+        This counts all users with exclusion roles, regardless of whether
+        they have the ranking role or not.
+
+        Args:
+            exclude_bots: Whether to exclude bot accounts
+
+        Returns:
+            Total count of members with exclusion roles
+        """
+        count = 0
+        for member in self.guild.members:
+            # Skip bots if requested
+            if exclude_bots and member.bot:
+                continue
+
+            # Check if member has any exclusion role
+            is_excluded, _ = self._is_excluded(member)
+            if is_excluded:
+                count += 1
+
+        logger.info(
+            f"Total members with reserved spots (exclusion roles): {count}"
+        )
+        return count

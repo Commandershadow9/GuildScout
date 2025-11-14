@@ -70,9 +70,49 @@ class GuildStatusCommand(commands.Cog):
             # Get all members with the guild role
             guild_members = [member for member in guild.members if guild_role in member.roles and not member.bot]
 
-            # Calculate stats
+            # Calculate scores for all guild members
+            from src.analytics import RoleScanner, ActivityTracker, Scorer, Ranker
+            from src.database import MessageCache
+
+            scanner = RoleScanner(
+                guild,
+                exclusion_role_ids=self.config.exclusion_roles,
+                exclusion_user_ids=self.config.exclusion_users
+            )
+
+            # Quick scoring for guild members
+            member_scores = {}
+            if guild_members:
+                cache = MessageCache(ttl=self.config.cache_ttl)
+                activity_tracker = ActivityTracker(
+                    guild,
+                    excluded_channels=self.config.excluded_channels,
+                    excluded_channel_names=self.config.excluded_channel_names,
+                    cache=cache
+                )
+                scorer = Scorer(
+                    weight_days=self.config.scoring_weights["days_in_server"],
+                    weight_messages=self.config.scoring_weights["message_count"],
+                    min_messages=self.config.min_messages
+                )
+
+                # Count messages and calculate scores
+                message_counts, _ = await activity_tracker.count_messages_for_users(guild_members)
+                scores = scorer.calculate_scores(guild_members, message_counts)
+                ranked = Ranker.rank_users(scores)
+
+                # Create dict for easy lookup
+                for rank, score in ranked:
+                    member_scores[score.user_id] = {
+                        'rank': rank,
+                        'score': score.final_score,
+                        'messages': score.message_count,
+                        'days': score.days_in_server
+                    }
+
+            filled_spots = scanner.count_all_excluded_members()
+
             total_spots = max_spots
-            filled_spots = len(guild_members)
             available_spots = max(0, total_spots - filled_spots)
             percentage_filled = (filled_spots / total_spots * 100) if total_spots > 0 else 0
 
@@ -109,41 +149,73 @@ class GuildStatusCommand(commands.Cog):
                 inline=False
             )
 
-            # List current members (first 25 in embed, rest in CSV)
+            # List ALL current members (sorted by score, highest first)
             if guild_members:
-                member_list = []
-                for i, member in enumerate(guild_members[:25], 1):
-                    member_list.append(f"{i}. {member.mention} (`{member.name}`)")
-
-                members_text = "\n".join(member_list)
-                if len(guild_members) > 25:
-                    members_text += f"\n\n*... and {len(guild_members) - 25} more (see CSV)*"
-
-                embed.add_field(
-                    name=f"👥 Current Guild Members ({len(guild_members)})",
-                    value=members_text or "No members yet",
-                    inline=False
+                # Sort members by score (highest first)
+                sorted_members = sorted(
+                    guild_members,
+                    key=lambda m: member_scores.get(m.id, {}).get('score', 0),
+                    reverse=True
                 )
+
+                # Show ALL members, split into multiple fields if needed (max 8 per field for safety)
+                members_per_field = 8
+                for i in range(0, len(sorted_members), members_per_field):
+                    chunk = sorted_members[i:i + members_per_field]
+                    member_list = []
+
+                    for member in chunk:
+                        score_info = member_scores.get(member.id, {})
+                        score = score_info.get('score', 0)
+                        messages = score_info.get('messages', 0)
+                        rank = score_info.get('rank', '?')
+
+                        member_list.append(
+                            f"#{rank} `{member.name}` - **{score}** ({messages} msgs)"
+                        )
+
+                    members_text = "\n".join(member_list)
+
+                    # Field title
+                    if i == 0:
+                        field_name = f"🏆 Guild Members - Höchste Scores ({len(guild_members)} total)"
+                    else:
+                        field_name = f"📋 Guild Members (continued)"
+
+                    embed.add_field(
+                        name=field_name,
+                        value=members_text,
+                        inline=False
+                    )
             else:
                 embed.add_field(
                     name="👥 Current Guild Members (0)",
-                    value="*No members with the guild role yet*",
+                    value="*Noch keine Members mit der Guild-Rolle*",
                     inline=False
                 )
 
             embed.set_footer(text=f"Requested by {interaction.user.name}")
 
-            # Create CSV export
+            # Create CSV export (sorted by score, highest first)
             csv_path = None
             if guild_members:
                 csv_data = []
-                for member in guild_members:
+                sorted_members = sorted(
+                    guild_members,
+                    key=lambda m: member_scores.get(m.id, {}).get('score', 0),
+                    reverse=True
+                )
+
+                for member in sorted_members:
+                    score_info = member_scores.get(member.id, {})
                     csv_data.append({
-                        'User ID': member.id,
+                        'Rank': score_info.get('rank', '?'),
                         'Username': member.name,
-                        'Display Name': member.display_name,
-                        'Joined Server': member.joined_at.isoformat() if member.joined_at else 'N/A',
-                        'Role Assigned': 'Manual/Auto'  # We don't track this yet
+                        'User ID': member.id,
+                        'Score': score_info.get('score', 0),
+                        'Messages': score_info.get('messages', 0),
+                        'Days': score_info.get('days', 0),
+                        'Joined Server': member.joined_at.isoformat() if member.joined_at else 'N/A'
                     })
 
                 df = pd.DataFrame(csv_data)

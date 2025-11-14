@@ -2,7 +2,7 @@
 
 import logging
 from typing import Dict, List
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import dataclass
 import discord
 
@@ -82,7 +82,7 @@ class Scorer:
         logger.info(f"Calculating scores for {len(members)} members...")
 
         scores = []
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # First pass: collect all valid users and find max values
         valid_users = []
@@ -92,14 +92,6 @@ class Scorer:
         for member in members:
             message_count = message_counts.get(member.id, 0)
 
-            # Skip users below minimum message threshold
-            if message_count < self.min_messages:
-                logger.debug(
-                    f"Skipping {member.name}: "
-                    f"only {message_count} messages (min: {self.min_messages})"
-                )
-                continue
-
             # Calculate days in server
             if member.joined_at is None:
                 logger.warning(f"No join date for {member.name}, skipping")
@@ -107,6 +99,8 @@ class Scorer:
 
             days_in_server = (now - member.joined_at).days
 
+            # Add ALL users (no minimum threshold filtering)
+            # Note: Users below min_messages are still included but can be identified
             valid_users.append({
                 "member": member,
                 "days": days_in_server,

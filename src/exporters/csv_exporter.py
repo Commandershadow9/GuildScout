@@ -62,19 +62,19 @@ class CSVExporter:
 
         filepath = self.export_dir / filename
 
-        # Prepare data for DataFrame
+        # Prepare data for DataFrame with logical column order
         data = []
         for rank, score in ranked_users:
             data.append({
-                "Rank": rank,
+                "Rang": rank,
                 "Username": score.display_name,
-                "User_ID": score.user_id,
-                "Final_Score": score.final_score,
-                "Days_Score": score.days_score,
-                "Activity_Score": score.activity_score,
-                "Days_in_Server": score.days_in_server,
-                "Message_Count": score.message_count,
-                "Join_Date": score.join_date.strftime("%Y-%m-%d %H:%M:%S")
+                "Gesamt-Score": score.final_score,
+                "Nachrichten": score.message_count,
+                "Tage_im_Server": score.days_in_server,
+                "Beigetreten_am": score.join_date.strftime("%Y-%m-%d %H:%M:%S"),
+                "Aktivitäts-Score": score.activity_score,
+                "Tage-Score": score.days_score,
+                "User_ID": score.user_id
             })
 
         # Create DataFrame
@@ -124,19 +124,19 @@ class CSVExporter:
             # For CSV, just use regular export
             return self.export_ranking(ranked_users, role_name, filename)
 
-        # Prepare ranking data
+        # Prepare ranking data with logical column order
         ranking_data = []
         for rank, score in ranked_users:
             ranking_data.append({
-                "Rank": rank,
+                "Rang": rank,
                 "Username": score.display_name,
-                "User_ID": score.user_id,
-                "Final_Score": score.final_score,
-                "Days_Score": score.days_score,
-                "Activity_Score": score.activity_score,
-                "Days_in_Server": score.days_in_server,
-                "Message_Count": score.message_count,
-                "Join_Date": score.join_date.strftime("%Y-%m-%d %H:%M:%S")
+                "Gesamt-Score": score.final_score,
+                "Nachrichten": score.message_count,
+                "Tage_im_Server": score.days_in_server,
+                "Beigetreten_am": score.join_date.strftime("%Y-%m-%d %H:%M:%S"),
+                "Aktivitäts-Score": score.activity_score,
+                "Tage-Score": score.days_score,
+                "User_ID": score.user_id
             })
 
         # Prepare stats data

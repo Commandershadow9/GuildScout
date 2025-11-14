@@ -10,6 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.utils import Config, setup_logger
+from src.utils.log_helper import DiscordLogger
 from src.database import MessageCache
 from src.commands.analyze import setup as setup_analyze
 from src.commands.my_score import setup as setup_my_score
@@ -18,6 +19,8 @@ from src.commands.ranking_channel import setup as setup_ranking_channel
 from src.commands.assign_guild_role import setup as setup_assign_guild_role
 from src.commands.guild_status import setup as setup_guild_status
 from src.commands.set_max_spots import setup as setup_set_max_spots
+from src.commands.log_channel import setup as setup_log_channel
+from src.commands.wwm_timer import setup as setup_wwm_timer
 from src.events.guild_events import setup as setup_guild_events
 
 
@@ -35,6 +38,7 @@ class GuildScoutBot(commands.Bot):
         self.config = config
         self.cache = cache
         self.logger = logging.getLogger("guildscout.bot")
+        self.discord_logger = DiscordLogger(bot=self, config=config)
 
         # Initialize bot with intents
         intents = discord.Intents.default()
@@ -64,6 +68,8 @@ class GuildScoutBot(commands.Bot):
         await setup_assign_guild_role(self, self.config, self.cache)
         await setup_guild_status(self, self.config)
         await setup_set_max_spots(self, self.config)
+        await setup_log_channel(self, self.config)
+        await setup_wwm_timer(self, self.config)
         self.logger.info("Commands loaded")
 
         # Load event handlers
@@ -91,6 +97,21 @@ class GuildScoutBot(commands.Bot):
                 name="guild activity | /analyze /my-score"
             )
         )
+
+        if self.config.discord_service_logs_enabled:
+            guild = self.get_guild(self.config.guild_id)
+            if guild:
+                description = (
+                    f"Verbunden mit **{len(self.guilds)}** Server(n)\n"
+                    f"Cache bereit, Commands synchronisiert"
+                )
+                await self.discord_logger.send(
+                    guild,
+                    "🤖 GuildScout gestartet",
+                    description,
+                    status="✅ Online",
+                    color=discord.Color.green()
+                )
 
     async def on_command_error(self, ctx, error):
         """Handle command errors."""

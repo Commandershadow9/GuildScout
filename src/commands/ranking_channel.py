@@ -105,11 +105,20 @@ class RankingChannelCommands(commands.Cog):
                 )
                 created = True
 
-            # Save to config (in-memory for now)
+            previous_channel_id = self.config.ranking_channel_id
+
+            await post_welcome_message(
+                self.config,
+                ranking_channel,
+                previous_channel_id=previous_channel_id,
+                force=True
+            )
+
             if not hasattr(self.bot, 'ranking_channels'):
                 self.bot.ranking_channels = {}
 
             self.bot.ranking_channels[guild.id] = ranking_channel.id
+            self.config.set_ranking_channel_id(ranking_channel.id)
 
             # Send setup confirmation
             embed = discord.Embed(
@@ -152,27 +161,6 @@ class RankingChannelCommands(commands.Cog):
             )
 
             await interaction.followup.send(embed=embed, ephemeral=True)
-
-            # Send welcome message to ranking channel
-            welcome_embed = discord.Embed(
-                title="📊 GuildScout Ranking Channel",
-                description=(
-                    "This channel is dedicated to automated ranking results.\n\n"
-                    "**What you'll see here:**\n"
-                    "• Complete ranking results from `/analyze` commands\n"
-                    "• Detailed score breakdowns for each user\n"
-                    "• Transparent calculation explanations\n"
-                    "• CSV exports with all data\n\n"
-                    "**How to use:**\n"
-                    "Admins run `/analyze role:@RoleName` and results appear here automatically!"
-                ),
-                color=discord.Color.blue(),
-                timestamp=datetime.utcnow()
-            )
-
-            welcome_embed.set_footer(text="GuildScout Bot - Fair & Transparent Rankings")
-
-            await ranking_channel.send(embed=welcome_embed)
 
             logger.info(
                 f"Ranking channel configured by {interaction.user.name}: "

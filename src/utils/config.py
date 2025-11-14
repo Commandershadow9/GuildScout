@@ -28,7 +28,12 @@ class Config:
             )
 
         with open(self.config_path, "r", encoding="utf-8") as f:
-            self._config = yaml.safe_load(f)
+            self._config = yaml.safe_load(f) or {}
+
+    def save(self) -> None:
+        """Persist configuration to disk."""
+        with open(self.config_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(self._config, f, sort_keys=False, allow_unicode=False)
 
     def reload(self) -> None:
         """Reload configuration from YAML file."""
@@ -94,9 +99,9 @@ class Config:
         return self.get("scoring.max_days_lookback")
 
     @property
-    def cache_ttl(self) -> int:
-        """Get cache TTL in seconds."""
-        return self.get("analytics.cache_ttl", 3600)
+    def cache_ttl(self):
+        """Get cache TTL in seconds (None = never expires)."""
+        return self.get("analytics.cache_ttl")
 
     @property
     def excluded_channels(self) -> list:
@@ -152,6 +157,22 @@ class Config:
         )
 
     @property
+    def log_channel_id(self) -> Optional[int]:
+        """Get Discord log channel ID (if configured)."""
+        channel_id = self.get("logging.discord_channel_id")
+        return int(channel_id) if channel_id else None
+
+    def set_log_channel_id(self, channel_id: Optional[int]) -> None:
+        """Persist Discord log channel ID."""
+        self._set_nested_value("logging.discord_channel_id", channel_id)
+        self.save()
+
+    @property
+    def discord_service_logs_enabled(self) -> bool:
+        """Whether service lifecycle events should be logged to Discord."""
+        return bool(self.get("logging.enable_discord_service_logs", True))
+
+    @property
     def max_guild_spots(self) -> int:
         """Get maximum guild spots available."""
         return self.get("guild_management.max_spots", 50)
@@ -171,3 +192,54 @@ class Config:
     def exclusion_users(self) -> list:
         """Get list of user IDs to exclude from ranking (manual reservations)."""
         return self.get("guild_management.exclusion_users", [])
+
+    @property
+    def ranking_channel_id(self) -> Optional[int]:
+        """Get ranking channel ID (auto-managed)."""
+        channel_id = self.get("guild_management.ranking_channel_id")
+        return int(channel_id) if channel_id else None
+
+    def set_ranking_channel_id(self, channel_id: Optional[int]) -> None:
+        """Update ranking channel ID in config."""
+        self._set_nested_value("guild_management.ranking_channel_id", channel_id)
+        self.save()
+
+    @property
+    def ranking_channel_message_id(self) -> Optional[int]:
+        """Get stored welcome message ID."""
+        message_id = self.get("guild_management.ranking_channel_message_id")
+        return int(message_id) if message_id else None
+
+    def set_ranking_channel_message_id(self, message_id: Optional[int]) -> None:
+        """Update stored welcome message ID."""
+        self._set_nested_value("guild_management.ranking_channel_message_id", message_id)
+        self.save()
+
+    @property
+    def ranking_channel_message_version(self) -> int:
+        """Get version of the welcome message text that was posted."""
+        version = self.get("guild_management.ranking_channel_message_version", 0)
+        try:
+            return int(version)
+        except (TypeError, ValueError):
+            return 0
+
+    def set_ranking_channel_message_version(self, version: int) -> None:
+        """Persist welcome message version."""
+        self._set_nested_value("guild_management.ranking_channel_message_version", int(version))
+        self.save()
+
+    def _set_nested_value(self, key: str, value: Any) -> None:
+        """Helper to set nested configuration values."""
+        keys = key.split(".")
+        current = self._config
+
+        for part in keys[:-1]:
+            if part not in current or not isinstance(current[part], dict):
+                current[part] = {}
+            current = current[part]
+
+        if value is None:
+            current.pop(keys[-1], None)
+        else:
+            current[keys[-1]] = value

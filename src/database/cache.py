@@ -3,7 +3,7 @@
 import aiosqlite
 import logging
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict
 import json
 
@@ -14,13 +14,13 @@ logger = logging.getLogger("guildscout.cache")
 class MessageCache:
     """SQLite-based cache for user message counts."""
 
-    def __init__(self, db_path: str = "data/cache.db", ttl: int = 3600):
+    def __init__(self, db_path: str = "data/cache.db", ttl: Optional[int] = None):
         """
         Initialize the message cache.
 
         Args:
             db_path: Path to SQLite database file
-            ttl: Cache time-to-live in seconds
+            ttl: Cache time-to-live in seconds (None = never expires)
         """
         self.db_path = Path(db_path)
         self.ttl = ttl
@@ -139,10 +139,12 @@ class MessageCache:
             message_count, last_updated_str = row
             last_updated = datetime.fromisoformat(last_updated_str)
 
-            # Check if cache is expired
-            if datetime.utcnow() - last_updated > timedelta(seconds=self.ttl):
-                logger.debug(f"Cache expired for user {user_id}")
-                return None
+            # Check if cache is expired (only if TTL is set)
+            # If TTL is None or 0, cache never expires
+            if self.ttl is not None and self.ttl > 0:
+                if datetime.now(timezone.utc) - last_updated > timedelta(seconds=self.ttl):
+                    logger.debug(f"Cache expired for user {user_id}")
+                    return None
 
             logger.debug(f"Cache hit for user {user_id}: {message_count} messages")
             return message_count
@@ -171,7 +173,7 @@ class MessageCache:
             excluded_channels = []
 
         excluded_str = json.dumps(sorted(excluded_channels))
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
@@ -251,13 +253,16 @@ class MessageCache:
             cursor = await db.execute("SELECT COUNT(*) FROM message_counts")
             total_entries = (await cursor.fetchone())[0]
 
-            # Expired entries
-            cutoff = (datetime.utcnow() - timedelta(seconds=self.ttl)).isoformat()
-            cursor = await db.execute(
-                "SELECT COUNT(*) FROM message_counts WHERE last_updated < ?",
-                (cutoff,)
-            )
-            expired_entries = (await cursor.fetchone())[0]
+            # Expired entries (only if TTL is set)
+            if self.ttl is not None and self.ttl > 0:
+                cutoff = (datetime.now(timezone.utc) - timedelta(seconds=self.ttl)).isoformat()
+                cursor = await db.execute(
+                    "SELECT COUNT(*) FROM message_counts WHERE last_updated < ?",
+                    (cutoff,)
+                )
+                expired_entries = (await cursor.fetchone())[0]
+            else:
+                expired_entries = 0  # No expiration when TTL is None
 
             # Valid entries
             valid_entries = total_entries - expired_entries
@@ -278,7 +283,12 @@ class MessageCache:
         """Remove expired entries from cache."""
         await self.initialize()
 
-        cutoff = (datetime.utcnow() - timedelta(seconds=self.ttl)).isoformat()
+        # If TTL is None, nothing expires
+        if self.ttl is None or self.ttl <= 0:
+            logger.info("Cache TTL is disabled - no entries to clean up")
+            return 0
+
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=self.ttl)).isoformat()
 
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(

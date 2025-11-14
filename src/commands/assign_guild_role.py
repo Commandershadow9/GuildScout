@@ -8,6 +8,7 @@ from typing import Optional
 
 from ..analytics import RoleScanner, ActivityTracker, Scorer, Ranker
 from ..utils import Config
+from ..utils.welcome import refresh_welcome_message
 from ..database import MessageCache
 
 
@@ -148,7 +149,8 @@ class AssignGuildRoleCommand(commands.Cog):
                 return
 
             # Check spot availability
-            spots_already_filled = len(excluded_members)
+            # Count ALL members with exclusion roles (not just those with ranking role)
+            spots_already_filled = role_scanner.count_all_excluded_members()
             spots_available = self.config.max_guild_spots - spots_already_filled
 
             if len(selected_users) > spots_available:
@@ -259,6 +261,9 @@ class AssignGuildRoleCommand(commands.Cog):
             )
 
         await interaction.followup.send(embed=result_embed, ephemeral=True)
+
+        # Refresh ranking overview with new counts
+        await refresh_welcome_message(self.config, interaction.guild, force=True)
 
 
 class ConfirmView(discord.ui.View):

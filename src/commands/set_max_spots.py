@@ -10,6 +10,7 @@ import yaml
 from pathlib import Path
 
 from src.utils.config import Config
+from src.utils.welcome import refresh_welcome_message
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,9 @@ class SetMaxSpotsCommand(commands.Cog):
 
             # Reload config in bot
             self.config.reload()
+
+            # Refresh overview
+            await refresh_welcome_message(self.config, guild, force=True)
 
             # Success message
             embed = discord.Embed(

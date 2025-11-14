@@ -3,7 +3,7 @@
 import logging
 from typing import List
 import discord
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 logger = logging.getLogger("guildscout.discord_exporter")
@@ -33,6 +33,8 @@ class DiscordExporter:
         """
         Create a Discord embed with ranking results.
 
+        Splits users across multiple fields if needed (max 8 users per field).
+
         Args:
             ranked_users: List of (rank, UserScore) tuples
             role_name: Name of the role that was analyzed
@@ -53,17 +55,38 @@ class DiscordExporter:
                 scoring_info
             ),
             color=discord.Color.blue(),
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(timezone.utc)
         )
 
-        # Add top users
-        top_users_text = self._create_top_users_text(ranked_users)
-        if top_users_text:
+        # Split users into chunks (8 per field to stay under 1024 char limit)
+        users_per_field = 8
+        total_users = len(ranked_users)
+
+        # Add user fields (up to 20 fields max, leaving room for stats)
+        max_fields = 20
+        fields_added = 0
+
+        for i in range(0, total_users, users_per_field):
+            if fields_added >= max_fields:
+                break
+
+            chunk = ranked_users[i:i + users_per_field]
+            chunk_start = i + 1
+            chunk_end = min(i + users_per_field, total_users)
+
+            field_text = self._create_users_chunk_text(chunk)
+
+            if i == 0:
+                field_name = f"🏆 Top Users (Ranks {chunk_start}-{chunk_end})"
+            else:
+                field_name = f"📋 Ranks {chunk_start}-{chunk_end}"
+
             embed.add_field(
-                name=f"🏆 Top {min(len(ranked_users), self.max_users_per_embed)} Users",
-                value=top_users_text,
+                name=field_name,
+                value=field_text,
                 inline=False
             )
+            fields_added += 1
 
         # Add statistics
         embed.add_field(
@@ -72,14 +95,10 @@ class DiscordExporter:
             inline=False
         )
 
-        # Footer
-        if len(ranked_users) > self.max_users_per_embed:
-            embed.set_footer(
-                text=f"Showing top {self.max_users_per_embed} of {len(ranked_users)} users. "
-                f"Download CSV for complete list."
-            )
-        else:
-            embed.set_footer(text="GuildScout Bot")
+        # Footer with CSV reminder
+        embed.set_footer(
+            text=f"Showing all {total_users} ranked users. Download CSV for full data export."
+        )
 
         return embed
 
@@ -98,12 +117,11 @@ class DiscordExporter:
             f"Messages {scoring_info['weight_messages']:.0%}"
         )
 
-    def _create_top_users_text(self, ranked_users: List[tuple]) -> str:
-        """Create formatted text for top users."""
+    def _create_users_chunk_text(self, users_chunk: List[tuple]) -> str:
+        """Create formatted text for a chunk of users (fits in 1024 char Discord limit)."""
         lines = []
-        display_count = min(len(ranked_users), self.max_users_per_embed)
 
-        for rank, score in ranked_users[:display_count]:
+        for rank, score in users_chunk:
             # Medal emojis for top 3
             if rank == 1:
                 medal = "🥇"
@@ -122,7 +140,13 @@ class DiscordExporter:
             )
             lines.append(line)
 
-        return "\n\n".join(lines)
+        result = "\n\n".join(lines)
+
+        # Safety check: truncate if still too long (should not happen with 8 users)
+        if len(result) > 1020:
+            result = result[:1020] + "..."
+
+        return result
 
     def _create_stats_text(self, stats: dict) -> str:
         """Create formatted statistics text."""
@@ -154,7 +178,7 @@ class DiscordExporter:
             title=f"❌ {error_type}",
             description=error_message,
             color=discord.Color.red(),
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(timezone.utc)
         )
         return embed
 
@@ -181,7 +205,7 @@ class DiscordExporter:
             title=f"⏳ {operation}...",
             description=f"Progress: {current}/{total} ({percentage:.1f}%)",
             color=discord.Color.orange(),
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(timezone.utc)
         )
 
         # Progress bar

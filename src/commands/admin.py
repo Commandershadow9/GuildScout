@@ -190,7 +190,7 @@ class AdminCommands(commands.Cog):
         name="bot-info",
         description="[Admin] View bot information and statistics"
     )
-    async def bot_info(self, interaction: discord.Interaction):
+    async def botinfo(self, interaction: discord.Interaction):
         """
         Show bot information and statistics.
 
