@@ -10,20 +10,25 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.utils import Config, setup_logger
+from src.database import MessageCache
 from src.commands.analyze import setup as setup_analyze
+from src.commands.my_score import setup as setup_my_score
+from src.commands.admin import setup as setup_admin
 
 
 class GuildScoutBot(commands.Bot):
     """Main GuildScout Bot class."""
 
-    def __init__(self, config: Config, *args, **kwargs):
+    def __init__(self, config: Config, cache: MessageCache, *args, **kwargs):
         """
         Initialize the GuildScout bot.
 
         Args:
             config: Configuration object
+            cache: MessageCache instance
         """
         self.config = config
+        self.cache = cache
         self.logger = logging.getLogger("guildscout.bot")
 
         # Initialize bot with intents
@@ -42,8 +47,15 @@ class GuildScoutBot(commands.Bot):
         """Setup hook called when bot is starting."""
         self.logger.info("Setting up bot...")
 
+        # Initialize cache
+        await self.cache.initialize()
+        self.logger.info("Cache initialized")
+
         # Load commands
-        await setup_analyze(self, self.config)
+        await setup_analyze(self, self.config, self.cache)
+        await setup_my_score(self, self.config, self.cache)
+        await setup_admin(self, self.config, self.cache)
+        self.logger.info("Commands loaded")
 
         # Sync commands to guild
         try:
@@ -63,7 +75,7 @@ class GuildScoutBot(commands.Bot):
         await self.change_presence(
             activity=discord.Activity(
                 type=discord.ActivityType.watching,
-                name="guild activity | /analyze"
+                name="guild activity | /analyze /my-score"
             )
         )
 
@@ -115,8 +127,12 @@ def main():
     logger.info("GuildScout Bot Starting...")
     logger.info("=" * 50)
 
+    # Initialize cache
+    cache = MessageCache(ttl=config.cache_ttl)
+    logger.info("Cache system initialized")
+
     # Create and run bot
-    bot = GuildScoutBot(config)
+    bot = GuildScoutBot(config, cache)
 
     try:
         bot.run(config.discord_token)

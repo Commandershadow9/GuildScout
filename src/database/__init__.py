@@ -1,3 +1,5 @@
-"""Database modules for GuildScout Bot (for future caching implementation)."""
+"""Database modules for GuildScout Bot."""
 
-# Placeholder for Phase 2: SQLite caching
+from .cache import MessageCache
+
+__all__ = ["MessageCache"]

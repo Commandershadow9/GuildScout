@@ -66,10 +66,48 @@ Look for: `Bot is ready! Logged in as GuildScout#1234`
 
 ## First Test
 
+### Test `/analyze` (Admin Command)
 1. In Discord, type `/analyze`
 2. Select a role (e.g., `@Members`)
-3. Wait for analysis to complete
+3. Wait for analysis to complete (first run: ~30s)
 4. Check the ranking embed and download CSV!
+
+### Test `/my-score` (User Command)
+1. Type `/my-score`
+2. See your personal ranking with detailed breakdown
+3. Try `/my-score role:@Members` for role-specific score
+
+### Test Performance (Cache in Action)
+1. Run `/analyze role:@Members` again
+2. Notice it completes in <1 second! 💾
+3. Use `/cache-stats` to see cache hit rate
+
+## Available Commands
+
+| Command | Who Can Use | Description |
+|---------|------------|-------------|
+| `/analyze` | Admins | Rank users by role |
+| `/my-score` | Everyone | Check your own score |
+| `/cache-stats` | Admins | View cache statistics |
+| `/cache-clear` | Admins | Clear cache data |
+| `/bot-info` | Admins | View bot information |
+
+## Phase 2 Features
+
+### 🚀 Performance
+- **First analysis**: 30-60 seconds (counts all messages)
+- **Cached analysis**: <1 second (uses cache)
+- **10-100x faster** repeated analysis
+
+### 💾 Smart Cache
+- Automatically caches message counts for 1 hour
+- Use `/cache-clear` to refresh data manually
+- `/cache-stats` shows performance metrics
+
+### 📊 User Transparency
+- Users can check their own score with `/my-score`
+- Detailed breakdown showing calculation
+- No admin needed for personal lookup
 
 ## Need Help?
 

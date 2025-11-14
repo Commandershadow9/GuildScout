@@ -10,6 +10,7 @@ from typing import Optional
 from ..analytics import RoleScanner, ActivityTracker, Scorer, Ranker
 from ..exporters import DiscordExporter, CSVExporter
 from ..utils import Config
+from ..database import MessageCache
 
 
 logger = logging.getLogger("guildscout.commands.analyze")
@@ -18,16 +19,18 @@ logger = logging.getLogger("guildscout.commands.analyze")
 class AnalyzeCommand(commands.Cog):
     """Cog for the /analyze command."""
 
-    def __init__(self, bot: commands.Bot, config: Config):
+    def __init__(self, bot: commands.Bot, config: Config, cache: MessageCache):
         """
         Initialize the analyze command.
 
         Args:
             bot: Discord bot instance
             config: Configuration object
+            cache: MessageCache instance
         """
         self.bot = bot
         self.config = config
+        self.cache = cache
 
     def _has_permission(self, interaction: discord.Interaction) -> bool:
         """
@@ -97,7 +100,8 @@ class AnalyzeCommand(commands.Cog):
             activity_tracker = ActivityTracker(
                 guild,
                 excluded_channels=self.config.excluded_channels,
-                excluded_channel_names=self.config.excluded_channel_names
+                excluded_channel_names=self.config.excluded_channel_names,
+                cache=self.cache
             )
             scorer = Scorer(
                 weight_days=self.config.scoring_weights["days_in_server"],
@@ -151,7 +155,7 @@ class AnalyzeCommand(commands.Cog):
                     except:
                         pass  # Ignore edit errors
 
-            message_counts = await activity_tracker.count_messages_for_users(
+            message_counts, cache_stats = await activity_tracker.count_messages_for_users(
                 members,
                 days_lookback=days,
                 progress_callback=progress_callback
@@ -235,12 +239,13 @@ class AnalyzeCommand(commands.Cog):
             await interaction.followup.send(embed=error_embed)
 
 
-async def setup(bot: commands.Bot, config: Config):
+async def setup(bot: commands.Bot, config: Config, cache: MessageCache):
     """
     Setup function for the analyze command.
 
     Args:
         bot: Discord bot instance
         config: Configuration object
+        cache: MessageCache instance
     """
-    await bot.add_cog(AnalyzeCommand(bot, config))
+    await bot.add_cog(AnalyzeCommand(bot, config, cache))
