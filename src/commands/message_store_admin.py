@@ -93,7 +93,7 @@ class MessageStoreAdminCommands(commands.Cog):
 
             embed = discord.Embed(
                 title="📊 Import Status",
-                timestamp=datetime.utcnow()
+                timestamp=discord.utils.utcnow()
             )
 
             if is_completed:
@@ -296,12 +296,12 @@ class MessageStoreAdminCommands(commands.Cog):
             )
 
             # Progress callback
-            last_update = datetime.utcnow()
+            last_update = discord.utils.utcnow()
 
             async def progress_callback(channel_name: str, current: int, total: int):
                 nonlocal last_update
                 # Update every 5 seconds to avoid rate limits
-                now = datetime.utcnow()
+                now = discord.utils.utcnow()
                 if (now - last_update).total_seconds() >= 5:
                     try:
                         await progress_msg.edit(
@@ -333,7 +333,7 @@ class MessageStoreAdminCommands(commands.Cog):
                 embed = discord.Embed(
                     title="✅ Historical Import Completed",
                     color=color,
-                    timestamp=datetime.utcnow()
+                    timestamp=discord.utils.utcnow()
                 )
 
                 embed.add_field(
@@ -417,7 +417,7 @@ class MessageStoreAdminCommands(commands.Cog):
             embed = discord.Embed(
                 title="📊 Message Store Statistics",
                 color=discord.Color.blue(),
-                timestamp=datetime.utcnow()
+                timestamp=discord.utils.utcnow()
             )
 
             # Import status
@@ -581,7 +581,7 @@ class MessageStoreAdminCommands(commands.Cog):
             embed = discord.Embed(
                 title=f"🔍 Message Count Verification: {status}",
                 color=color,
-                timestamp=datetime.utcnow()
+                timestamp=discord.utils.utcnow()
             )
 
             embed.add_field(

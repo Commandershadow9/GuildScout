@@ -50,6 +50,7 @@ class GuildScoutBot(commands.Bot):
         self.message_store = message_store
         self.logger = logging.getLogger("guildscout.bot")
         self.discord_logger = DiscordLogger(bot=self, config=config)
+        self._import_task = None  # Store background import task to prevent garbage collection
 
         # Initialize bot with intents
         intents = discord.Intents.default()
@@ -191,11 +192,6 @@ class GuildScoutBot(commands.Bot):
 
         while True:
             try:
-                await asyncio.sleep(30)  # Update every 30 seconds
-
-                # Get current stats
-                stats = await self.message_store.get_stats(guild.id)
-
                 # Check if import is still running
                 is_running = await self.message_store.is_import_running(guild.id)
                 if not is_running:
@@ -215,7 +211,8 @@ class GuildScoutBot(commands.Bot):
                 duration_seconds = int(duration.total_seconds() % 60)
                 duration_str = f"{duration_minutes}m {duration_seconds}s"
 
-                # Get message count
+                # Get current stats
+                stats = await self.message_store.get_stats(guild.id)
                 total_messages = stats.get('total_messages', 0)
 
                 # Update embed
@@ -232,6 +229,9 @@ class GuildScoutBot(commands.Bot):
 
                 await status_message.edit(embed=embed)
                 self.logger.debug(f"Updated status: {total_messages:,} messages, {duration_str}")
+
+                # Sleep before next update (30 seconds)
+                await asyncio.sleep(30)
 
             except asyncio.CancelledError:
                 # Task was cancelled - import finished
@@ -284,7 +284,7 @@ class GuildScoutBot(commands.Bot):
 
             # Start import in background
             import asyncio
-            asyncio.create_task(self._run_auto_import(guild))
+            self._import_task = asyncio.create_task(self._run_auto_import(guild))
 
         except Exception as e:
             self.logger.error(f"Error checking/starting auto-import: {e}", exc_info=True)
@@ -340,6 +340,71 @@ class GuildScoutBot(commands.Bot):
                     await update_task
                 except asyncio.CancelledError:
                     pass
+
+            # Update the live status message with final result
+            if status_message and self.config.discord_service_logs_enabled:
+                try:
+                    if result['success']:
+                        # Calculate final duration
+                        import_start_time = await self.message_store.get_import_start_time(guild.id)
+                        if import_start_time:
+                            from datetime import datetime, timezone
+                            now = datetime.now(timezone.utc)
+                            duration = now - import_start_time
+                            duration_minutes = int(duration.total_seconds() // 60)
+                            duration_seconds = int(duration.total_seconds() % 60)
+                            duration_str = f"{duration_minutes}m {duration_seconds}s"
+                        else:
+                            duration_str = "N/A"
+
+                        # Create final success embed
+                        final_color = (
+                            discord.Color.green() if result['channels_failed'] == 0
+                            else discord.Color.orange()
+                        )
+
+                        final_embed = discord.Embed(
+                            title="📥 Historischer Datenimport",
+                            description="Import erfolgreich abgeschlossen!",
+                            color=final_color
+                        )
+                        final_embed.add_field(name="Status", value="✅ Abgeschlossen", inline=True)
+                        final_embed.add_field(name="Dauer", value=duration_str, inline=True)
+                        final_embed.add_field(name="Nachrichten", value=f"{result['total_messages']:,}", inline=True)
+                        final_embed.add_field(
+                            name="Channels",
+                            value=f"{result['channels_processed']}/{result['total_channels']} verarbeitet",
+                            inline=False
+                        )
+                        if result['channels_failed'] > 0:
+                            final_embed.add_field(
+                                name="⚠️ Fehlgeschlagen",
+                                value=f"{result['channels_failed']} Channel(s)",
+                                inline=False
+                            )
+                        final_embed.set_footer(text="Import abgeschlossen")
+                        final_embed.timestamp = discord.utils.utcnow()
+
+                        await status_message.edit(embed=final_embed)
+                    else:
+                        # Create final error embed
+                        error_embed = discord.Embed(
+                            title="📥 Historischer Datenimport",
+                            description="Import fehlgeschlagen!",
+                            color=discord.Color.red()
+                        )
+                        error_embed.add_field(name="Status", value="❌ Fehler", inline=True)
+                        error_embed.add_field(
+                            name="Fehler",
+                            value=result.get('error', 'Unbekannter Fehler'),
+                            inline=False
+                        )
+                        error_embed.set_footer(text="Import abgebrochen")
+                        error_embed.timestamp = discord.utils.utcnow()
+
+                        await status_message.edit(embed=error_embed)
+                except Exception as e:
+                    self.logger.error(f"Failed to update final status message: {e}", exc_info=True)
 
             if result['success']:
                 self.logger.info("=" * 70)

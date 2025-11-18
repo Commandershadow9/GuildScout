@@ -11,7 +11,7 @@ from src.database.message_store import MessageStore
 logger = logging.getLogger("guildscout.message_tracking")
 
 
-class MessageTracker:
+class MessageTracker(commands.Cog):
     """Tracks messages in real-time for accurate statistics."""
 
     def __init__(
@@ -54,6 +54,7 @@ class MessageTracker:
 
         return False
 
+    @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """
         Track a message when it's sent.
@@ -138,13 +139,6 @@ async def setup(bot: commands.Bot, config, message_store: MessageStore):
         ['nsfw', 'bot-spam']
     )
 
-    tracker = MessageTracker(bot, message_store, excluded_channel_names)
-
-    # Register the on_message event
-    @bot.event
-    async def on_message(message: discord.Message):
-        await tracker.on_message(message)
-        # Important: Process commands after tracking
-        await bot.process_commands(message)
-
-    logger.info("Message tracking event handler registered")
+    # Add the cog to the bot
+    await bot.add_cog(MessageTracker(bot, message_store, excluded_channel_names))
+    logger.info("Message tracking cog loaded")
