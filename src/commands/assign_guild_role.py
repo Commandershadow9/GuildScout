@@ -96,6 +96,32 @@ class AssignGuildRoleCommand(commands.Cog):
             )
             return
 
+        # Check bot permissions BEFORE attempting role assignment
+        bot_member = guild.me
+
+        # Check 1: Does bot have "Manage Roles" permission?
+        if not bot_member.guild_permissions.manage_roles:
+            await interaction.response.send_message(
+                "❌ **Bot Permission Error**\n"
+                f"Der Bot hat keine `Manage Roles` Berechtigung!\n\n"
+                f"**Lösung:** Gib dem Bot die `Manage Roles` Permission in den Server-Einstellungen.",
+                ephemeral=True
+            )
+            return
+
+        # Check 2: Is guild_role BELOW bot's highest role? (Discord role hierarchy)
+        bot_top_role = bot_member.top_role
+        if guild_role.position >= bot_top_role.position:
+            await interaction.response.send_message(
+                "❌ **Role Hierarchy Error**\n"
+                f"Die Guild-Rolle `@{guild_role.name}` (Position {guild_role.position}) ist ÜBER oder GLEICH "
+                f"der Bot-Rolle `@{bot_top_role.name}` (Position {bot_top_role.position})!\n\n"
+                f"**Lösung:** Verschiebe die Bot-Rolle in den Server-Einstellungen ÜBER die Guild-Rolle.\n"
+                f"Discord erlaubt Bots nur, Rollen zu vergeben, die UNTER ihrer eigenen Rolle sind.",
+                ephemeral=True
+            )
+            return
+
         try:
             await interaction.response.defer(ephemeral=True)
         except discord.errors.NotFound:
