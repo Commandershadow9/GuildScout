@@ -64,6 +64,8 @@ class MessageStore:
                     guild_id INTEGER PRIMARY KEY,
                     import_completed INTEGER NOT NULL DEFAULT 0,
                     import_date TEXT,
+                    import_start_time TEXT,
+                    import_end_time TEXT,
                     total_messages_imported INTEGER DEFAULT 0
                 )
             """)
@@ -261,6 +263,30 @@ class MessageStore:
 
             return bool(row[0]) if row else False
 
+    async def mark_import_started(self, guild_id: int):
+        """
+        Mark that historical data import has started for a guild.
+
+        Args:
+            guild_id: Discord guild ID
+        """
+        await self.initialize()
+
+        import_start = datetime.now(timezone.utc).isoformat()
+
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """
+                INSERT OR REPLACE INTO import_metadata
+                (guild_id, import_completed, import_start_time)
+                VALUES (?, 0, ?)
+                """,
+                (guild_id, import_start)
+            )
+            await db.commit()
+
+        logger.info(f"Marked import as started for guild {guild_id}")
+
     async def mark_import_completed(
         self,
         guild_id: int,
@@ -275,20 +301,79 @@ class MessageStore:
         """
         await self.initialize()
 
-        import_date = datetime.now(timezone.utc).isoformat()
+        import_end = datetime.now(timezone.utc).isoformat()
 
         async with aiosqlite.connect(self.db_path) as db:
+            # Update existing row to mark as completed
             await db.execute(
                 """
-                INSERT OR REPLACE INTO import_metadata
-                (guild_id, import_completed, import_date, total_messages_imported)
-                VALUES (?, 1, ?, ?)
+                UPDATE import_metadata
+                SET import_completed = 1,
+                    import_date = ?,
+                    import_end_time = ?,
+                    total_messages_imported = ?
+                WHERE guild_id = ?
                 """,
-                (guild_id, import_date, total_messages)
+                (import_end, import_end, total_messages, guild_id)
             )
             await db.commit()
 
         logger.info(f"Marked import as completed for guild {guild_id} ({total_messages} messages)")
+
+    async def is_import_running(self, guild_id: int) -> bool:
+        """
+        Check if historical data import is currently running for a guild.
+
+        Args:
+            guild_id: Discord guild ID
+
+        Returns:
+            True if import is currently running
+        """
+        await self.initialize()
+
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """
+                SELECT import_completed, import_start_time
+                FROM import_metadata
+                WHERE guild_id = ?
+                """,
+                (guild_id,)
+            )
+            row = await cursor.fetchone()
+
+            if not row:
+                return False
+
+            import_completed, import_start_time = row
+
+            # Import is running if it's started but not completed
+            return bool(import_start_time) and not bool(import_completed)
+
+    async def get_import_start_time(self, guild_id: int) -> Optional[datetime]:
+        """
+        Get the import start time for a guild.
+
+        Args:
+            guild_id: Discord guild ID
+
+        Returns:
+            Import start time as datetime, or None if not started
+        """
+        await self.initialize()
+
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT import_start_time FROM import_metadata WHERE guild_id = ?",
+                (guild_id,)
+            )
+            row = await cursor.fetchone()
+
+            if row and row[0]:
+                return datetime.fromisoformat(row[0])
+
+            return None
 
     async def reset_guild(self, guild_id: int):
         """

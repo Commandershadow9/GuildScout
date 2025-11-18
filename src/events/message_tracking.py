@@ -75,8 +75,40 @@ class MessageTracker:
                 logger.debug(f"Excluded channel: {message.channel.name}")
                 return
 
-        # Track the message
+        # Check if import is currently running
         try:
+            import_running = await self.message_store.is_import_running(message.guild.id)
+
+            if import_running:
+                # Import is running - only track messages created AFTER import started
+                import_start_time = await self.message_store.get_import_start_time(
+                    message.guild.id
+                )
+
+                if import_start_time:
+                    # Make sure both timestamps are timezone-aware for comparison
+                    message_time = message.created_at
+                    if message_time.tzinfo is None:
+                        from datetime import timezone
+                        message_time = message_time.replace(tzinfo=timezone.utc)
+
+                    if message_time < import_start_time:
+                        # Message was created BEFORE import started
+                        # Skip tracking - historical import will handle it
+                        logger.debug(
+                            f"Skipping message from {message.author.name} "
+                            f"(created before import started)"
+                        )
+                        return
+                    else:
+                        # Message was created AFTER import started
+                        # Track it - historical import won't see it
+                        logger.debug(
+                            f"Tracking new message from {message.author.name} "
+                            f"during active import"
+                        )
+
+            # Track the message
             await self.message_store.increment_message(
                 guild_id=message.guild.id,
                 user_id=message.author.id,

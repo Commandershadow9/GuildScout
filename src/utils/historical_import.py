@@ -154,6 +154,8 @@ class HistoricalImporter:
                 "error": "Import already completed. Use reset_guild() to re-import."
             }
 
+        # Mark import as started (before we begin processing)
+        await self.message_store.mark_import_started(self.guild.id)
         logger.info(f"Starting historical import for guild: {self.guild.name}")
 
         # Get all text channels
