@@ -124,10 +124,10 @@ class MessageCache:
                 FROM message_counts
                 WHERE guild_id = ?
                 AND user_id = ?
-                AND days_lookback IS ?
+                AND (days_lookback = ? OR (days_lookback IS NULL AND ? IS NULL))
                 AND excluded_channels = ?
                 """,
-                (guild_id, user_id, days_lookback, excluded_str)
+                (guild_id, user_id, days_lookback, days_lookback, excluded_str)
             )
 
             row = await cursor.fetchone()
