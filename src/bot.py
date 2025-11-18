@@ -50,7 +50,12 @@ class GuildScoutBot(commands.Bot):
         self.message_store = message_store
         self.logger = logging.getLogger("guildscout.bot")
         self.discord_logger = DiscordLogger(bot=self, config=config)
+
+        # Background task management
         self._import_task = None  # Store background import task to prevent garbage collection
+        self._import_lock = None  # Lock for auto-import to prevent race conditions
+        self._ready_called = False  # Flag to track if on_ready initialization is complete
+        self._chunking_done = False  # Flag to track if chunking is complete
 
         # Initialize bot with intents
         intents = discord.Intents.default()
@@ -103,15 +108,73 @@ class GuildScoutBot(commands.Bot):
             self.logger.error(f"Failed to sync commands: {e}")
 
     async def on_ready(self):
-        """Called when bot is ready."""
-        self.logger.info(f"Bot is ready! Logged in as {self.user.name} ({self.user.id})")
-        self.logger.info(f"Connected to {len(self.guilds)} guild(s)")
+        """
+        Called when bot is ready.
 
-        # Chunk all guilds to load ALL members into cache
-        # This ensures we see all 739 members, not just cached ones (121)
+        Note: This can be called multiple times (on reconnects).
+        We use flags to ensure one-time initialization is only done once.
+        """
+        self.logger.info(f"Bot is ready! Logged in as {self.user.name} ({self.user.id})")
+
+        # Initialize lock on first call
+        if self._import_lock is None:
+            import asyncio
+            self._import_lock = asyncio.Lock()
+
+        # Only run full initialization once
+        if not self._ready_called:
+            self._ready_called = True
+            self.logger.info(f"First ready event - initializing bot...")
+            self.logger.info(f"Connected to {len(self.guilds)} guild(s)")
+
+            # Set bot status
+            await self.change_presence(
+                activity=discord.Activity(
+                    type=discord.ActivityType.watching,
+                    name="guild activity | /analyze /my-score"
+                )
+            )
+
+            # Start chunking in background (non-blocking)
+            if not self._chunking_done:
+                import asyncio
+                asyncio.create_task(self._chunk_all_guilds())
+
+            # Send startup notification and start auto-import
+            if self.config.discord_service_logs_enabled:
+                guild = self.get_guild(self.config.guild_id)
+                if guild:
+                    description = (
+                        f"Verbunden mit **{len(self.guilds)}** Server(n)\n"
+                        f"Cache bereit, Commands synchronisiert\n"
+                        f"Member-Cache wird geladen..."
+                    )
+                    await self.discord_logger.send(
+                        guild,
+                        "🤖 GuildScout gestartet",
+                        description,
+                        status="✅ Online",
+                        color=discord.Color.green()
+                    )
+
+                    # Auto-start historical import if not completed
+                    await self._check_and_start_auto_import(guild)
+        else:
+            # Reconnect event - just log it
+            self.logger.info(f"Bot reconnected (ready event #{2 if self._ready_called else 1})")
+
+    async def _chunk_all_guilds(self):
+        """
+        Chunk all guilds in background to load all members into cache.
+        This runs asynchronously to not block bot startup.
+        """
+        import asyncio
+
+        self.logger.info("Starting guild chunking in background...")
+
         for guild in self.guilds:
-            self.logger.info(f"Chunking guild {guild.name} to load all members...")
             try:
+                self.logger.info(f"Chunking guild {guild.name} ({guild.member_count} members)...")
                 await guild.chunk()
                 self.logger.info(
                     f"✅ Guild chunked: {guild.name} - "
@@ -120,31 +183,11 @@ class GuildScoutBot(commands.Bot):
             except Exception as e:
                 self.logger.error(f"Failed to chunk guild {guild.name}: {e}", exc_info=True)
 
-        # Set bot status
-        await self.change_presence(
-            activity=discord.Activity(
-                type=discord.ActivityType.watching,
-                name="guild activity | /analyze /my-score"
-            )
-        )
+            # Small delay between chunks to avoid rate limits
+            await asyncio.sleep(1)
 
-        if self.config.discord_service_logs_enabled:
-            guild = self.get_guild(self.config.guild_id)
-            if guild:
-                description = (
-                    f"Verbunden mit **{len(self.guilds)}** Server(n)\n"
-                    f"Cache bereit, Commands synchronisiert"
-                )
-                await self.discord_logger.send(
-                    guild,
-                    "🤖 GuildScout gestartet",
-                    description,
-                    status="✅ Online",
-                    color=discord.Color.green()
-                )
-
-                # Auto-start historical import if not completed
-                await self._check_and_start_auto_import(guild)
+        self._chunking_done = True
+        self.logger.info("✅ All guilds chunked successfully")
 
     async def _create_import_status_message(self, guild: discord.Guild):
         """
@@ -257,50 +300,65 @@ class GuildScoutBot(commands.Bot):
     async def _check_and_start_auto_import(self, guild: discord.Guild):
         """
         Check if historical import is needed and start it automatically.
+        Uses a lock to prevent race conditions on multiple on_ready() calls.
 
         Args:
             guild: Discord guild
         """
-        try:
-            # Check if import already completed
-            is_completed = await self.message_store.is_import_completed(guild.id)
+        import asyncio
 
-            if is_completed:
-                self.logger.info(f"✅ Historical import already completed for {guild.name}")
-                return
+        # Use lock to prevent multiple simultaneous import starts
+        async with self._import_lock:
+            try:
+                # Check if import already running (task exists and not done)
+                if self._import_task and not self._import_task.done():
+                    self.logger.warning(
+                        f"⚠️ Historical import already running for {guild.name} "
+                        "(task exists)"
+                    )
+                    return
 
-            # Check if import is already running
-            is_running = await self.message_store.is_import_running(guild.id)
+                # Check if import already completed
+                is_completed = await self.message_store.is_import_completed(guild.id)
 
-            if is_running:
-                self.logger.warning(f"⚠️ Historical import already running for {guild.name}")
-                return
+                if is_completed:
+                    self.logger.info(f"✅ Historical import already completed for {guild.name}")
+                    return
 
-            # Import not completed - start it in background
-            self.logger.info(f"📥 Starting automatic historical import for {guild.name}")
+                # Check if import is already running (in database)
+                is_running = await self.message_store.is_import_running(guild.id)
 
-            # Send Discord notification
-            if self.config.discord_service_logs_enabled:
-                await self.discord_logger.send(
-                    guild,
-                    "📥 Automatischer Datenimport gestartet",
-                    (
-                        "Der Bot importiert jetzt alle historischen Nachrichten.\n"
-                        "Dies kann 30-60 Minuten dauern.\n\n"
-                        "**Bot bleibt währenddessen voll funktionsfähig!**\n"
-                        "Commands funktionieren normal (ggf. etwas langsamer).\n\n"
-                        "Fortschritt wird in den Logs angezeigt."
-                    ),
-                    status="🔄 Import läuft",
-                    color=discord.Color.blue()
-                )
+                if is_running:
+                    self.logger.warning(
+                        f"⚠️ Historical import already running for {guild.name} "
+                        "(marked in database)"
+                    )
+                    return
 
-            # Start import in background
-            import asyncio
-            self._import_task = asyncio.create_task(self._run_auto_import(guild))
+                # Import not completed - start it in background
+                self.logger.info(f"📥 Starting automatic historical import for {guild.name}")
 
-        except Exception as e:
-            self.logger.error(f"Error checking/starting auto-import: {e}", exc_info=True)
+                # Send Discord notification
+                if self.config.discord_service_logs_enabled:
+                    await self.discord_logger.send(
+                        guild,
+                        "📥 Automatischer Datenimport gestartet",
+                        (
+                            "Der Bot importiert jetzt alle historischen Nachrichten.\n"
+                            "Dies kann 30-60 Minuten dauern.\n\n"
+                            "**Bot bleibt währenddessen voll funktionsfähig!**\n"
+                            "Commands funktionieren normal (ggf. etwas langsamer).\n\n"
+                            "Fortschritt wird in den Logs angezeigt."
+                        ),
+                        status="🔄 Import läuft",
+                        color=discord.Color.blue()
+                    )
+
+                # Start import in background
+                self._import_task = asyncio.create_task(self._run_auto_import(guild))
+
+            except Exception as e:
+                self.logger.error(f"Error checking/starting auto-import: {e}", exc_info=True)
 
     async def _run_auto_import(self, guild: discord.Guild):
         """

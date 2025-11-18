@@ -352,6 +352,30 @@ class AnalyzeCommand(commands.Cog):
             start_time = time.time()
             log_message = None
 
+            # Wait for guild chunking to complete (critical for accurate member counts)
+            # Bot chunks guilds in background on startup - ensure it's done before scanning
+            if hasattr(self.bot, '_chunking_done') and not self.bot._chunking_done:
+                logger.info("Waiting for guild chunking to complete...")
+                await interaction.followup.send(
+                    "⏳ Bot lädt Member-Cache... Bitte 10 Sekunden warten.",
+                    ephemeral=True
+                )
+
+                # Wait up to 30 seconds for chunking
+                import asyncio
+                for i in range(30):
+                    if self.bot._chunking_done:
+                        logger.info(f"Chunking completed after {i} seconds")
+                        break
+                    await asyncio.sleep(1)
+
+                if not self.bot._chunking_done:
+                    logger.warning("Chunking timeout - proceeding anyway")
+                    await interaction.followup.send(
+                        "⚠️ Member-Cache noch nicht vollständig. Ergebnisse könnten unvollständig sein.",
+                        ephemeral=True
+                    )
+
             # Initialize components
             guild = interaction.guild
             role_scanner = RoleScanner(
