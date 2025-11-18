@@ -131,6 +131,142 @@ class GuildScoutBot(commands.Bot):
                     color=discord.Color.green()
                 )
 
+                # Auto-start historical import if not completed
+                await self._check_and_start_auto_import(guild)
+
+    async def _check_and_start_auto_import(self, guild: discord.Guild):
+        """
+        Check if historical import is needed and start it automatically.
+
+        Args:
+            guild: Discord guild
+        """
+        try:
+            # Check if import already completed
+            is_completed = await self.message_store.is_import_completed(guild.id)
+
+            if is_completed:
+                self.logger.info(f"✅ Historical import already completed for {guild.name}")
+                return
+
+            # Check if import is already running
+            is_running = await self.message_store.is_import_running(guild.id)
+
+            if is_running:
+                self.logger.warning(f"⚠️ Historical import already running for {guild.name}")
+                return
+
+            # Import not completed - start it in background
+            self.logger.info(f"📥 Starting automatic historical import for {guild.name}")
+
+            # Send Discord notification
+            if self.config.discord_service_logs_enabled:
+                await self.discord_logger.send(
+                    guild,
+                    "📥 Automatischer Datenimport gestartet",
+                    (
+                        "Der Bot importiert jetzt alle historischen Nachrichten.\n"
+                        "Dies kann 30-60 Minuten dauern.\n\n"
+                        "**Bot bleibt währenddessen voll funktionsfähig!**\n"
+                        "Commands funktionieren normal (ggf. etwas langsamer).\n\n"
+                        "Fortschritt wird in den Logs angezeigt."
+                    ),
+                    status="🔄 Import läuft",
+                    color=discord.Color.blue()
+                )
+
+            # Start import in background
+            import asyncio
+            asyncio.create_task(self._run_auto_import(guild))
+
+        except Exception as e:
+            self.logger.error(f"Error checking/starting auto-import: {e}", exc_info=True)
+
+    async def _run_auto_import(self, guild: discord.Guild):
+        """
+        Run the historical import in background.
+
+        Args:
+            guild: Discord guild
+        """
+        from src.utils.historical_import import HistoricalImporter
+
+        try:
+            self.logger.info("=" * 70)
+            self.logger.info("🚀 AUTOMATIC HISTORICAL IMPORT STARTED")
+            self.logger.info("=" * 70)
+
+            # Create importer
+            excluded_channel_names = getattr(
+                self.config,
+                'excluded_channel_names',
+                ['nsfw', 'bot-spam']
+            )
+
+            importer = HistoricalImporter(
+                guild=guild,
+                message_store=self.message_store,
+                excluded_channel_names=excluded_channel_names
+            )
+
+            # Import with logging
+            result = await importer.import_guild_history()
+
+            if result['success']:
+                self.logger.info("=" * 70)
+                self.logger.info("✅ AUTOMATIC IMPORT COMPLETED SUCCESSFULLY")
+                self.logger.info("=" * 70)
+
+                # Send success notification
+                if self.config.discord_service_logs_enabled:
+                    color = (
+                        discord.Color.green() if result['channels_failed'] == 0
+                        else discord.Color.orange()
+                    )
+
+                    description = (
+                        f"**Importierte Nachrichten:** {result['total_messages']:,}\n"
+                        f"**Verarbeitete Channels:** {result['channels_processed']}\n"
+                        f"**Fehlgeschlagene Channels:** {result['channels_failed']}\n"
+                        f"**Gesamt Channels:** {result['total_channels']}\n\n"
+                        "✅ Der Bot nutzt jetzt die schnelle Datenbank!\n"
+                        "Commands wie `/analyze` sind jetzt instant."
+                    )
+
+                    await self.discord_logger.send(
+                        guild,
+                        "✅ Historischer Import abgeschlossen",
+                        description,
+                        status="✅ Bereit",
+                        color=color
+                    )
+
+            else:
+                self.logger.error(f"❌ Auto-import failed: {result.get('error', 'Unknown error')}")
+
+                if self.config.discord_service_logs_enabled:
+                    await self.discord_logger.send(
+                        guild,
+                        "❌ Import fehlgeschlagen",
+                        f"Fehler: {result.get('error', 'Unbekannter Fehler')}\n\n"
+                        "Bitte `/import-messages force=True` manuell ausführen.",
+                        status="❌ Fehler",
+                        color=discord.Color.red()
+                    )
+
+        except Exception as e:
+            self.logger.error(f"❌ CRITICAL: Auto-import failed with exception: {e}", exc_info=True)
+
+            if self.config.discord_service_logs_enabled:
+                await self.discord_logger.send(
+                    guild,
+                    "❌ Import-Fehler",
+                    f"Kritischer Fehler beim Import:\n```{str(e)}```\n\n"
+                    "Bitte Logs prüfen und `/import-messages` manuell ausführen.",
+                    status="❌ Fehler",
+                    color=discord.Color.red()
+                )
+
     async def on_command_error(self, ctx, error):
         """Handle command errors."""
         self.logger.error(f"Command error: {error}", exc_info=True)

@@ -63,6 +63,168 @@ class MessageStoreAdminCommands(commands.Cog):
         return False
 
     @app_commands.command(
+        name="import-status",
+        description="[Admin] Check the status of message import"
+    )
+    async def import_status(self, interaction: discord.Interaction):
+        """
+        Check the current status of historical message import.
+
+        Args:
+            interaction: Discord interaction
+        """
+        # Check permissions
+        if not self._has_permission(interaction):
+            await interaction.response.send_message(
+                "❌ You don't have permission to use this command.",
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            is_completed = await self.message_store.is_import_completed(
+                interaction.guild.id
+            )
+            is_running = await self.message_store.is_import_running(
+                interaction.guild.id
+            )
+
+            embed = discord.Embed(
+                title="📊 Import Status",
+                timestamp=datetime.utcnow()
+            )
+
+            if is_completed:
+                # Import completed
+                stats = await self.message_store.get_stats(interaction.guild.id)
+
+                embed.color = discord.Color.green()
+                embed.add_field(
+                    name="Status",
+                    value="✅ **Abgeschlossen**",
+                    inline=False
+                )
+
+                if stats.get('import_date'):
+                    import_date = datetime.fromisoformat(stats['import_date'])
+                    embed.add_field(
+                        name="Importiert am",
+                        value=import_date.strftime('%d.%m.%Y %H:%M UTC'),
+                        inline=True
+                    )
+
+                embed.add_field(
+                    name="Importierte Nachrichten",
+                    value=f"{stats['total_messages']:,}",
+                    inline=True
+                )
+
+                embed.add_field(
+                    name="Getrackte User",
+                    value=f"{stats['total_users']:,}",
+                    inline=True
+                )
+
+                embed.add_field(
+                    name="💡 Info",
+                    value=(
+                        "Der Bot nutzt jetzt die schnelle Datenbank.\n"
+                        "Neue Nachrichten werden in Echtzeit getrackt."
+                    ),
+                    inline=False
+                )
+
+            elif is_running:
+                # Import currently running
+                start_time = await self.message_store.get_import_start_time(
+                    interaction.guild.id
+                )
+
+                embed.color = discord.Color.blue()
+                embed.add_field(
+                    name="Status",
+                    value="🔄 **Läuft gerade**",
+                    inline=False
+                )
+
+                if start_time:
+                    # Calculate duration
+                    from datetime import timezone as tz
+                    now = datetime.now(tz.utc)
+                    duration = now - start_time
+                    minutes = int(duration.total_seconds() / 60)
+
+                    embed.add_field(
+                        name="Gestartet",
+                        value=start_time.strftime('%H:%M UTC'),
+                        inline=True
+                    )
+
+                    embed.add_field(
+                        name="Dauer",
+                        value=f"{minutes} Minuten",
+                        inline=True
+                    )
+
+                # Get current stats (partial data)
+                stats = await self.message_store.get_stats(interaction.guild.id)
+
+                embed.add_field(
+                    name="Bisher importiert",
+                    value=f"{stats['total_messages']:,} Nachrichten",
+                    inline=False
+                )
+
+                embed.add_field(
+                    name="📋 Logs",
+                    value=(
+                        "Detaillierte Logs in der Konsole:\n"
+                        "- Aktueller Channel\n"
+                        "- Nachrichtenanzahl pro Channel\n"
+                        "- Rate-Limit Status\n"
+                        "- Fehler/Warnungen"
+                    ),
+                    inline=False
+                )
+
+                embed.set_footer(
+                    text="Import läuft im Hintergrund. Bot bleibt funktionsfähig!"
+                )
+
+            else:
+                # Import not started
+                embed.color = discord.Color.orange()
+                embed.add_field(
+                    name="Status",
+                    value="⚠️ **Nicht gestartet**",
+                    inline=False
+                )
+
+                embed.add_field(
+                    name="📝 Hinweis",
+                    value=(
+                        "Der automatische Import sollte beim Bot-Start erfolgen.\n\n"
+                        "Mögliche Gründe:\n"
+                        "• Bot wurde gerade erst gestartet\n"
+                        "• Import wurde deaktiviert\n"
+                        "• Import-Fehler beim Start\n\n"
+                        "Führe `/import-messages` manuell aus."
+                    ),
+                    inline=False
+                )
+
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        except Exception as e:
+            logger.error(f"Error getting import status: {e}", exc_info=True)
+            await interaction.followup.send(
+                f"❌ Error getting status: {str(e)}",
+                ephemeral=True
+            )
+
+    @app_commands.command(
         name="import-messages",
         description="[Admin] Import historical messages for accurate tracking"
     )
