@@ -81,7 +81,16 @@ class MessageStoreAdminCommands(commands.Cog):
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except discord.errors.NotFound:
+            logger.warning(
+                f"Interaction expired for /import-status by {interaction.user.name}"
+            )
+            return
+        except Exception as e:
+            logger.error(f"Unexpected error during defer: {e}", exc_info=True)
+            return
 
         try:
             is_completed = await self.message_store.is_import_completed(
@@ -251,7 +260,16 @@ class MessageStoreAdminCommands(commands.Cog):
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except discord.errors.NotFound:
+            logger.warning(
+                f"Interaction expired for /import-messages by {interaction.user.name}"
+            )
+            return
+        except Exception as e:
+            logger.error(f"Unexpected error during defer: {e}", exc_info=True)
+            return
 
         try:
             # Check if already imported
@@ -409,7 +427,16 @@ class MessageStoreAdminCommands(commands.Cog):
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except discord.errors.NotFound:
+            logger.warning(
+                f"Interaction expired for /message-store-stats by {interaction.user.name}"
+            )
+            return
+        except Exception as e:
+            logger.error(f"Unexpected error during defer: {e}", exc_info=True)
+            return
 
         try:
             stats = await self.message_store.get_stats(interaction.guild.id)
@@ -494,7 +521,23 @@ class MessageStoreAdminCommands(commands.Cog):
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except discord.errors.NotFound:
+            logger.warning(
+                f"Interaction expired for /verify-message-counts by {interaction.user.name}"
+            )
+            try:
+                await interaction.followup.send(
+                    "⚠️ Command timed out (bot was busy or reconnecting). Please try again.",
+                    ephemeral=True
+                )
+            except Exception:
+                pass
+            return
+        except Exception as e:
+            logger.error(f"Unexpected error during defer: {e}", exc_info=True)
+            return
 
         try:
             # Check if import completed

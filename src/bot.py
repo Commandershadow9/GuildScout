@@ -107,6 +107,19 @@ class GuildScoutBot(commands.Bot):
         self.logger.info(f"Bot is ready! Logged in as {self.user.name} ({self.user.id})")
         self.logger.info(f"Connected to {len(self.guilds)} guild(s)")
 
+        # Chunk all guilds to load ALL members into cache
+        # This ensures we see all 739 members, not just cached ones (121)
+        for guild in self.guilds:
+            self.logger.info(f"Chunking guild {guild.name} to load all members...")
+            try:
+                await guild.chunk()
+                self.logger.info(
+                    f"✅ Guild chunked: {guild.name} - "
+                    f"Loaded {len(guild.members)} members into cache"
+                )
+            except Exception as e:
+                self.logger.error(f"Failed to chunk guild {guild.name}: {e}", exc_info=True)
+
         # Set bot status
         await self.change_presence(
             activity=discord.Activity(
