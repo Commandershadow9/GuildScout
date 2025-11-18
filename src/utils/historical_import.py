@@ -3,6 +3,7 @@
 import logging
 import discord
 import asyncio
+import aiosqlite
 from typing import List, Optional, Callable, Dict
 from collections import defaultdict
 
@@ -158,113 +159,147 @@ class HistoricalImporter:
         await self.message_store.mark_import_started(self.guild.id)
         logger.info(f"Starting historical import for guild: {self.guild.name}")
 
-        # Get all text channels
-        channels = [
-            channel for channel in self.guild.text_channels
-            if not self._should_exclude_channel(channel)
-        ]
-
-        total_channels = len(channels)
+        # Use try-finally to ensure cleanup on crash
         total_messages = 0
         channels_processed = 0
         channels_failed = 0
         failed_channels = []
-
-        # Dictionary to batch message counts: (guild_id, user_id, channel_id) -> count
         all_message_counts = defaultdict(int)
 
-        for idx, channel in enumerate(channels, 1):
-            try:
-                # Check permissions
-                if not channel.permissions_for(self.guild.me).read_message_history:
-                    logger.warning(
-                        f"⚠️ No permission to read history in #{channel.name}"
+        try:
+            # Get all text channels
+            channels = [
+                channel for channel in self.guild.text_channels
+                if not self._should_exclude_channel(channel)
+            ]
+
+            total_channels = len(channels)
+
+            for idx, channel in enumerate(channels, 1):
+                try:
+                    # Check permissions
+                    if not channel.permissions_for(self.guild.me).read_message_history:
+                        logger.warning(
+                            f"⚠️ No permission to read history in #{channel.name}"
+                        )
+                        channels_failed += 1
+                        failed_channels.append({
+                            "name": channel.name,
+                            "reason": "No read permission"
+                        })
+                        continue
+
+                    logger.info(
+                        f"📊 Processing channel #{channel.name} ({idx}/{total_channels})"
+                    )
+
+                    if progress_callback:
+                        await progress_callback(channel.name, idx, total_channels)
+
+                    # Process channel with robust rate-limit handling
+                    result = await self._process_channel(channel)
+
+                    # Add counts from this channel
+                    for key, count in result["message_counts"].items():
+                        all_message_counts[key] += count
+
+                    channel_msg_count = result["channel_message_count"]
+                    total_messages += channel_msg_count
+                    channels_processed += 1
+
+                    # Flush to database every 5000 messages for safety
+                    if total_messages % 5000 == 0:
+                        logger.info(f"💾 Saving progress... ({total_messages} messages)")
+                        await self._flush_counts(all_message_counts)
+                        all_message_counts.clear()
+
+                except discord.Forbidden:
+                    logger.error(f"🔒 Forbidden: Cannot access #{channel.name}")
+                    channels_failed += 1
+                    failed_channels.append({
+                        "name": channel.name,
+                        "reason": "Access forbidden"
+                    })
+
+                except Exception as e:
+                    logger.error(
+                        f"❌ CRITICAL: Error processing #{channel.name}: {e}",
+                        exc_info=True
                     )
                     channels_failed += 1
                     failed_channels.append({
                         "name": channel.name,
-                        "reason": "No read permission"
+                        "reason": f"Error: {str(e)}"
                     })
-                    continue
+                    # IMPORTANT: Continue with other channels even if one fails
 
-                logger.info(
-                    f"📊 Processing channel #{channel.name} ({idx}/{total_channels})"
+            # Flush remaining counts
+            if all_message_counts:
+                logger.info("💾 Saving final batch...")
+                await self._flush_counts(all_message_counts)
+
+            # Mark import as completed
+            await self.message_store.mark_import_completed(
+                guild_id=self.guild.id,
+                total_messages=total_messages
+            )
+
+            result = {
+                "success": True,
+                "total_messages": total_messages,
+                "channels_processed": channels_processed,
+                "channels_failed": channels_failed,
+                "total_channels": total_channels,
+                "failed_channels": failed_channels
+            }
+
+            # Log summary
+            logger.info("=" * 60)
+            logger.info("📊 IMPORT SUMMARY")
+            logger.info("=" * 60)
+            logger.info(f"✅ Total messages imported: {total_messages:,}")
+            logger.info(f"✅ Channels processed: {channels_processed}/{total_channels}")
+            logger.info(f"❌ Channels failed: {channels_failed}")
+            if failed_channels:
+                logger.warning("Failed channels:")
+                for fc in failed_channels:
+                    logger.warning(f"  - {fc['name']}: {fc['reason']}")
+            logger.info("=" * 60)
+
+            return result
+
+        except Exception as e:
+            # Catastrophic failure - something went terribly wrong
+            logger.error(
+                f"❌ CATASTROPHIC: Import failed with exception: {e}",
+                exc_info=True
+            )
+
+            # Clean up import state to allow retry
+            try:
+                # Clear the import_started flag so import can be retried
+                await self.message_store.mark_import_completed(
+                    guild_id=self.guild.id,
+                    total_messages=0  # Mark as 0 to indicate failure
                 )
+                # But immediately clear it again to allow retry
+                async with aiosqlite.connect(self.message_store.db_path) as db:
+                    await db.execute(
+                        "UPDATE import_metadata SET import_completed = 0, import_start_time = NULL, import_end_time = NULL WHERE guild_id = ?",
+                        (self.guild.id,)
+                    )
+                    await db.commit()
+                logger.info("Import state cleared - can retry")
+            except Exception as cleanup_error:
+                logger.error(f"Failed to clean up import state: {cleanup_error}")
 
-                if progress_callback:
-                    await progress_callback(channel.name, idx, total_channels)
-
-                # Process channel with robust rate-limit handling
-                result = await self._process_channel(channel)
-
-                # Add counts from this channel
-                for key, count in result["message_counts"].items():
-                    all_message_counts[key] += count
-
-                channel_msg_count = result["channel_message_count"]
-                total_messages += channel_msg_count
-                channels_processed += 1
-
-                # Flush to database every 5000 messages for safety
-                if total_messages % 5000 == 0:
-                    logger.info(f"💾 Saving progress... ({total_messages} messages)")
-                    await self._flush_counts(all_message_counts)
-                    all_message_counts.clear()
-
-            except discord.Forbidden:
-                logger.error(f"🔒 Forbidden: Cannot access #{channel.name}")
-                channels_failed += 1
-                failed_channels.append({
-                    "name": channel.name,
-                    "reason": "Access forbidden"
-                })
-
-            except Exception as e:
-                logger.error(
-                    f"❌ CRITICAL: Error processing #{channel.name}: {e}",
-                    exc_info=True
-                )
-                channels_failed += 1
-                failed_channels.append({
-                    "name": channel.name,
-                    "reason": f"Error: {str(e)}"
-                })
-                # IMPORTANT: Continue with other channels even if one fails
-
-        # Flush remaining counts
-        if all_message_counts:
-            logger.info("💾 Saving final batch...")
-            await self._flush_counts(all_message_counts)
-
-        # Mark import as completed
-        await self.message_store.mark_import_completed(
-            guild_id=self.guild.id,
-            total_messages=total_messages
-        )
-
-        result = {
-            "success": True,
-            "total_messages": total_messages,
-            "channels_processed": channels_processed,
-            "channels_failed": channels_failed,
-            "total_channels": total_channels,
-            "failed_channels": failed_channels
-        }
-
-        # Log summary
-        logger.info("=" * 60)
-        logger.info("📊 IMPORT SUMMARY")
-        logger.info("=" * 60)
-        logger.info(f"✅ Total messages imported: {total_messages:,}")
-        logger.info(f"✅ Channels processed: {channels_processed}/{total_channels}")
-        logger.info(f"❌ Channels failed: {channels_failed}")
-        if failed_channels:
-            logger.warning("Failed channels:")
-            for fc in failed_channels:
-                logger.warning(f"  - {fc['name']}: {fc['reason']}")
-        logger.info("=" * 60)
-
-        return result
+            return {
+                "success": False,
+                "error": str(e),
+                "total_messages": total_messages,
+                "channels_processed": channels_processed,
+                "channels_failed": channels_failed
+            }
 
     async def _flush_counts(self, message_counts: dict):
         """

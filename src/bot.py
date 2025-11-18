@@ -56,6 +56,7 @@ class GuildScoutBot(commands.Bot):
         self._import_lock = None  # Lock for auto-import to prevent race conditions
         self._ready_called = False  # Flag to track if on_ready initialization is complete
         self._chunking_done = False  # Flag to track if chunking is complete
+        self._chunking_task = None  # Store chunking task to prevent garbage collection
 
         # Initialize bot with intents
         intents = discord.Intents.default()
@@ -138,7 +139,7 @@ class GuildScoutBot(commands.Bot):
             # Start chunking in background (non-blocking)
             if not self._chunking_done:
                 import asyncio
-                asyncio.create_task(self._chunk_all_guilds())
+                self._chunking_task = asyncio.create_task(self._chunk_all_guilds())
 
             # Send startup notification and start auto-import
             if self.config.discord_service_logs_enabled:
