@@ -34,6 +34,10 @@ class MessageStore:
             return
 
         async with aiosqlite.connect(self.db_path) as db:
+            # Enable WAL mode for better concurrency (allows concurrent reads + 1 write)
+            # This is crucial because message tracking and import can run simultaneously
+            await db.execute("PRAGMA journal_mode=WAL")
+
             # Create message counts table
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS message_counts (
