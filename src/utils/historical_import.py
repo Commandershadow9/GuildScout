@@ -2,7 +2,8 @@
 
 import logging
 import discord
-from typing import List, Optional, Callable
+import asyncio
+from typing import List, Optional, Callable, Dict
 from collections import defaultdict
 
 from src.database.message_store import MessageStore
@@ -54,6 +55,84 @@ class HistoricalImporter:
 
         return False
 
+    async def _process_channel(
+        self,
+        channel: discord.TextChannel
+    ) -> Dict[str, int]:
+        """
+        Process a single channel with robust rate-limit handling.
+
+        Args:
+            channel: Channel to process
+
+        Returns:
+            Dictionary with channel statistics
+        """
+        message_counts = defaultdict(int)
+        channel_message_count = 0
+        retry_count = 0
+        max_wait = 300  # Maximum wait time: 5 minutes
+
+        # Infinite retry loop - we MUST get all messages
+        while True:
+            try:
+                logger.info(f"📖 Reading #{channel.name}...")
+
+                # Iterate through all messages in the channel
+                async for message in channel.history(limit=None, oldest_first=False):
+                    # Skip bot messages
+                    if message.author.bot:
+                        continue
+
+                    # Count the message
+                    key = (self.guild.id, message.author.id, channel.id)
+                    message_counts[key] += 1
+                    channel_message_count += 1
+
+                # Success - break retry loop
+                logger.info(
+                    f"✅ Completed #{channel.name}: {channel_message_count} messages"
+                )
+                break
+
+            except discord.HTTPException as e:
+                # Handle rate limiting - wait as long as needed
+                if e.status == 429:
+                    # Use Discord's suggested wait time, or exponential backoff
+                    retry_after = (
+                        e.retry_after if hasattr(e, 'retry_after')
+                        else min(2 ** retry_count, max_wait)
+                    )
+                    retry_count += 1
+
+                    logger.warning(
+                        f"⏳ Rate limited on #{channel.name}. "
+                        f"Waiting {retry_after:.1f}s (attempt #{retry_count}). "
+                        f"Will retry indefinitely to ensure complete data."
+                    )
+                    await asyncio.sleep(retry_after)
+                    # Continue loop - never give up on rate limits
+                    continue
+                else:
+                    logger.error(f"❌ HTTP error in #{channel.name}: {e}")
+                    raise  # Re-raise non-rate-limit HTTP errors
+
+            except discord.Forbidden:
+                logger.error(f"🔒 Forbidden: Cannot access #{channel.name}")
+                raise
+
+            except Exception as e:
+                logger.error(
+                    f"❌ Unexpected error in #{channel.name}: {e}",
+                    exc_info=True
+                )
+                raise
+
+        return {
+            "message_counts": message_counts,
+            "channel_message_count": channel_message_count
+        }
+
     async def import_guild_history(
         self,
         progress_callback: Optional[Callable[[str, int, int], None]] = None
@@ -87,58 +166,73 @@ class HistoricalImporter:
         total_messages = 0
         channels_processed = 0
         channels_failed = 0
+        failed_channels = []
 
         # Dictionary to batch message counts: (guild_id, user_id, channel_id) -> count
-        message_counts = defaultdict(int)
+        all_message_counts = defaultdict(int)
 
         for idx, channel in enumerate(channels, 1):
             try:
                 # Check permissions
                 if not channel.permissions_for(self.guild.me).read_message_history:
-                    logger.warning(f"No permission to read history in #{channel.name}")
+                    logger.warning(
+                        f"⚠️ No permission to read history in #{channel.name}"
+                    )
                     channels_failed += 1
+                    failed_channels.append({
+                        "name": channel.name,
+                        "reason": "No read permission"
+                    })
                     continue
 
-                logger.info(f"Processing channel #{channel.name} ({idx}/{total_channels})")
+                logger.info(
+                    f"📊 Processing channel #{channel.name} ({idx}/{total_channels})"
+                )
 
                 if progress_callback:
                     await progress_callback(channel.name, idx, total_channels)
 
-                channel_message_count = 0
+                # Process channel with robust rate-limit handling
+                result = await self._process_channel(channel)
 
-                # Iterate through all messages in the channel
-                async for message in channel.history(limit=None, oldest_first=False):
-                    # Skip bot messages
-                    if message.author.bot:
-                        continue
+                # Add counts from this channel
+                for key, count in result["message_counts"].items():
+                    all_message_counts[key] += count
 
-                    # Count the message
-                    key = (self.guild.id, message.author.id, channel.id)
-                    message_counts[key] += 1
-                    channel_message_count += 1
-                    total_messages += 1
-
-                    # Batch insert every 1000 messages to improve performance
-                    if total_messages % 1000 == 0:
-                        await self._flush_counts(message_counts)
-                        message_counts.clear()
-                        logger.debug(f"Processed {total_messages} messages...")
-
-                logger.info(
-                    f"Completed #{channel.name}: {channel_message_count} messages"
-                )
+                channel_msg_count = result["channel_message_count"]
+                total_messages += channel_msg_count
                 channels_processed += 1
 
+                # Flush to database every 5000 messages for safety
+                if total_messages % 5000 == 0:
+                    logger.info(f"💾 Saving progress... ({total_messages} messages)")
+                    await self._flush_counts(all_message_counts)
+                    all_message_counts.clear()
+
             except discord.Forbidden:
-                logger.error(f"Forbidden: Cannot access #{channel.name}")
+                logger.error(f"🔒 Forbidden: Cannot access #{channel.name}")
                 channels_failed += 1
+                failed_channels.append({
+                    "name": channel.name,
+                    "reason": "Access forbidden"
+                })
+
             except Exception as e:
-                logger.error(f"Error processing #{channel.name}: {e}", exc_info=True)
+                logger.error(
+                    f"❌ CRITICAL: Error processing #{channel.name}: {e}",
+                    exc_info=True
+                )
                 channels_failed += 1
+                failed_channels.append({
+                    "name": channel.name,
+                    "reason": f"Error: {str(e)}"
+                })
+                # IMPORTANT: Continue with other channels even if one fails
 
         # Flush remaining counts
-        if message_counts:
-            await self._flush_counts(message_counts)
+        if all_message_counts:
+            logger.info("💾 Saving final batch...")
+            await self._flush_counts(all_message_counts)
 
         # Mark import as completed
         await self.message_store.mark_import_completed(
@@ -151,10 +245,23 @@ class HistoricalImporter:
             "total_messages": total_messages,
             "channels_processed": channels_processed,
             "channels_failed": channels_failed,
-            "total_channels": total_channels
+            "total_channels": total_channels,
+            "failed_channels": failed_channels
         }
 
-        logger.info(f"Import completed: {result}")
+        # Log summary
+        logger.info("=" * 60)
+        logger.info("📊 IMPORT SUMMARY")
+        logger.info("=" * 60)
+        logger.info(f"✅ Total messages imported: {total_messages:,}")
+        logger.info(f"✅ Channels processed: {channels_processed}/{total_channels}")
+        logger.info(f"❌ Channels failed: {channels_failed}")
+        if failed_channels:
+            logger.warning("Failed channels:")
+            for fc in failed_channels:
+                logger.warning(f"  - {fc['name']}: {fc['reason']}")
+        logger.info("=" * 60)
+
         return result
 
     async def _flush_counts(self, message_counts: dict):

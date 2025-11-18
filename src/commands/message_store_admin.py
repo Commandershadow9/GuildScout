@@ -8,7 +8,11 @@ from datetime import datetime
 
 from ..utils import Config
 from ..database.message_store import MessageStore
+from ..database import MessageCache
 from ..utils.historical_import import HistoricalImporter
+from ..utils.validation import MessageCountValidator
+from ..analytics.activity_tracker import ActivityTracker
+import random
 
 
 logger = logging.getLogger("guildscout.commands.message_store_admin")
@@ -159,9 +163,14 @@ class MessageStoreAdminCommands(commands.Cog):
 
             if result['success']:
                 # Create success embed
+                color = (
+                    discord.Color.green() if result['channels_failed'] == 0
+                    else discord.Color.orange()
+                )
+
                 embed = discord.Embed(
                     title="✅ Historical Import Completed",
-                    color=discord.Color.green(),
+                    color=color,
                     timestamp=datetime.utcnow()
                 )
 
@@ -176,11 +185,27 @@ class MessageStoreAdminCommands(commands.Cog):
                     inline=False
                 )
 
+                # Show failed channels if any
+                if result.get('failed_channels'):
+                    failed_text = ""
+                    for fc in result['failed_channels'][:5]:  # Show max 5
+                        failed_text += f"• **{fc['name']}**: {fc['reason']}\n"
+
+                    if len(result['failed_channels']) > 5:
+                        failed_text += f"\n_...and {len(result['failed_channels']) - 5} more (see logs)_"
+
+                    embed.add_field(
+                        name="⚠️ Failed Channels",
+                        value=failed_text,
+                        inline=False
+                    )
+
                 embed.add_field(
                     name="🚀 What's Next?",
                     value=(
                         "The bot will now track new messages in real-time!\n"
-                        "Use `/analyze` to see accurate message counts."
+                        "✅ Use `/analyze` to see accurate message counts\n"
+                        "🔍 Use `/verify-message-counts` to validate accuracy"
                     ),
                     inline=False
                 )
@@ -277,6 +302,198 @@ class MessageStoreAdminCommands(commands.Cog):
             logger.error(f"Error getting message store stats: {e}", exc_info=True)
             await interaction.followup.send(
                 f"❌ Error getting stats: {str(e)}",
+                ephemeral=True
+            )
+
+    @app_commands.command(
+        name="verify-message-counts",
+        description="[Admin] Verify accuracy of message counts by sampling users"
+    )
+    @app_commands.describe(
+        sample_size="Number of users to check (default: 10)"
+    )
+    async def verify_message_counts(
+        self,
+        interaction: discord.Interaction,
+        sample_size: int = 10
+    ):
+        """
+        Verify message count accuracy by comparing with Discord API.
+
+        Args:
+            interaction: Discord interaction
+            sample_size: Number of users to sample
+        """
+        # Check permissions
+        if not self._has_permission(interaction):
+            await interaction.response.send_message(
+                "❌ You don't have permission to use this command.",
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            # Check if import completed
+            is_imported = await self.message_store.is_import_completed(
+                interaction.guild.id
+            )
+
+            if not is_imported:
+                await interaction.followup.send(
+                    "❌ Cannot verify: Historical import not completed yet.\n"
+                    "Please run `/import-messages` first.",
+                    ephemeral=True
+                )
+                return
+
+            await interaction.followup.send(
+                f"🔍 Starting verification with {sample_size} random users...\n"
+                "This may take a few minutes.",
+                ephemeral=True
+            )
+
+            # Get random sample of members with messages
+            guild_totals = await self.message_store.get_guild_totals(
+                interaction.guild.id
+            )
+
+            # Filter to members with at least 10 messages
+            eligible_user_ids = [
+                uid for uid, count in guild_totals.items() if count >= 10
+            ]
+
+            if not eligible_user_ids:
+                await interaction.followup.send(
+                    "❌ No users with messages found for verification.",
+                    ephemeral=True
+                )
+                return
+
+            # Sample random users
+            sample_size = min(sample_size, len(eligible_user_ids))
+            sampled_user_ids = random.sample(eligible_user_ids, sample_size)
+
+            # Get Member objects
+            sample_users = []
+            for uid in sampled_user_ids:
+                member = interaction.guild.get_member(uid)
+                if member:
+                    sample_users.append(member)
+
+            if not sample_users:
+                await interaction.followup.send(
+                    "❌ Could not find any of the sampled users in the guild.",
+                    ephemeral=True
+                )
+                return
+
+            # Create validator
+            cache = MessageCache(ttl=self.config.cache_ttl)
+            activity_tracker = ActivityTracker(
+                interaction.guild,
+                excluded_channels=self.config.excluded_channels,
+                excluded_channel_names=self.config.excluded_channel_names,
+                cache=cache
+            )
+
+            validator = MessageCountValidator(
+                interaction.guild,
+                self.message_store,
+                activity_tracker
+            )
+
+            # Run validation
+            logger.info(
+                f"Running verification for {len(sample_users)} users "
+                f"in guild {interaction.guild.name}"
+            )
+
+            results = await validator.validate_sample(sample_users, tolerance_percent=1.0)
+
+            # Create results embed
+            color = discord.Color.green() if results["passed"] else discord.Color.red()
+            status = "✅ PASSED" if results["passed"] else "❌ FAILED"
+
+            embed = discord.Embed(
+                title=f"🔍 Message Count Verification: {status}",
+                color=color,
+                timestamp=datetime.utcnow()
+            )
+
+            embed.add_field(
+                name="📊 Overall Results",
+                value=(
+                    f"**Sample Size:** {results['total_users']} users\n"
+                    f"**Accuracy:** {results['accuracy_percent']:.1f}%\n"
+                    f"**Matches:** {results['matches']} ✅\n"
+                    f"**Mismatches:** {results['mismatches']} ❌\n"
+                ),
+                inline=False
+            )
+
+            embed.add_field(
+                name="📈 Differences",
+                value=(
+                    f"**Max Difference:** {results['max_difference']} messages\n"
+                    f"**Avg Difference:** {results['avg_difference']:.1f} messages"
+                ),
+                inline=False
+            )
+
+            # Show discrepancies if any
+            if results["discrepancies"]:
+                discrepancy_text = ""
+                for disc in results["discrepancies"][:5]:  # Show max 5
+                    discrepancy_text += (
+                        f"**{disc['user']}**: "
+                        f"Store={disc['store_count']}, "
+                        f"API={disc['api_count']} "
+                        f"(Diff: {disc['difference']}, "
+                        f"{disc['difference_percent']:.1f}%)\n"
+                    )
+
+                if len(results["discrepancies"]) > 5:
+                    discrepancy_text += f"\n_...and {len(results['discrepancies']) - 5} more_"
+
+                embed.add_field(
+                    name="⚠️ Discrepancies Found",
+                    value=discrepancy_text or "None",
+                    inline=False
+                )
+
+            # Add interpretation
+            if results["passed"]:
+                embed.add_field(
+                    name="✅ Interpretation",
+                    value=(
+                        "Message counts are accurate! The tracking system is "
+                        "working correctly. Small differences (<1%) can occur "
+                        "due to messages sent during verification."
+                    ),
+                    inline=False
+                )
+            else:
+                embed.add_field(
+                    name="❌ Interpretation",
+                    value=(
+                        "Significant discrepancies detected. Consider:\n"
+                        "1. Re-running import with `force=True`\n"
+                        "2. Checking bot permissions in all channels\n"
+                        "3. Checking logs for errors during import"
+                    ),
+                    inline=False
+                )
+
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+            logger.info(f"Verification completed: {status}")
+
+        except Exception as e:
+            logger.error(f"Error during verification: {e}", exc_info=True)
+            await interaction.followup.send(
+                f"❌ Error during verification: {str(e)}",
                 ephemeral=True
             )
 
