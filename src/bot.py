@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.utils import Config, setup_logger
 from src.utils.log_helper import DiscordLogger
 from src.database import MessageCache
+from src.database.message_store import MessageStore
 from src.commands.analyze import setup as setup_analyze
 from src.commands.my_score import setup as setup_my_score
 from src.commands.admin import setup as setup_admin
@@ -21,22 +22,33 @@ from src.commands.guild_status import setup as setup_guild_status
 from src.commands.set_max_spots import setup as setup_set_max_spots
 from src.commands.log_channel import setup as setup_log_channel
 from src.commands.wwm_timer import setup as setup_wwm_timer
+from src.commands.message_store_admin import setup as setup_message_store_admin
 from src.events.guild_events import setup as setup_guild_events
+from src.events.message_tracking import setup as setup_message_tracking
 
 
 class GuildScoutBot(commands.Bot):
     """Main GuildScout Bot class."""
 
-    def __init__(self, config: Config, cache: MessageCache, *args, **kwargs):
+    def __init__(
+        self,
+        config: Config,
+        cache: MessageCache,
+        message_store: MessageStore,
+        *args,
+        **kwargs
+    ):
         """
         Initialize the GuildScout bot.
 
         Args:
             config: Configuration object
             cache: MessageCache instance
+            message_store: MessageStore instance
         """
         self.config = config
         self.cache = cache
+        self.message_store = message_store
         self.logger = logging.getLogger("guildscout.bot")
         self.discord_logger = DiscordLogger(bot=self, config=config)
 
@@ -60,6 +72,10 @@ class GuildScoutBot(commands.Bot):
         await self.cache.initialize()
         self.logger.info("Cache initialized")
 
+        # Initialize message store
+        await self.message_store.initialize()
+        self.logger.info("Message store initialized")
+
         # Load commands
         await setup_analyze(self, self.config, self.cache)
         await setup_my_score(self, self.config, self.cache)
@@ -70,10 +86,12 @@ class GuildScoutBot(commands.Bot):
         await setup_set_max_spots(self, self.config)
         await setup_log_channel(self, self.config)
         await setup_wwm_timer(self, self.config)
+        await setup_message_store_admin(self, self.config, self.message_store)
         self.logger.info("Commands loaded")
 
         # Load event handlers
         await setup_guild_events(self, self.config)
+        await setup_message_tracking(self, self.config, self.message_store)
         self.logger.info("Event handlers loaded")
 
         # Sync commands to guild
@@ -165,8 +183,12 @@ def main():
     cache = MessageCache(ttl=config.cache_ttl)
     logger.info("Cache system initialized")
 
+    # Initialize message store
+    message_store = MessageStore()
+    logger.info("Message store system initialized")
+
     # Create and run bot
-    bot = GuildScoutBot(config, cache)
+    bot = GuildScoutBot(config, cache, message_store)
 
     try:
         bot.run(config.discord_token)

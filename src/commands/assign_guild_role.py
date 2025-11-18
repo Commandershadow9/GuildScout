@@ -109,7 +109,8 @@ class AssignGuildRoleCommand(commands.Cog):
                 guild,
                 excluded_channels=self.config.excluded_channels,
                 excluded_channel_names=self.config.excluded_channel_names,
-                cache=self.cache
+                cache=self.cache,
+                message_store=getattr(self.bot, 'message_store', None)
             )
             scorer = Scorer(
                 weight_days=self.config.scoring_weights["days_in_server"],

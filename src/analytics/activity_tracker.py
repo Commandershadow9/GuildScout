@@ -18,7 +18,8 @@ class ActivityTracker:
         guild: discord.Guild,
         excluded_channels: Optional[List[int]] = None,
         excluded_channel_names: Optional[List[str]] = None,
-        cache=None
+        cache=None,
+        message_store=None
     ):
         """
         Initialize the activity tracker.
@@ -28,11 +29,13 @@ class ActivityTracker:
             excluded_channels: List of channel IDs to exclude
             excluded_channel_names: List of channel name patterns to exclude
             cache: Optional MessageCache instance for caching
+            message_store: Optional MessageStore instance for persistent tracking
         """
         self.guild = guild
         self.excluded_channels = excluded_channels or []
         self.excluded_channel_names = excluded_channel_names or []
         self.cache = cache
+        self.message_store = message_store
 
     def _should_exclude_channel(self, channel: discord.TextChannel) -> bool:
         """
@@ -77,6 +80,18 @@ class ActivityTracker:
         Returns:
             Total message count
         """
+        # If message store is available and import is completed, use it for instant results
+        if self.message_store and days_lookback is None:
+            is_imported = await self.message_store.is_import_completed(self.guild.id)
+            if is_imported:
+                count = await self.message_store.get_user_total(
+                    self.guild.id,
+                    user.id,
+                    self.excluded_channels
+                )
+                logger.debug(f"Using message store for {user.name}: {count}")
+                return count
+
         # Try to get from cache first
         if use_cache and self.cache:
             cached_count = await self.cache.get(
@@ -241,6 +256,34 @@ class ActivityTracker:
             Tuple of (message_counts dict, cache_stats dict)
         """
         logger.info(f"Counting messages for {len(users)} users (optimized mode)...")
+
+        # If message store is available and import completed, use it for instant results
+        if self.message_store and days_lookback is None:
+            is_imported = await self.message_store.is_import_completed(self.guild.id)
+            if is_imported:
+                logger.info("Using message store for instant counts!")
+                message_counts = await self.message_store.get_guild_totals(
+                    self.guild.id,
+                    self.excluded_channels
+                )
+                # Filter to only requested users and fill in zeros for users without messages
+                user_ids = {user.id for user in users}
+                message_counts = {
+                    user_id: message_counts.get(user_id, 0)
+                    for user_id in user_ids
+                }
+
+                cache_stats = {
+                    "cache_hits": len(users),
+                    "cache_misses": 0,
+                    "cache_hit_rate": 100.0,
+                    "source": "message_store"
+                }
+
+                if progress_callback:
+                    await progress_callback(len(users), len(users))
+
+                return message_counts, cache_stats
 
         message_counts = {}
         total_users = len(users)
