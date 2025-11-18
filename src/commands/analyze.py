@@ -42,7 +42,24 @@ class RoleAssignmentView(discord.ui.View):
             )
             return
 
-        await interaction.response.defer()
+        try:
+            await interaction.response.defer()
+        except discord.errors.NotFound:
+            logger.warning(
+                f"Button interaction expired for {interaction.user.name}. "
+                "This can happen during bot reconnects."
+            )
+            try:
+                await interaction.followup.send(
+                    "⚠️ Aktion fehlgeschlagen (bot was reconnecting). Bitte nochmal versuchen.",
+                    ephemeral=True
+                )
+            except Exception:
+                pass
+            return
+        except Exception as e:
+            logger.error(f"Unexpected error during button defer: {e}", exc_info=True)
+            return
 
         # Get top candidates
         top_candidates = self.ranked_users[:self.count]
@@ -308,7 +325,28 @@ class AnalyzeCommand(commands.Cog):
             return
 
         # Defer response (this will take time)
-        await interaction.response.defer()
+        try:
+            await interaction.response.defer()
+        except discord.errors.NotFound:
+            # Interaction expired (took > 3 seconds to reach this point)
+            # This can happen during bot reconnects or high load
+            logger.warning(
+                f"Interaction expired for /analyze by {interaction.user.name}. "
+                "This usually happens during bot reconnects or high load."
+            )
+            # Try to send ephemeral message if possible
+            try:
+                await interaction.followup.send(
+                    "⚠️ Command took too long to start (bot was reconnecting or busy). "
+                    "Please try again.",
+                    ephemeral=True
+                )
+            except Exception:
+                pass  # Nothing we can do
+            return
+        except Exception as e:
+            logger.error(f"Unexpected error during defer: {e}", exc_info=True)
+            return
 
         try:
             start_time = time.time()
