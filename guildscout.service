@@ -1,0 +1,19 @@
+[Unit]
+Description=GuildScout Discord Bot
+After=network.target
+
+[Service]
+Type=simple
+User=cmdshadow
+WorkingDirectory=/home/cmdshadow/GuildScout
+ExecStart=/home/cmdshadow/GuildScout/scripts/run_bot_service.sh
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/cmdshadow/GuildScout/logs/bot-service.log
+StandardError=append:/home/cmdshadow/GuildScout/logs/bot-service.log
+
+# Environment
+Environment="PATH=/home/cmdshadow/GuildScout/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+
+[Install]
+WantedBy=multi-user.target
