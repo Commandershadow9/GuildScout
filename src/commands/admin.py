@@ -88,7 +88,14 @@ class AdminCommands(commands.Cog):
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except discord.errors.NotFound:
+            logger.warning(f"Interaction expired - bot may have been reconnecting")
+            return
+        except Exception as e:
+            logger.error(f"Error during defer: {e}", exc_info=True)
+            return
 
         try:
             deleted = 0
@@ -138,7 +145,14 @@ class AdminCommands(commands.Cog):
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except discord.errors.NotFound:
+            logger.warning(f"Interaction expired - bot may have been reconnecting")
+            return
+        except Exception as e:
+            logger.error(f"Error during defer: {e}", exc_info=True)
+            return
 
         try:
             stats = await self.cache.get_stats()
@@ -205,7 +219,14 @@ class AdminCommands(commands.Cog):
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except discord.errors.NotFound:
+            logger.warning(f"Interaction expired - bot may have been reconnecting")
+            return
+        except Exception as e:
+            logger.error(f"Error during defer: {e}", exc_info=True)
+            return
 
         try:
             # System info

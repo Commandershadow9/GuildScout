@@ -50,7 +50,14 @@ class LogChannelCommands(commands.Cog):
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except discord.errors.NotFound:
+            logger.warning(f"Interaction expired - bot may have been reconnecting")
+            return
+        except Exception as e:
+            logger.error(f"Error during defer: {e}", exc_info=True)
+            return
 
         guild = interaction.guild
 

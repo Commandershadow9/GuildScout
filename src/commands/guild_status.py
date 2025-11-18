@@ -41,7 +41,14 @@ class GuildStatusCommand(commands.Cog):
         - CSV export of current guild members
         - Breakdown by how they got the role (manual vs. auto-assigned)
         """
-        await interaction.response.defer(ephemeral=False)
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except discord.errors.NotFound:
+            logger.warning(f"Interaction expired - bot may have been reconnecting")
+            return
+        except Exception as e:
+            logger.error(f"Error during defer: {e}", exc_info=True)
+            return
 
         try:
             guild = interaction.guild

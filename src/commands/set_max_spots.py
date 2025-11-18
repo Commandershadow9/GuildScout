@@ -44,7 +44,14 @@ class SetMaxSpotsCommand(commands.Cog):
         This command updates the config.yaml file and immediately applies the new limit.
         If the new limit is lower than currently filled spots, you'll receive a warning.
         """
-        await interaction.response.defer(ephemeral=False)
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except discord.errors.NotFound:
+            logger.warning(f"Interaction expired - bot may have been reconnecting")
+            return
+        except Exception as e:
+            logger.error(f"Error during defer: {e}", exc_info=True)
+            return
 
         try:
             # Validate input

@@ -96,7 +96,14 @@ class AssignGuildRoleCommand(commands.Cog):
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except discord.errors.NotFound:
+            logger.warning(f"Interaction expired - bot may have been reconnecting")
+            return
+        except Exception as e:
+            logger.error(f"Error during defer: {e}", exc_info=True)
+            return
 
         try:
             # Re-run analysis to get current ranking
@@ -215,7 +222,14 @@ class AssignGuildRoleCommand(commands.Cog):
         guild_role: discord.Role
     ):
         """Execute the actual role assignment."""
-        await interaction.response.defer(ephemeral=True)
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except discord.errors.NotFound:
+            logger.warning(f"Interaction expired - bot may have been reconnecting")
+            return
+        except Exception as e:
+            logger.error(f"Error during defer: {e}", exc_info=True)
+            return
 
         success_count = 0
         fail_count = 0

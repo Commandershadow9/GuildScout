@@ -126,30 +126,56 @@ class ActivityTracker:
                 )
                 continue
 
-            try:
-                # Count messages from this user in this channel
-                count = 0
-                async for message in channel.history(
-                    limit=None,
-                    after=after_date,
-                    oldest_first=False
-                ):
-                    if message.author.id == user.id:
-                        count += 1
+            # Retry loop for rate limiting (same as batch method)
+            retry_count = 0
+            max_wait = 300
 
-                total_messages += count
+            while True:
+                try:
+                    # Count messages from this user in this channel
+                    count = 0
+                    async for message in channel.history(
+                        limit=None,
+                        after=after_date,
+                        oldest_first=False
+                    ):
+                        if message.author.id == user.id:
+                            count += 1
 
-                if count > 0:
-                    logger.debug(
-                        f"User {user.name} has {count} messages in #{channel.name}"
+                    total_messages += count
+
+                    if count > 0:
+                        logger.debug(
+                            f"User {user.name} has {count} messages in #{channel.name}"
+                        )
+
+                    # Success - break retry loop
+                    break
+
+                except discord.HTTPException as e:
+                    if e.status == 429:
+                        # Rate limited - retry with exponential backoff
+                        retry_after = e.retry_after if hasattr(e, 'retry_after') else min(2 ** retry_count, max_wait)
+                        retry_count += 1
+                        logger.warning(
+                            f"⏳ Rate limited on #{channel.name} for user {user.name}. "
+                            f"Waiting {retry_after:.1f}s (attempt #{retry_count})"
+                        )
+                        await asyncio.sleep(retry_after)
+                        continue  # Retry
+                    else:
+                        logger.error(f"HTTP error in {channel.name}: {e}")
+                        break  # Give up on other HTTP errors
+
+                except discord.Forbidden:
+                    logger.warning(f"Access denied to channel: {channel.name}")
+                    break
+
+                except Exception as e:
+                    logger.error(
+                        f"Error counting messages in {channel.name}: {e}"
                     )
-
-            except discord.Forbidden:
-                logger.warning(f"Access denied to channel: {channel.name}")
-            except Exception as e:
-                logger.error(
-                    f"Error counting messages in {channel.name}: {e}"
-                )
+                    break
 
         # Store in cache
         if use_cache and self.cache:
