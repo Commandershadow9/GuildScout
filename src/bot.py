@@ -21,7 +21,6 @@ from src.commands.assign_guild_role import setup as setup_assign_guild_role
 from src.commands.guild_status import setup as setup_guild_status
 from src.commands.set_max_spots import setup as setup_set_max_spots
 from src.commands.log_channel import setup as setup_log_channel
-from src.commands.wwm_timer import setup as setup_wwm_timer
 from src.commands.message_store_admin import setup as setup_message_store_admin
 from src.events.guild_events import setup as setup_guild_events
 from src.events.message_tracking import setup as setup_message_tracking
@@ -85,7 +84,6 @@ class GuildScoutBot(commands.Bot):
         await setup_guild_status(self, self.config)
         await setup_set_max_spots(self, self.config)
         await setup_log_channel(self, self.config)
-        await setup_wwm_timer(self, self.config)
         await setup_message_store_admin(self, self.config, self.message_store)
         self.logger.info("Commands loaded")
 
@@ -133,6 +131,115 @@ class GuildScoutBot(commands.Bot):
 
                 # Auto-start historical import if not completed
                 await self._check_and_start_auto_import(guild)
+
+    async def _create_import_status_message(self, guild: discord.Guild):
+        """
+        Create initial import status message in Discord.
+
+        Args:
+            guild: Discord guild
+
+        Returns:
+            Discord message object for updating
+        """
+        if not self.config.discord_service_logs_enabled:
+            return None
+
+        # Get log channel
+        log_channel_id = getattr(self.config, 'discord_service_log_channel_id', None)
+        if not log_channel_id:
+            return None
+
+        log_channel = guild.get_channel(log_channel_id)
+        if not log_channel:
+            return None
+
+        # Create initial embed
+        embed = discord.Embed(
+            title="📥 Historischer Datenimport",
+            description="Import läuft...\nDieser Status wird automatisch aktualisiert.",
+            color=discord.Color.blue()
+        )
+        embed.add_field(name="Status", value="🔄 Import gestartet", inline=True)
+        embed.add_field(name="Dauer", value="0s", inline=True)
+        embed.add_field(name="Nachrichten", value="0", inline=True)
+        embed.set_footer(text="Letztes Update")
+        embed.timestamp = discord.utils.utcnow()
+
+        try:
+            message = await log_channel.send(embed=embed)
+            self.logger.info(f"Created live status message in #{log_channel.name}")
+            return message
+        except Exception as e:
+            self.logger.error(f"Failed to create status message: {e}")
+            return None
+
+    async def _update_import_status_periodically(
+        self,
+        guild: discord.Guild,
+        status_message: discord.Message
+    ):
+        """
+        Periodically update import status message.
+
+        Args:
+            guild: Discord guild
+            status_message: Discord message to update
+        """
+        import asyncio
+        from datetime import datetime, timezone
+
+        while True:
+            try:
+                await asyncio.sleep(30)  # Update every 30 seconds
+
+                # Get current stats
+                stats = await self.message_store.get_stats(guild.id)
+
+                # Check if import is still running
+                is_running = await self.message_store.is_import_running(guild.id)
+                if not is_running:
+                    # Import completed or stopped
+                    self.logger.info("Import completed - stopping status updates")
+                    break
+
+                # Get import start time
+                import_start_time = await self.message_store.get_import_start_time(guild.id)
+                if not import_start_time:
+                    break
+
+                # Calculate duration
+                now = datetime.now(timezone.utc)
+                duration = now - import_start_time
+                duration_minutes = int(duration.total_seconds() // 60)
+                duration_seconds = int(duration.total_seconds() % 60)
+                duration_str = f"{duration_minutes}m {duration_seconds}s"
+
+                # Get message count
+                total_messages = stats.get('total_messages', 0)
+
+                # Update embed
+                embed = discord.Embed(
+                    title="📥 Historischer Datenimport",
+                    description="Import läuft...\nDieser Status wird automatisch aktualisiert.",
+                    color=discord.Color.blue()
+                )
+                embed.add_field(name="Status", value="🔄 Aktiv", inline=True)
+                embed.add_field(name="Dauer", value=duration_str, inline=True)
+                embed.add_field(name="Nachrichten", value=f"{total_messages:,}", inline=True)
+                embed.set_footer(text="Letztes Update")
+                embed.timestamp = discord.utils.utcnow()
+
+                await status_message.edit(embed=embed)
+                self.logger.debug(f"Updated status: {total_messages:,} messages, {duration_str}")
+
+            except asyncio.CancelledError:
+                # Task was cancelled - import finished
+                self.logger.info("Status update task cancelled - import finished")
+                break
+            except Exception as e:
+                self.logger.error(f"Error updating status message: {e}", exc_info=True)
+                # Continue trying
 
     async def _check_and_start_auto_import(self, guild: discord.Guild):
         """
@@ -190,11 +297,19 @@ class GuildScoutBot(commands.Bot):
             guild: Discord guild
         """
         from src.utils.historical_import import HistoricalImporter
+        import asyncio
+
+        status_message = None
+        update_task = None
 
         try:
             self.logger.info("=" * 70)
             self.logger.info("🚀 AUTOMATIC HISTORICAL IMPORT STARTED")
             self.logger.info("=" * 70)
+
+            # Create initial status message in Discord
+            if self.config.discord_service_logs_enabled:
+                status_message = await self._create_import_status_message(guild)
 
             # Create importer
             excluded_channel_names = getattr(
@@ -209,8 +324,22 @@ class GuildScoutBot(commands.Bot):
                 excluded_channel_names=excluded_channel_names
             )
 
+            # Start periodic status update task
+            if status_message:
+                update_task = asyncio.create_task(
+                    self._update_import_status_periodically(guild, status_message)
+                )
+
             # Import with logging
             result = await importer.import_guild_history()
+
+            # Cancel the update task
+            if update_task:
+                update_task.cancel()
+                try:
+                    await update_task
+                except asyncio.CancelledError:
+                    pass
 
             if result['success']:
                 self.logger.info("=" * 70)
