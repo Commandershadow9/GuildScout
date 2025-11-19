@@ -27,6 +27,7 @@ Perfect for content creators who need to fairly select members for limited guild
 - **⚡ Batch Progress**: Real-time batch updates during long operations
 - **🔄 Auto-Retry**: Robust rate-limit handling with exponential backoff
 - **📊 Cache Stats**: 60-70% hit rate on repeated analyses
+- **🧵 Thread Coverage**: Counts messages in text channels *and* all threads (active & archived)
 
 ### Guild Management (V2.0)
 - **🎮 WWM Release Timer**: Auto-updating countdown (every 10s) with dynamic hype text
@@ -40,6 +41,11 @@ Perfect for content creators who need to fairly select members for limited guild
 - **📊 /my-score**: Users can check their own ranking and detailed breakdown
 - **🏆 Transparent Scoring**: See exactly how your score is calculated
 - **📈 Percentile Ranking**: Know where you stand compared to others
+
+### Import & Logging
+- **♻️ Auto Re-Import**: On every bot start, GuildScout performs a full historical re-import so counts stay 100% accurate.
+- **🧾 Log Channel**: Setup once with `/setup-log-channel` – all lifecycle events and import progress get posted automatically.
+- **🔍 Verifikation**: `/verify-message-counts` samples real Discord API counts with live progress so Abweichungen sofort sichtbar sind.
 
 ## 🚀 Quick Start
 
@@ -125,6 +131,16 @@ Perfect for content creators who need to fairly select members for limited guild
 
 ## 📖 Usage
 
+### Historische Importe & Logs
+
+- **Auto-Re-Import**: Bei jedem Bot-Neustart wird automatisch `/import-messages force:true` ausgeführt. Dadurch sind die Datenbank (`data/messages.db`) und der MessageStore immer auf aktuellem Stand (inkl. Threads).
+- **Log-Channel**: Richte mit `/setup-log-channel` einen Admin-only Kanal wie `#guildscout-logs` ein. GuildScout erstellt ihn automatisch, falls er fehlt, und postet dort:
+  - `🤖 GuildScout gestartet` / `♻️ Reconnected`
+  - `📥 Re-Import gestartet` mit Live-Updates (aktueller Kanal, Fortschritt X/Y, importierte Nachrichten, Laufzeit)
+  - `✅ Import abgeschlossen` inklusive Dauer und Gesamtnachrichten
+
+> Hinweis: Solange der Auto-Import läuft, reagiert das manuelle `/import-status` nicht (Discord blockiert doppelte Commands). Prüfe stattdessen den Log-Channel – dort steht der Fortschritt in Echtzeit.
+
 ### `/analyze` Command
 
 Analyze users with a specific role and generate rankings.
@@ -177,6 +193,18 @@ Check your own ranking score with detailed breakdown.
 - Detailed score breakdown (days + activity)
 - Transparent calculation formula
 - Comparison with all users or role-specific users
+
+### `/verify-message-counts`
+
+Vergleicht die gespeicherten MessageStore-Werte mit frischen Discord-API Zählungen (inkl. Threads).
+
+```
+/verify-message-counts sample_size:10
+```
+
+- Der Command wählt zufällige User mit ≥10 Nachrichten.
+- Fortschritt erscheint sowohl im Command (Ephemeral Message) als auch im Log-Channel (aktueller User, Kanal, Rate-Limit Hinweise).
+- Das Ergebnis-Embed zeigt Accuracy, Max/Average-Differenz und eine Liste aller Abweichungen. So erkennst du sofort, ob ein erneuter Import nötig ist.
 
 ### Guild Management Commands (V2.0)
 

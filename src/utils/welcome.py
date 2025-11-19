@@ -8,7 +8,7 @@ import discord
 
 from .config import Config
 
-WELCOME_MESSAGE_VERSION = 2
+WELCOME_MESSAGE_VERSION = 3
 
 logger = logging.getLogger("guildscout.welcome")
 
@@ -76,6 +76,17 @@ def build_welcome_embed(guild: discord.Guild, config: Config) -> discord.Embed:
             "• `/setup-ranking-channel` oder `/ranking-channel-info` – Kanal verwalten.\n"
             "• `/cache-stats` & `/cache-clear` – Cache prüfen oder leeren.\n"
             "• `/bot-info` – System- und Laufzeitinfos."
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="Daten & Tracking",
+        value=(
+            "• `/import-status` – Import-Status, Mitglieder & Message-Counts.\n"
+            "• `/import-messages [force]` – Historische Nachrichten einlesen.\n"
+            "• `/message-store-stats` – Datenbankgröße & Coverage prüfen.\n"
+            "• `/verify-message-counts [sample_size]` – Stichprobenkontrolle."
         ),
         inline=False
     )

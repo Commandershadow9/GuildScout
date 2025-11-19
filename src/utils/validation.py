@@ -2,7 +2,7 @@
 
 import logging
 import discord
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Callable, Awaitable
 from discord.ext import commands
 
 from src.database.message_store import MessageStore
@@ -10,6 +10,29 @@ from src.analytics.activity_tracker import ActivityTracker
 
 
 logger = logging.getLogger("guildscout.validation")
+
+
+ProgressCallback = Optional[
+    Callable[
+        [int, int, discord.Member, int, int],
+        Awaitable[None]
+    ]
+]
+
+ChannelProgressCallback = Optional[
+    Callable[
+        [
+            discord.Member,
+            int,
+            int,
+            discord.TextChannel,
+            int,
+            int,
+            int
+        ],
+        Awaitable[None]
+    ]
+]
 
 
 class MessageCountValidator:
@@ -36,7 +59,9 @@ class MessageCountValidator:
     async def validate_sample(
         self,
         sample_users: List[discord.Member],
-        tolerance_percent: float = 2.0
+        tolerance_percent: float = 2.0,
+        progress_callback: ProgressCallback = None,
+        channel_progress_callback: ChannelProgressCallback = None
     ) -> Dict:
         """
         Validate message counts for a sample of users.
@@ -46,6 +71,7 @@ class MessageCountValidator:
         Args:
             sample_users: List of users to validate
             tolerance_percent: Acceptable difference percentage (default: 2%)
+            progress_callback: Optional coroutine to report progress
 
         Returns:
             Dictionary with validation results
@@ -63,7 +89,7 @@ class MessageCountValidator:
 
         total_diff = 0
 
-        for user in sample_users:
+        for idx, user in enumerate(sample_users, start=1):
             # Get count from MessageStore
             store_count = await self.message_store.get_user_total(
                 self.guild.id,
@@ -71,9 +97,27 @@ class MessageCountValidator:
             )
 
             # Get fresh count from Discord API
+            async def per_channel_callback(
+                channel: discord.TextChannel,
+                channel_index: int,
+                channel_total: int,
+                channel_count: int
+            ):
+                if channel_progress_callback:
+                    await channel_progress_callback(
+                        user,
+                        idx,
+                        len(sample_users),
+                        channel,
+                        channel_index,
+                        channel_total,
+                        channel_count
+                    )
+
             api_count = await self.activity_tracker.count_user_messages(
                 user,
-                use_cache=False  # Force fresh count
+                use_cache=False,  # Force fresh count
+                channel_progress_callback=per_channel_callback
             )
 
             # Calculate difference
@@ -104,6 +148,18 @@ class MessageCountValidator:
                 f"User {user.name}: Store={store_count}, API={api_count}, "
                 f"Diff={diff} ({diff_percent:.1f}%)"
             )
+
+            if progress_callback:
+                try:
+                    await progress_callback(
+                        idx,
+                        len(sample_users),
+                        user,
+                        store_count,
+                        api_count
+                    )
+                except Exception as exc:
+                    logger.debug("Progress callback failed: %s", exc)
 
         # Calculate average difference
         results["avg_difference"] = (

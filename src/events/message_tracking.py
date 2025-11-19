@@ -32,7 +32,7 @@ class MessageTracker(commands.Cog):
         self.message_store = message_store
         self.excluded_channel_names = excluded_channel_names or []
 
-    def _should_exclude_channel(self, channel: discord.TextChannel) -> bool:
+    def _should_exclude_channel(self, channel: discord.abc.GuildChannel) -> bool:
         """
         Check if a channel should be excluded from tracking.
 
@@ -42,14 +42,21 @@ class MessageTracker(commands.Cog):
         Returns:
             True if channel should be excluded
         """
+        names_to_check = [channel.name.lower()]
+        parent = getattr(channel, "parent", None)
+        if parent:
+            names_to_check.append(parent.name.lower())
+
         # Exclude by name patterns
-        channel_name_lower = channel.name.lower()
         for pattern in self.excluded_channel_names:
-            if pattern.lower() in channel_name_lower:
+            pattern_lower = pattern.lower()
+            if any(pattern_lower in name for name in names_to_check):
                 return True
 
         # Exclude NSFW channels
         if hasattr(channel, 'nsfw') and channel.nsfw:
+            return True
+        if parent and getattr(parent, "nsfw", False):
             return True
 
         return False
@@ -70,10 +77,11 @@ class MessageTracker(commands.Cog):
         if not message.guild:
             return
 
-        # Check if channel should be excluded
-        if isinstance(message.channel, discord.TextChannel):
-            if self._should_exclude_channel(message.channel):
-                logger.debug(f"Excluded channel: {message.channel.name}")
+        # Check if channel should be excluded (includes threads)
+        channel = message.channel
+        if isinstance(channel, (discord.TextChannel, discord.Thread)):
+            if self._should_exclude_channel(channel):
+                logger.debug(f"Excluded channel: {channel.name}")
                 return
 
         # Check if import is currently running
@@ -110,15 +118,16 @@ class MessageTracker(commands.Cog):
                         )
 
             # Track the message
+            await self.message_store.upsert_member(message.author)
             await self.message_store.increment_message(
                 guild_id=message.guild.id,
                 user_id=message.author.id,
-                channel_id=message.channel.id,
+                channel_id=channel.id,
                 count=1,
                 message_date=message.created_at
             )
             logger.debug(
-                f"Tracked message from {message.author.name} in {message.channel.name}"
+                f"Tracked message from {message.author.name} in {channel.name}"
             )
         except Exception as e:
             logger.error(f"Failed to track message: {e}", exc_info=True)

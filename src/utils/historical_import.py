@@ -34,7 +34,7 @@ class HistoricalImporter:
         self.message_store = message_store
         self.excluded_channel_names = excluded_channel_names or []
 
-    def _should_exclude_channel(self, channel: discord.TextChannel) -> bool:
+    def _should_exclude_channel(self, channel: discord.abc.GuildChannel) -> bool:
         """
         Check if a channel should be excluded from import.
 
@@ -44,21 +44,82 @@ class HistoricalImporter:
         Returns:
             True if channel should be excluded
         """
-        # Exclude by name patterns
-        channel_name_lower = channel.name.lower()
+        names_to_check = [channel.name.lower()]
+        parent = getattr(channel, "parent", None)
+        if parent:
+            names_to_check.append(parent.name.lower())
+
+        # Exclude by name patterns (channel or parent)
         for pattern in self.excluded_channel_names:
-            if pattern.lower() in channel_name_lower:
+            pattern_lower = pattern.lower()
+            if any(pattern_lower in name for name in names_to_check):
                 return True
 
         # Exclude NSFW channels
         if hasattr(channel, 'nsfw') and channel.nsfw:
             return True
+        if parent and getattr(parent, "nsfw", False):
+            return True
 
         return False
 
+    async def _gather_text_sources(self) -> List[discord.abc.GuildChannel]:
+        """Collect text channels and their threads for import."""
+        sources: List[discord.abc.GuildChannel] = []
+        seen_ids = set()
+
+        for channel in self.guild.text_channels:
+            if self._should_exclude_channel(channel):
+                continue
+
+            if channel.id not in seen_ids:
+                sources.append(channel)
+                seen_ids.add(channel.id)
+
+            # Active threads
+            for thread in getattr(channel, "threads", []):
+                if thread.id in seen_ids or self._should_exclude_channel(thread):
+                    continue
+                sources.append(thread)
+                seen_ids.add(thread.id)
+
+            # Archived public threads
+            try:
+                async for thread in channel.archived_threads(limit=None):
+                    if thread.id in seen_ids or self._should_exclude_channel(thread):
+                        continue
+                    sources.append(thread)
+                    seen_ids.add(thread.id)
+            except discord.Forbidden:
+                logger.debug("Forbidden reading archived threads in #%s", channel.name)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to fetch archived threads in #%s: %s",
+                    channel.name,
+                    exc
+                )
+
+            # Archived private threads (requires permissions)
+            try:
+                async for thread in channel.archived_threads(limit=None, private=True):
+                    if thread.id in seen_ids or self._should_exclude_channel(thread):
+                        continue
+                    sources.append(thread)
+                    seen_ids.add(thread.id)
+            except discord.Forbidden:
+                logger.debug("No access to private archived threads in #%s", channel.name)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to fetch private archived threads in #%s: %s",
+                    channel.name,
+                    exc
+                )
+
+        return sources
+
     async def _process_channel(
         self,
-        channel: discord.TextChannel
+        channel: discord.abc.GuildChannel
     ) -> Dict[str, int]:
         """
         Process a single channel with robust rate-limit handling.
@@ -158,6 +219,7 @@ class HistoricalImporter:
         # Mark import as started (before we begin processing)
         await self.message_store.mark_import_started(self.guild.id)
         logger.info(f"Starting historical import for guild: {self.guild.name}")
+        await self.message_store.sync_guild_members(self.guild)
 
         # Use try-finally to ensure cleanup on crash
         total_messages = 0
@@ -168,33 +230,37 @@ class HistoricalImporter:
 
         try:
             # Get all text channels
-            channels = [
-                channel for channel in self.guild.text_channels
-                if not self._should_exclude_channel(channel)
-            ]
+            channels = await self._gather_text_sources()
 
             total_channels = len(channels)
 
             for idx, channel in enumerate(channels, 1):
                 try:
+                    channel_label = (
+                        f"{getattr(channel.parent, 'name', '')} › {channel.name}"
+                        if isinstance(channel, discord.Thread) and channel.parent
+                        else channel.name
+                    )
+
                     # Check permissions
-                    if not channel.permissions_for(self.guild.me).read_message_history:
+                    permissions = channel.permissions_for(self.guild.me)
+                    if not permissions.read_message_history:
                         logger.warning(
-                            f"⚠️ No permission to read history in #{channel.name}"
+                            f"⚠️ No permission to read history in #{channel_label}"
                         )
                         channels_failed += 1
                         failed_channels.append({
-                            "name": channel.name,
+                            "name": channel_label,
                             "reason": "No read permission"
                         })
                         continue
 
                     logger.info(
-                        f"📊 Processing channel #{channel.name} ({idx}/{total_channels})"
+                        f"📊 Processing channel #{channel_label} ({idx}/{total_channels})"
                     )
 
                     if progress_callback:
-                        await progress_callback(channel.name, idx, total_channels)
+                        await progress_callback(channel_label, idx, total_channels)
 
                     # Process channel with robust rate-limit handling
                     result = await self._process_channel(channel)
@@ -214,21 +280,21 @@ class HistoricalImporter:
                         all_message_counts.clear()
 
                 except discord.Forbidden:
-                    logger.error(f"🔒 Forbidden: Cannot access #{channel.name}")
+                    logger.error(f"🔒 Forbidden: Cannot access #{channel_label}")
                     channels_failed += 1
                     failed_channels.append({
-                        "name": channel.name,
+                        "name": channel_label,
                         "reason": "Access forbidden"
                     })
 
                 except Exception as e:
                     logger.error(
-                        f"❌ CRITICAL: Error processing #{channel.name}: {e}",
+                        f"❌ CRITICAL: Error processing #{channel_label}: {e}",
                         exc_info=True
                     )
                     channels_failed += 1
                     failed_channels.append({
-                        "name": channel.name,
+                        "name": channel_label,
                         "reason": f"Error: {str(e)}"
                     })
                     # IMPORTANT: Continue with other channels even if one fails
@@ -237,6 +303,9 @@ class HistoricalImporter:
             if all_message_counts:
                 logger.info("💾 Saving final batch...")
                 await self._flush_counts(all_message_counts)
+
+            # Refresh member snapshot at the end to capture any late join/leave events
+            await self.message_store.sync_guild_members(self.guild)
 
             # Mark import as completed
             await self.message_store.mark_import_completed(

@@ -5,6 +5,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from datetime import datetime
+from typing import Optional
 
 from ..utils import Config
 from ..database.message_store import MessageStore
@@ -12,6 +13,7 @@ from ..database import MessageCache
 from ..utils.historical_import import HistoricalImporter
 from ..utils.validation import MessageCountValidator
 from ..analytics.activity_tracker import ActivityTracker
+from ..utils.log_helper import DiscordLogger
 import random
 
 
@@ -38,6 +40,7 @@ class MessageStoreAdminCommands(commands.Cog):
         self.bot = bot
         self.config = config
         self.message_store = message_store
+        self.discord_logger = DiscordLogger(bot, config)
 
     def _has_permission(self, interaction: discord.Interaction) -> bool:
         """
@@ -61,6 +64,28 @@ class MessageStoreAdminCommands(commands.Cog):
                     return True
 
         return False
+
+    async def _log_event(
+        self,
+        guild: discord.Guild,
+        title: str,
+        description: str,
+        *,
+        status: str,
+        color: discord.Color = discord.Color.blurple(),
+        message: Optional[discord.Message] = None
+    ) -> Optional[discord.Message]:
+        """Send or update status embeds in the log channel."""
+        if not self.discord_logger:
+            return None
+        return await self.discord_logger.send(
+            guild,
+            title,
+            description,
+            status=status,
+            color=color,
+            message=message
+        )
 
     @app_commands.command(
         name="import-status",
@@ -99,6 +124,8 @@ class MessageStoreAdminCommands(commands.Cog):
             is_running = await self.message_store.is_import_running(
                 interaction.guild.id
             )
+            await self.message_store.sync_guild_members(interaction.guild)
+            stats = await self.message_store.get_stats(interaction.guild.id)
 
             embed = discord.Embed(
                 title="📊 Import Status",
@@ -107,8 +134,6 @@ class MessageStoreAdminCommands(commands.Cog):
 
             if is_completed:
                 # Import completed
-                stats = await self.message_store.get_stats(interaction.guild.id)
-
                 embed.color = discord.Color.green()
                 embed.add_field(
                     name="Status",
@@ -131,7 +156,13 @@ class MessageStoreAdminCommands(commands.Cog):
                 )
 
                 embed.add_field(
-                    name="Getrackte User",
+                    name="Getrackte Mitglieder",
+                    value=f"{stats['total_members']:,} (ohne Bots)",
+                    inline=True
+                )
+
+                embed.add_field(
+                    name="Aktive Schreiber",
                     value=f"{stats['total_users']:,}",
                     inline=True
                 )
@@ -178,12 +209,22 @@ class MessageStoreAdminCommands(commands.Cog):
                     )
 
                 # Get current stats (partial data)
-                stats = await self.message_store.get_stats(interaction.guild.id)
-
                 embed.add_field(
                     name="Bisher importiert",
                     value=f"{stats['total_messages']:,} Nachrichten",
                     inline=False
+                )
+
+                embed.add_field(
+                    name="Erfasste Mitglieder",
+                    value=f"{stats['total_members']:,}",
+                    inline=True
+                )
+
+                embed.add_field(
+                    name="Davon aktiv",
+                    value=f"{stats['total_users']:,}",
+                    inline=True
                 )
 
                 embed.add_field(
@@ -308,13 +349,25 @@ class MessageStoreAdminCommands(commands.Cog):
 
             # Send initial message
             progress_msg = await interaction.followup.send(
-                "📥 Starting historical message import...\n"
-                "This may take a while depending on server size.",
+                "📥 Starte historischen Nachrichtenimport...\n"
+                "Das kann je nach Servergröße einige Minuten dauern.",
                 ephemeral=True
+            )
+
+            log_message = await self._log_event(
+                interaction.guild,
+                "📥 Import gestartet",
+                (
+                    f"{interaction.user.mention} hat den historischen Import gestartet.\n"
+                    f"Force-Reimport: {'Ja' if force else 'Nein'}"
+                ),
+                status="🔄 Läuft",
+                color=discord.Color.blue()
             )
 
             # Progress callback
             last_update = discord.utils.utcnow()
+            log_state = {"message": log_message}
 
             async def progress_callback(channel_name: str, current: int, total: int):
                 nonlocal last_update
@@ -323,13 +376,30 @@ class MessageStoreAdminCommands(commands.Cog):
                 if (now - last_update).total_seconds() >= 5:
                     try:
                         await progress_msg.edit(
-                            content=f"📥 Importing messages...\n"
-                            f"Processing channel: **{channel_name}**\n"
-                            f"Progress: **{current}/{total}** channels"
+                            content=(
+                                "📥 Nachrichten werden importiert...\n"
+                                f"Aktueller Kanal: **#{channel_name}**\n"
+                                f"Fortschritt: **{current}/{total}** Channels"
+                            )
                         )
-                        last_update = now
                     except Exception as e:
                         logger.warning(f"Failed to update progress message: {e}")
+                    finally:
+                        last_update = now
+                        if log_state["message"]:
+                            updated = await self._log_event(
+                                interaction.guild,
+                                "📥 Import läuft",
+                                (
+                                    f"{interaction.user.mention} importiert `#{channel_name}`.\n"
+                                    f"Fortschritt: {current}/{total} Channels."
+                                ),
+                                status=f"{current}/{total}",
+                                color=discord.Color.blue(),
+                                message=log_state["message"]
+                            )
+                            if updated:
+                                log_state["message"] = updated
 
             # Run import
             logger.info(
@@ -396,10 +466,32 @@ class MessageStoreAdminCommands(commands.Cog):
                     f"Import completed for guild {interaction.guild.name}: "
                     f"{result['total_messages']} messages imported"
                 )
+                if log_state["message"]:
+                    await self._log_event(
+                        interaction.guild,
+                        "📥 Import abgeschlossen",
+                        (
+                            f"{interaction.user.mention} hat den Import beendet.\n"
+                            f"Nachrichten: {result['total_messages']:,}\n"
+                            f"Channels: {result['channels_processed']}/{result['total_channels']}"
+                        ),
+                        status="✅ Fertig",
+                        color=discord.Color.green(),
+                        message=log_state["message"]
+                    )
             else:
                 await progress_msg.edit(
                     content=f"❌ Import failed: {result.get('error', 'Unknown error')}"
                 )
+                if log_state["message"]:
+                    await self._log_event(
+                        interaction.guild,
+                        "📥 Import fehlgeschlagen",
+                        result.get('error', 'Unknown error'),
+                        status="❌ Fehler",
+                        color=discord.Color.red(),
+                        message=log_state["message"]
+                    )
 
         except Exception as e:
             logger.error(f"Error during message import: {e}", exc_info=True)
@@ -407,6 +499,15 @@ class MessageStoreAdminCommands(commands.Cog):
                 f"❌ Error during import: {str(e)}",
                 ephemeral=True
             )
+            if 'log_state' in locals() and log_state.get("message"):
+                await self._log_event(
+                    interaction.guild,
+                    "📥 Import fehlgeschlagen",
+                    str(e),
+                    status="❌ Fehler",
+                    color=discord.Color.red(),
+                    message=log_state["message"]
+                )
 
     @app_commands.command(
         name="message-store-stats",
@@ -439,6 +540,7 @@ class MessageStoreAdminCommands(commands.Cog):
             return
 
         try:
+            await self.message_store.sync_guild_members(interaction.guild)
             stats = await self.message_store.get_stats(interaction.guild.id)
 
             embed = discord.Embed(
@@ -467,7 +569,8 @@ class MessageStoreAdminCommands(commands.Cog):
                 name="📈 Tracked Data",
                 value=(
                     f"**Total Messages:** {stats['total_messages']:,}\n"
-                    f"**Total Users:** {stats['total_users']:,}\n"
+                    f"**Tracked Members:** {stats['total_members']:,}\n"
+                    f"**Active Users:** {stats['total_users']:,}\n"
                     f"**Total Channels:** {stats['total_channels']:,}"
                 ),
                 inline=False
@@ -553,10 +656,21 @@ class MessageStoreAdminCommands(commands.Cog):
                 )
                 return
 
-            await interaction.followup.send(
-                f"🔍 Starting verification with {sample_size} random users...\n"
-                "This may take a few minutes.",
+            status_message = await interaction.followup.send(
+                f"🔍 Starte Verifikation mit {sample_size} zufälligen Usern...\n"
+                "Das kann ein paar Minuten dauern.",
                 ephemeral=True
+            )
+
+            log_message = await self._log_event(
+                interaction.guild,
+                "🔍 Verifikation gestartet",
+                (
+                    f"{interaction.user.mention} überprüft Nachrichtenzähler "
+                    f"für {sample_size} zufällig ausgewählte Mitglieder."
+                ),
+                status="🔄 Läuft",
+                color=discord.Color.orange()
             )
 
             # Get random sample of members with messages
@@ -570,10 +684,18 @@ class MessageStoreAdminCommands(commands.Cog):
             ]
 
             if not eligible_user_ids:
-                await interaction.followup.send(
-                    "❌ No users with messages found for verification.",
-                    ephemeral=True
+                await status_message.edit(
+                    content="❌ Keine passenden User gefunden (mind. 10 Nachrichten erforderlich)."
                 )
+                if log_message:
+                    await self._log_event(
+                        interaction.guild,
+                        "🔍 Verifikation abgebrochen",
+                        "Keine User mit genügend Nachrichten vorhanden.",
+                        status="⚠️ Abgebrochen",
+                        color=discord.Color.red(),
+                        message=log_message
+                    )
                 return
 
             # Sample random users
@@ -588,11 +710,128 @@ class MessageStoreAdminCommands(commands.Cog):
                     sample_users.append(member)
 
             if not sample_users:
-                await interaction.followup.send(
-                    "❌ Could not find any of the sampled users in the guild.",
-                    ephemeral=True
+                await status_message.edit(
+                    content="❌ Konnte keine der zufälligen User im Server finden."
                 )
+                if log_message:
+                    await self._log_event(
+                        interaction.guild,
+                        "🔍 Verifikation abgebrochen",
+                        "Keine Mitglieder für die Stichprobe gefunden.",
+                        status="⚠️ Abgebrochen",
+                        color=discord.Color.red(),
+                        message=log_message
+                    )
                 return
+
+            total_to_check = len(sample_users)
+            await status_message.edit(
+                content=(
+                    "🔍 Verifiziere Nachrichtenzähler...\n"
+                    f"Fortschritt: **0/{total_to_check}**"
+                )
+            )
+
+            progress_state = {
+                "last_update": discord.utils.utcnow(),
+                "log_message": log_message,
+                "total_users": total_to_check
+            }
+            channel_state = {
+                "last_update": discord.utils.utcnow(),
+                "log_message": log_message
+            }
+
+            async def progress_callback(
+                processed: int,
+                total: int,
+                member: discord.Member,
+                store_count: int,
+                api_count: int
+            ):
+                now = discord.utils.utcnow()
+                if (
+                    (now - progress_state["last_update"]).total_seconds() >= 4
+                    or processed == total
+                ):
+                    progress_state["last_update"] = now
+                    content = (
+                        "🔍 Verifiziere Nachrichtenzähler...\n"
+                        f"Fortschritt: **{processed}/{total}**\n"
+                        f"Zuletzt geprüft: **{member.display_name}** "
+                        f"(Store {store_count:,} | API {api_count:,})"
+                    )
+                    try:
+                        await status_message.edit(content=content)
+                    except Exception as exc:
+                        logger.debug("Progress edit failed: %s", exc)
+
+                    if progress_state["log_message"]:
+                        updated = await self._log_event(
+                            interaction.guild,
+                            "🔍 Verifikation läuft",
+                            (
+                                f"{interaction.user.mention} prüft Nachrichten.\n"
+                                f"{processed}/{total} abgeschlossen.\n"
+                                f"Letzter User: {member.display_name} "
+                                f"(Store {store_count:,} | API {api_count:,})"
+                            ),
+                            status=f"{processed}/{total}",
+                            color=discord.Color.orange(),
+                            message=progress_state["log_message"]
+                        )
+                    if updated:
+                        progress_state["log_message"] = updated
+
+            async def channel_progress(
+                member: discord.Member,
+                user_index: int,
+                user_total: int,
+                channel: discord.TextChannel,
+                channel_index: int,
+                channel_total: int,
+                channel_count: int
+            ):
+                if channel_total == 0:
+                    return
+
+                now = discord.utils.utcnow()
+                # Update every ~3s or at the end of the channel list
+                if (
+                    channel_index != channel_total
+                    and (now - channel_state["last_update"]).total_seconds() < 3
+                ):
+                    return
+
+                channel_state["last_update"] = now
+                content = (
+                    "🔍 Verifiziere Nachrichtenzähler...\n"
+                    f"Aktueller User: **{member.display_name}** "
+                    f"({user_index}/{user_total})\n"
+                    f"Kanal {channel_index}/{channel_total}: #{channel.name}\n"
+                    f"Gezählte Nachrichten in diesem Kanal: {channel_count}"
+                )
+                try:
+                    await status_message.edit(content=content)
+                except Exception as exc:
+                    logger.debug("Channel progress edit failed: %s", exc)
+
+                if channel_state["log_message"]:
+                    updated = await self._log_event(
+                        interaction.guild,
+                        "🔍 Verifikation läuft",
+                        (
+                            f"{interaction.user.mention} prüft {member.mention}.\n"
+                            f"Kanal: #{channel.name} "
+                            f"({channel_index}/{channel_total}) – "
+                            f"{channel_count} Nachrichten gezählt."
+                        ),
+                        status=f"User {user_index}/{user_total}",
+                        color=discord.Color.orange(),
+                        message=channel_state["log_message"]
+                    )
+                    if updated:
+                        channel_state["log_message"] = updated
 
             # Create validator
             cache = MessageCache(ttl=self.config.cache_ttl)
@@ -615,7 +854,12 @@ class MessageStoreAdminCommands(commands.Cog):
                 f"in guild {interaction.guild.name}"
             )
 
-            results = await validator.validate_sample(sample_users, tolerance_percent=1.0)
+            results = await validator.validate_sample(
+                sample_users,
+                tolerance_percent=1.0,
+                progress_callback=progress_callback,
+                channel_progress_callback=channel_progress
+            )
 
             # Create results embed
             color = discord.Color.green() if results["passed"] else discord.Color.red()
@@ -691,9 +935,22 @@ class MessageStoreAdminCommands(commands.Cog):
                     inline=False
                 )
 
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await status_message.edit(content=None, embed=embed)
 
             logger.info(f"Verification completed: {status}")
+            if progress_state["log_message"]:
+                await self._log_event(
+                    interaction.guild,
+                    "🔍 Verifikation abgeschlossen",
+                    (
+                        f"{interaction.user.mention} hat {results['total_users']} User geprüft.\n"
+                        f"Accuracy: {results['accuracy_percent']:.1f}%\n"
+                        f"Mismatches: {results['mismatches']}"
+                    ),
+                    status="✅ Erfolgreich" if results["passed"] else "⚠️ Abweichungen",
+                    color=discord.Color.green() if results["passed"] else discord.Color.orange(),
+                    message=progress_state["log_message"]
+                )
 
         except Exception as e:
             logger.error(f"Error during verification: {e}", exc_info=True)
@@ -701,6 +958,15 @@ class MessageStoreAdminCommands(commands.Cog):
                 f"❌ Error during verification: {str(e)}",
                 ephemeral=True
             )
+            if 'progress_state' in locals() and progress_state.get("log_message"):
+                await self._log_event(
+                    interaction.guild,
+                    "🔍 Verifikation fehlgeschlagen",
+                    str(e),
+                    status="❌ Fehler",
+                    color=discord.Color.red(),
+                    message=progress_state["log_message"]
+                )
 
 
 async def setup(bot: commands.Bot, config: Config, message_store: MessageStore):

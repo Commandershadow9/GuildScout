@@ -2,7 +2,7 @@
 
 import logging
 import asyncio
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Callable, Awaitable
 from datetime import datetime, timedelta, timezone
 import discord
 
@@ -37,7 +37,7 @@ class ActivityTracker:
         self.cache = cache
         self.message_store = message_store
 
-    def _should_exclude_channel(self, channel: discord.TextChannel) -> bool:
+    def _should_exclude_channel(self, channel: discord.abc.GuildChannel) -> bool:
         """
         Check if a channel should be excluded from counting.
 
@@ -51,14 +51,20 @@ class ActivityTracker:
         if channel.id in self.excluded_channels:
             return True
 
-        # Exclude by name patterns
-        channel_name_lower = channel.name.lower()
+        names_to_check = [channel.name.lower()]
+        parent = getattr(channel, "parent", None)
+        if parent:
+            names_to_check.append(parent.name.lower())
+
         for pattern in self.excluded_channel_names:
-            if pattern.lower() in channel_name_lower:
+            pattern_lower = pattern.lower()
+            if any(pattern_lower in name for name in names_to_check):
                 return True
 
         # Exclude NSFW channels
         if hasattr(channel, 'nsfw') and channel.nsfw:
+            return True
+        if parent and getattr(parent, "nsfw", False):
             return True
 
         return False
@@ -67,7 +73,10 @@ class ActivityTracker:
         self,
         user: discord.Member,
         days_lookback: Optional[int] = None,
-        use_cache: bool = True
+        use_cache: bool = True,
+        channel_progress_callback: Optional[
+            Callable[[discord.TextChannel, int, int, int], Awaitable[None]]
+        ] = None
     ) -> int:
         """
         Count messages for a specific user across all channels.
@@ -112,23 +121,18 @@ class ActivityTracker:
         if days_lookback is not None:
             after_date = datetime.now(timezone.utc) - timedelta(days=days_lookback)
 
-        # Iterate through all text channels
-        for channel in self.guild.text_channels:
-            # Skip excluded channels
-            if self._should_exclude_channel(channel):
-                continue
+        # Build channel list upfront (includes threads)
+        channels_to_scan = await self._gather_message_sources(include_archived_threads=True)
 
-            # Check if bot has permission to read history
-            permissions = channel.permissions_for(self.guild.me)
-            if not permissions.read_message_history:
-                logger.warning(
-                    f"No permission to read history in channel: {channel.name}"
-                )
-                continue
+        total_channels = len(channels_to_scan)
+        processed_channels = 0
 
+        # Iterate through filtered channels
+        for channel in channels_to_scan:
             # Retry loop for rate limiting (same as batch method)
             retry_count = 0
             max_wait = 300
+            channel_message_count = 0
 
             while True:
                 try:
@@ -143,6 +147,7 @@ class ActivityTracker:
                             count += 1
 
                     total_messages += count
+                    channel_message_count = count
 
                     if count > 0:
                         logger.debug(
@@ -177,6 +182,18 @@ class ActivityTracker:
                     )
                     break
 
+            processed_channels += 1
+            if channel_progress_callback:
+                try:
+                    await channel_progress_callback(
+                        channel,
+                        processed_channels,
+                        total_channels,
+                        channel_message_count
+                    )
+                except Exception as callback_error:
+                    logger.debug(f"Channel progress callback failed: {callback_error}")
+
         # Store in cache
         if use_cache and self.cache:
             await self.cache.set(
@@ -192,7 +209,7 @@ class ActivityTracker:
 
     async def _count_channel_for_users(
         self,
-        channel: discord.TextChannel,
+        channel: discord.abc.GuildChannel,
         user_ids: Set[int],
         days_lookback: Optional[int] = None
     ) -> Dict[int, int]:
@@ -356,18 +373,8 @@ class ActivityTracker:
         )
 
         # Step 3: Channel-first counting for uncached users
-        # Get channels to process
-        channels_to_process = []
-        for channel in self.guild.text_channels:
-            if self._should_exclude_channel(channel):
-                continue
-
-            permissions = channel.permissions_for(self.guild.me)
-            if not permissions.read_message_history:
-                logger.warning(f"No permission to read history in: {channel.name}")
-                continue
-
-            channels_to_process.append(channel)
+        # Get channels (including threads) to process
+        channels_to_process = await self._gather_message_sources(include_archived_threads=True)
 
         total_channels = len(channels_to_process)
         logger.info(f"Processing {total_channels} channels for {cache_misses} users...")
@@ -465,3 +472,68 @@ class ActivityTracker:
             })
 
         return channels_info
+
+    def _has_history_permission(self, channel: discord.abc.GuildChannel) -> bool:
+        perms = channel.permissions_for(self.guild.me)
+        return perms.read_message_history
+
+    async def _gather_message_sources(
+        self,
+        include_archived_threads: bool = False
+    ) -> List[discord.abc.GuildChannel]:
+        """Collect channels and threads that should be scanned."""
+        sources: List[discord.abc.GuildChannel] = []
+        seen_ids = set()
+
+        for channel in self.guild.text_channels:
+            if self._should_exclude_channel(channel):
+                continue
+
+            if not self._has_history_permission(channel):
+                logger.warning(f"No permission to read history in channel: {channel.name}")
+                continue
+
+            if channel.id not in seen_ids:
+                sources.append(channel)
+                seen_ids.add(channel.id)
+
+            # Active threads
+            for thread in getattr(channel, "threads", []):
+                if thread.id in seen_ids:
+                    continue
+                if self._should_exclude_channel(thread):
+                    continue
+                if not self._has_history_permission(thread):
+                    logger.debug("No permission to read history in thread %s", thread.name)
+                    continue
+                sources.append(thread)
+                seen_ids.add(thread.id)
+
+            if include_archived_threads:
+                for private in (False, True):
+                    try:
+                        async for thread in channel.archived_threads(limit=None, private=private):
+                            if thread.id in seen_ids:
+                                continue
+                            if self._should_exclude_channel(thread):
+                                continue
+                            if not self._has_history_permission(thread):
+                                logger.debug("No permission to read archived thread %s", thread.name)
+                                continue
+                            sources.append(thread)
+                            seen_ids.add(thread.id)
+                    except discord.Forbidden:
+                        logger.debug(
+                            "Forbidden fetching %s archived threads in #%s",
+                            "private" if private else "public",
+                            channel.name
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "Failed to fetch %s archived threads in #%s: %s",
+                            "private" if private else "public",
+                            channel.name,
+                            exc
+                        )
+
+        return sources

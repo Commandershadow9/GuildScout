@@ -38,6 +38,25 @@ class MessageStore:
             # This is crucial because message tracking and import can run simultaneously
             await db.execute("PRAGMA journal_mode=WAL")
 
+            # Track guild members (non-bots) to know total population even without messages
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS guild_members (
+                    guild_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    display_name TEXT,
+                    joined_at TEXT,
+                    top_role_id INTEGER,
+                    last_seen TEXT,
+                    is_bot INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (guild_id, user_id)
+                )
+            """)
+
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_members_guild
+                ON guild_members(guild_id)
+            """)
+
             # Create message counts table
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS message_counts (
@@ -394,6 +413,10 @@ class MessageStore:
                 (guild_id,)
             )
             await db.execute(
+                "DELETE FROM guild_members WHERE guild_id = ?",
+                (guild_id,)
+            )
+            await db.execute(
                 "DELETE FROM import_metadata WHERE guild_id = ?",
                 (guild_id,)
             )
@@ -451,8 +474,136 @@ class MessageStore:
             "total_messages": total_messages,
             "total_users": total_users,
             "total_channels": total_channels,
+            "total_members": await self._get_tracked_member_count(guild_id),
             "import_completed": import_completed,
             "import_date": import_date,
             "db_size_bytes": db_size,
             "db_size_mb": round(db_size / 1024 / 1024, 2)
         }
+
+    async def _get_tracked_member_count(self, guild_id: int) -> int:
+        """Return total tracked members (non-bots) for a guild."""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT COUNT(*) FROM guild_members WHERE guild_id = ? AND is_bot = 0",
+                (guild_id,)
+            )
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
+    async def sync_guild_members(self, guild: discord.Guild):
+        """
+        Replace member snapshot for a guild.
+
+        Args:
+            guild: Discord guild whose membership should be synced
+        """
+        await self.initialize()
+
+        async with aiosqlite.connect(self.db_path) as db:
+            now = datetime.now(timezone.utc).isoformat()
+            records = []
+            observed_ids = set()
+
+            for member in guild.members:
+                if member.bot:
+                    continue
+                joined_at = member.joined_at or datetime.now(timezone.utc)
+                records.append((
+                    guild.id,
+                    member.id,
+                    member.display_name,
+                    joined_at.isoformat(),
+                    member.top_role.id if member.top_role else None,
+                    now,
+                    0
+                ))
+                observed_ids.add(member.id)
+
+            if records:
+                await db.executemany(
+                    """
+                    INSERT INTO guild_members
+                    (guild_id, user_id, display_name, joined_at, top_role_id, last_seen, is_bot)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(guild_id, user_id) DO UPDATE SET
+                        display_name = excluded.display_name,
+                        joined_at = excluded.joined_at,
+                        top_role_id = excluded.top_role_id,
+                        last_seen = excluded.last_seen,
+                        is_bot = excluded.is_bot
+                    """,
+                    records
+                )
+            else:
+                # If there are no non-bot members, ensure snapshot is cleared
+                observed_ids = set()
+
+            # Remove members no longer present
+            cursor = await db.execute(
+                "SELECT user_id FROM guild_members WHERE guild_id = ?",
+                (guild.id,)
+            )
+            existing_ids = {row[0] for row in await cursor.fetchall()}
+            removed_ids = existing_ids - observed_ids
+
+            if removed_ids:
+                await db.executemany(
+                    "DELETE FROM guild_members WHERE guild_id = ? AND user_id = ?",
+                    [(guild.id, user_id) for user_id in removed_ids]
+                )
+
+            await db.commit()
+
+        logger.info(
+            "Synced %s members for guild %s",
+            len(observed_ids),
+            guild.name
+        )
+
+    async def upsert_member(self, member: discord.Member):
+        """
+        Ensure a single member exists in the member snapshot.
+
+        Args:
+            member: Discord member object
+        """
+        if member.bot:
+            return
+
+        await self.initialize()
+        joined_at = member.joined_at or datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc).isoformat()
+
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """
+                INSERT INTO guild_members
+                (guild_id, user_id, display_name, joined_at, top_role_id, last_seen, is_bot)
+                VALUES (?, ?, ?, ?, ?, ?, 0)
+                ON CONFLICT(guild_id, user_id) DO UPDATE SET
+                    display_name = excluded.display_name,
+                    joined_at = excluded.joined_at,
+                    top_role_id = excluded.top_role_id,
+                    last_seen = excluded.last_seen
+                """,
+                (
+                    member.guild.id,
+                    member.id,
+                    member.display_name,
+                    joined_at.isoformat(),
+                    member.top_role.id if member.top_role else None,
+                    now
+                )
+            )
+            await db.commit()
+
+    async def remove_member(self, guild_id: int, user_id: int):
+        """Remove a member from the snapshot."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "DELETE FROM guild_members WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id)
+            )
+            await db.commit()

@@ -12,6 +12,7 @@ from discord.ext import commands
 
 from src.utils.config import Config
 from src.utils.welcome import post_welcome_message, refresh_welcome_message
+from src.database.message_store import MessageStore
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +20,11 @@ logger = logging.getLogger(__name__)
 class GuildEvents(commands.Cog):
     """Event handlers for guild-related events."""
 
-    def __init__(self, bot: commands.Bot, config: Config):
+    def __init__(self, bot: commands.Bot, config: Config, message_store: MessageStore):
         self.bot = bot
         self.config = config
         self._refresh_tasks = {}  # Track pending refresh tasks per guild
+        self.message_store = message_store
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -33,6 +35,7 @@ class GuildEvents(commands.Cog):
             await self._ensure_ranking_channel(guild)
             await self._ensure_log_channel(guild)
             await refresh_welcome_message(self.config, guild, force=True)
+            await self._sync_members(guild)
 
     @commands.Cog.listener()
     async def on_guild_join(self, guild: discord.Guild):
@@ -49,6 +52,7 @@ class GuildEvents(commands.Cog):
             await self._create_ranking_channel(guild, notify_owner=True)
             await self._create_log_channel(guild)
             await refresh_welcome_message(self.config, guild, force=True)
+            await self._sync_members(guild)
             logger.info(f"Auto-setup completed for guild: {guild.name}")
         except discord.Forbidden:
             logger.error(f"Missing permissions to create channel in {guild.name} (ID: {guild.id})")
@@ -72,12 +76,56 @@ class GuildEvents(commands.Cog):
             if self.config.ranking_channel_message_version:
                 self.config.set_ranking_channel_message_version(0)
             self.config.set_log_channel_id(None)
+            # Clear tracked members for that guild
+            if self.message_store:
+                await self.message_store.reset_guild(guild.id)
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        """Track member joins for accurate stats."""
+        if member.guild.id != self.config.guild_id or member.bot:
+            return
+
+        try:
+            await self.message_store.upsert_member(member)
+        except Exception as exc:
+            logger.error(
+                "Failed to record joined member %s: %s",
+                member.display_name,
+                exc,
+                exc_info=True
+            )
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member):
+        """Remove departed members from stats."""
+        if member.guild.id != self.config.guild_id:
+            return
+
+        try:
+            await self.message_store.remove_member(member.guild.id, member.id)
+        except Exception as exc:
+            logger.error(
+                "Failed to remove departed member %s: %s",
+                getattr(member, "display_name", member.id),
+                exc,
+                exc_info=True
+            )
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         """Refresh overview when guild role membership changes (with debouncing)."""
         if after.guild.id != self.config.guild_id:
             return
+
+        try:
+            await self.message_store.upsert_member(after)
+        except Exception as exc:
+            logger.warning(
+                "Failed to update member snapshot for %s: %s",
+                after.display_name,
+                exc
+            )
 
         role_id = self.config.guild_role_id
         if not role_id:
@@ -288,8 +336,23 @@ class GuildEvents(commands.Cog):
                 f"Could not send DM to server owner: {guild.owner.name if guild.owner else 'Unknown'}"
             )
 
+    async def _sync_members(self, guild: discord.Guild) -> None:
+        """Ensure the message store knows all members of the guild."""
+        if not self.message_store:
+            return
 
-async def setup(bot: commands.Bot, config: Config):
+        try:
+            await self.message_store.sync_guild_members(guild)
+        except Exception as exc:
+            logger.error(
+                "Failed to sync members for %s: %s",
+                guild.name,
+                exc,
+                exc_info=True
+            )
+
+
+async def setup(bot: commands.Bot, config: Config, message_store: MessageStore):
     """Setup function to add this cog to the bot."""
-    await bot.add_cog(GuildEvents(bot, config))
+    await bot.add_cog(GuildEvents(bot, config, message_store))
     logger.info("GuildEvents cog loaded")

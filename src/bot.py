@@ -5,6 +5,7 @@ import discord
 from discord.ext import commands
 import sys
 from pathlib import Path
+from typing import Optional
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -95,7 +96,7 @@ class GuildScoutBot(commands.Bot):
         self.logger.info("Commands loaded")
 
         # Load event handlers
-        await setup_guild_events(self, self.config)
+        await setup_guild_events(self, self.config, self.message_store)
         await setup_message_tracking(self, self.config, self.message_store)
         self.logger.info("Event handlers loaded")
 
@@ -142,27 +143,37 @@ class GuildScoutBot(commands.Bot):
                 self._chunking_task = asyncio.create_task(self._chunk_all_guilds())
 
             # Send startup notification and start auto-import
-            if self.config.discord_service_logs_enabled:
-                guild = self.get_guild(self.config.guild_id)
-                if guild:
-                    description = (
-                        f"Verbunden mit **{len(self.guilds)}** Server(n)\n"
-                        f"Cache bereit, Commands synchronisiert\n"
-                        f"Member-Cache wird geladen..."
-                    )
-                    await self.discord_logger.send(
-                        guild,
-                        "🤖 GuildScout gestartet",
-                        description,
-                        status="✅ Online",
-                        color=discord.Color.green()
-                    )
+            guild = self.get_guild(self.config.guild_id)
+            if guild:
+                await self._ensure_log_channel_exists(guild)
+                description = (
+                    f"Verbunden mit **{len(self.guilds)}** Server(n)\n"
+                    f"Cache bereit, Commands synchronisiert\n"
+                    f"Member-Cache wird geladen..."
+                )
+                await self._log_service_status(
+                    guild,
+                    "🤖 GuildScout gestartet",
+                    description,
+                    status="✅ Online",
+                    color=discord.Color.green()
+                )
 
-                    # Auto-start historical import if not completed
-                    await self._check_and_start_auto_import(guild)
+                # Always run a fresh historical import on startup
+                await self._check_and_start_auto_import(guild, force_reimport=True)
         else:
             # Reconnect event - just log it
             self.logger.info(f"Bot reconnected (ready event #{2 if self._ready_called else 1})")
+            guild = self.get_guild(self.config.guild_id)
+            if guild:
+                await self._ensure_log_channel_exists(guild)
+                await self._log_service_status(
+                    guild,
+                    "♻️ GuildScout verbunden",
+                    "Bot hat die Verbindung zu Discord wiederhergestellt.",
+                    status="🔄 Reconnected",
+                    color=discord.Color.blurple()
+                )
 
     async def _chunk_all_guilds(self):
         """
@@ -190,6 +201,151 @@ class GuildScoutBot(commands.Bot):
         self._chunking_done = True
         self.logger.info("✅ All guilds chunked successfully")
 
+    async def _log_service_status(
+        self,
+        guild: discord.Guild,
+        title: str,
+        description: str,
+        *,
+        status: str,
+        color: discord.Color
+    ):
+        """Send lifecycle updates to the configured Discord log channel."""
+        if not self.config.discord_service_logs_enabled:
+            return
+
+        try:
+            await self.discord_logger.send(
+                guild,
+                title,
+                description,
+                status=status,
+                color=color
+            )
+        except Exception as exc:
+            self.logger.warning("Failed to send service status to Discord: %s", exc)
+
+    async def _update_import_progress_embed(
+        self,
+        guild: discord.Guild,
+        status_message: discord.Message,
+        channel_name: str,
+        current: int,
+        total: int
+    ):
+        """Update the log embed with the latest auto-import progress."""
+        try:
+            stats = await self.message_store.get_stats(guild.id)
+            total_messages = stats.get('total_messages', 0)
+            import_start_time = await self.message_store.get_import_start_time(guild.id)
+
+            if import_start_time:
+                from datetime import datetime, timezone
+                now = datetime.now(timezone.utc)
+                duration = now - import_start_time
+                minutes = int(duration.total_seconds() // 60)
+                seconds = int(duration.total_seconds() % 60)
+                duration_str = f"{minutes}m {seconds}s"
+            else:
+                duration_str = "N/A"
+
+            embed = discord.Embed(
+                title="📥 Historischer Datenimport",
+                description="Der automatische Import läuft.",
+                color=discord.Color.blue(),
+                timestamp=discord.utils.utcnow()
+            )
+            embed.add_field(
+                name="Status",
+                value=f"🔄 {current}/{total} Channels",
+                inline=True
+            )
+            embed.add_field(
+                name="Aktueller Kanal",
+                value=f"`{channel_name}`",
+                inline=True
+            )
+            embed.add_field(
+                name="Importierte Nachrichten",
+                value=f"{total_messages:,}",
+                inline=True
+            )
+            embed.add_field(
+                name="Dauer",
+                value=duration_str,
+                inline=False
+            )
+            embed.set_footer(text="Live-Update")
+
+            await status_message.edit(embed=embed)
+        except Exception as exc:
+            self.logger.debug("Failed to update import progress embed: %s", exc)
+
+    async def _ensure_log_channel_exists(self, guild: discord.Guild) -> Optional[discord.TextChannel]:
+        """
+        Make sure there is a Discord channel available for service logs.
+        Falls back to creating #guildscout-logs if necessary.
+        """
+        channel_id = self.config.log_channel_id
+        channel = guild.get_channel(channel_id) if channel_id else None
+
+        if not channel:
+            # Try to find an existing channel by name
+            channel = discord.utils.get(guild.text_channels, name="guildscout-logs")
+
+        if not channel:
+            # Create a dedicated log channel
+            try:
+                overwrites = {
+                    guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                    guild.me: discord.PermissionOverwrite(
+                        read_messages=True,
+                        send_messages=True,
+                        embed_links=True,
+                        attach_files=True
+                    )
+                }
+                for role_id in self.config.admin_roles:
+                    role = guild.get_role(role_id)
+                    if role:
+                        overwrites[role] = discord.PermissionOverwrite(
+                            read_messages=True,
+                            send_messages=True
+                        )
+
+                channel = await guild.create_text_channel(
+                    name="guildscout-logs",
+                    topic="🧾 GuildScout Logs – Analysen und Systemereignisse",
+                    overwrites=overwrites
+                )
+                embed = discord.Embed(
+                    title="🧾 GuildScout Logs",
+                    description="Analysen, Systemereignisse und Fehler werden hier protokolliert.",
+                    color=discord.Color.dark_gold(),
+                    timestamp=discord.utils.utcnow()
+                )
+                embed.add_field(
+                    name="Was wird geloggt?",
+                    value="• /analyze Starts & Ergebnisse\n• Cache-Infos\n• Fehler / Warnungen",
+                    inline=False
+                )
+                embed.set_footer(text="GuildScout Monitoring")
+                await channel.send(embed=embed)
+            except discord.Forbidden:
+                self.logger.warning("Cannot create log channel in guild %s", guild.name)
+                return None
+            except Exception as exc:
+                self.logger.error("Failed to ensure log channel: %s", exc, exc_info=True)
+                return None
+
+        if not hasattr(self, 'log_channels'):
+            self.log_channels = {}
+        self.log_channels[guild.id] = channel.id
+        if self.config.log_channel_id != channel.id:
+            self.config.set_log_channel_id(channel.id)
+
+        return channel
+
     async def _create_import_status_message(self, guild: discord.Guild):
         """
         Create initial import status message in Discord.
@@ -204,7 +360,7 @@ class GuildScoutBot(commands.Bot):
             return None
 
         # Get log channel
-        log_channel_id = getattr(self.config, 'discord_service_log_channel_id', None)
+        log_channel_id = self.config.log_channel_id
         if not log_channel_id:
             return None
 
@@ -298,13 +454,19 @@ class GuildScoutBot(commands.Bot):
                 self.logger.error(f"Error updating status message: {e}", exc_info=True)
                 # Continue trying
 
-    async def _check_and_start_auto_import(self, guild: discord.Guild):
+    async def _check_and_start_auto_import(
+        self,
+        guild: discord.Guild,
+        *,
+        force_reimport: bool = False
+    ):
         """
         Check if historical import is needed and start it automatically.
         Uses a lock to prevent race conditions on multiple on_ready() calls.
 
         Args:
             guild: Discord guild
+            force_reimport: Whether to reset data and re-import regardless of status
         """
         import asyncio
 
@@ -320,11 +482,14 @@ class GuildScoutBot(commands.Bot):
                     return
 
                 # Check if import already completed
-                is_completed = await self.message_store.is_import_completed(guild.id)
-
-                if is_completed:
-                    self.logger.info(f"✅ Historical import already completed for {guild.name}")
-                    return
+                if not force_reimport:
+                    is_completed = await self.message_store.is_import_completed(guild.id)
+                    if is_completed:
+                        self.logger.info(f"✅ Historical import already completed for {guild.name}")
+                        return
+                else:
+                    self.logger.info(f"♻️ Forcing historical re-import for {guild.name}")
+                    await self.message_store.reset_guild(guild.id)
 
                 # Check if import is already running (in database)
                 is_running = await self.message_store.is_import_running(guild.id)
@@ -343,8 +508,14 @@ class GuildScoutBot(commands.Bot):
                 if self.config.discord_service_logs_enabled:
                     await self.discord_logger.send(
                         guild,
-                        "📥 Automatischer Datenimport gestartet",
+                        "📥 Re-Import gestartet" if force_reimport else "📥 Automatischer Datenimport gestartet",
                         (
+                            "Der Bot importiert jetzt alle historischen Nachrichten erneut.\n"
+                            "Dies kann einige Minuten dauern.\n\n"
+                            "**Bot bleibt währenddessen voll funktionsfähig!**\n"
+                            "Commands funktionieren normal (ggf. etwas langsamer).\n\n"
+                            "Fortschritt wird in den Logs angezeigt."
+                        ) if force_reimport else (
                             "Der Bot importiert jetzt alle historischen Nachrichten.\n"
                             "Dies kann 30-60 Minuten dauern.\n\n"
                             "**Bot bleibt währenddessen voll funktionsfähig!**\n"
@@ -396,6 +567,16 @@ class GuildScoutBot(commands.Bot):
                 excluded_channel_names=excluded_channel_names
             )
 
+            async def progress_callback(channel_name: str, current: int, total: int):
+                if status_message:
+                    await self._update_import_progress_embed(
+                        guild,
+                        status_message,
+                        channel_name,
+                        current,
+                        total
+                    )
+
             # Start periodic status update task
             if status_message:
                 update_task = asyncio.create_task(
@@ -403,7 +584,7 @@ class GuildScoutBot(commands.Bot):
                 )
 
             # Import with logging
-            result = await importer.import_guild_history()
+            result = await importer.import_guild_history(progress_callback=progress_callback)
 
             # Cancel the update task
             if update_task:
