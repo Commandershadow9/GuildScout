@@ -25,6 +25,7 @@ from src.commands.log_channel import setup as setup_log_channel
 from src.commands.message_store_admin import setup as setup_message_store_admin
 from src.events.guild_events import setup as setup_guild_events
 from src.events.message_tracking import setup as setup_message_tracking
+from src.tasks.verification_scheduler import setup as setup_verification_scheduler
 
 
 class GuildScoutBot(commands.Bot):
@@ -99,6 +100,10 @@ class GuildScoutBot(commands.Bot):
         await setup_guild_events(self, self.config, self.message_store)
         await setup_message_tracking(self, self.config, self.message_store)
         self.logger.info("Event handlers loaded")
+
+        # Load background tasks
+        await setup_verification_scheduler(self, self.config, self.message_store)
+        self.logger.info("Background tasks loaded")
 
         # Sync commands to guild
         try:

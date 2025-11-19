@@ -162,6 +162,99 @@ class Config:
         channel_id = self.get("logging.discord_channel_id")
         return int(channel_id) if channel_id else None
 
+    @property
+    def live_tracking_interval_seconds(self) -> int:
+        """Interval for posting live tracking summaries to Discord."""
+        interval = self.get("logging.live_tracking_interval_seconds", 3600)
+        try:
+            interval_int = int(interval)
+        except (TypeError, ValueError):
+            interval_int = 3600
+        return max(5, interval_int)
+
+    @property
+    def live_tracking_idle_gap_seconds(self) -> int:
+        """Gap after which the live embed should refresh immediately."""
+        gap = self.get("logging.live_tracking_idle_gap_seconds", 180)
+        try:
+            gap_int = int(gap)
+        except (TypeError, ValueError):
+            gap_int = 180
+        return max(10, gap_int)
+
+    @property
+    def daily_verification_enabled(self) -> bool:
+        """Whether daily scheduled verification is enabled."""
+        return bool(self.get("verification.enable_daily", True))
+
+    @property
+    def daily_verification_sample_size(self) -> int:
+        """Sample size for daily verification runs."""
+        size = self.get("verification.daily_sample_size", 25)
+        try:
+            return max(1, int(size))
+        except (TypeError, ValueError):
+            return 25
+
+    @property
+    def daily_verification_hour(self) -> int:
+        """UTC hour to run the daily verification."""
+        hour = self.get("verification.daily_hour_utc", 3)
+        try:
+            return max(0, min(23, int(hour)))
+        except (TypeError, ValueError):
+            return 3
+
+    @property
+    def daily_verification_minute(self) -> int:
+        """UTC minute to run the daily verification."""
+        minute = self.get("verification.daily_minute", 0)
+        try:
+            return max(0, min(59, int(minute)))
+        except (TypeError, ValueError):
+            return 0
+
+    @property
+    def weekly_verification_enabled(self) -> bool:
+        """Whether weekly verification runs are enabled."""
+        return bool(self.get("verification.enable_weekly", True))
+
+    @property
+    def weekly_verification_sample_size(self) -> int:
+        """Sample size for weekly verification runs."""
+        size = self.get("verification.weekly_sample_size", 150)
+        try:
+            return max(1, int(size))
+        except (TypeError, ValueError):
+            return 150
+
+    @property
+    def weekly_verification_weekday(self) -> int:
+        """Weekday for weekly verification (0=Monday)."""
+        weekday = self.get("verification.weekly_weekday", 0)
+        try:
+            return max(0, min(6, int(weekday)))
+        except (TypeError, ValueError):
+            return 0
+
+    @property
+    def weekly_verification_hour(self) -> int:
+        """UTC hour to run the weekly verification."""
+        hour = self.get("verification.weekly_hour_utc", 4)
+        try:
+            return max(0, min(23, int(hour)))
+        except (TypeError, ValueError):
+            return 4
+
+    @property
+    def weekly_verification_minute(self) -> int:
+        """UTC minute to run the weekly verification."""
+        minute = self.get("verification.weekly_minute", 30)
+        try:
+            return max(0, min(59, int(minute)))
+        except (TypeError, ValueError):
+            return 30
+
     def set_log_channel_id(self, channel_id: Optional[int]) -> None:
         """Persist Discord log channel ID."""
         self._set_nested_value("logging.discord_channel_id", channel_id)

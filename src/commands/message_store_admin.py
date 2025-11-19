@@ -935,7 +935,37 @@ class MessageStoreAdminCommands(commands.Cog):
                     inline=False
                 )
 
-            await status_message.edit(content=None, embed=embed)
+            # Try to update the (ephemeral) status message. Those webhooks can
+            # expire after ~15 minutes, so provide a fallback.
+            try:
+                await status_message.edit(content=None, embed=embed)
+            except discord.errors.HTTPException as exc:
+                error_code = getattr(exc, "code", None)
+                if exc.status in (401, 404) or error_code in (50027, 10008):
+                    logger.warning(
+                        "Status message edit failed (likely expired webhook token). "
+                        "Sending fallback follow-up. status=%s code=%s",
+                        exc.status,
+                        error_code
+                    )
+                    fallback_text = (
+                        "⏱️ Die ursprüngliche Statusmeldung war abgelaufen, "
+                        "hier ist das finale Ergebnis:"
+                    )
+                    try:
+                        await interaction.followup.send(
+                            fallback_text,
+                            embed=embed,
+                            ephemeral=True
+                        )
+                    except Exception as followup_exc:
+                        logger.error(
+                            "Failed to send fallback verification result: %s",
+                            followup_exc,
+                            exc_info=True
+                        )
+                else:
+                    raise
 
             logger.info(f"Verification completed: {status}")
             if progress_state["log_message"]:

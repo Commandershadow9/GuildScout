@@ -45,7 +45,9 @@ Perfect for content creators who need to fairly select members for limited guild
 ### Import & Logging
 - **♻️ Auto Re-Import**: On every bot start, GuildScout performs a full historical re-import so counts stay 100% accurate.
 - **🧾 Log Channel**: Setup once with `/setup-log-channel` – all lifecycle events and import progress get posted automatically.
-- **🔍 Verifikation**: `/verify-message-counts` samples real Discord API counts with live progress so Abweichungen sofort sichtbar sind.
+- **🟢 Live-Tracking Embed**: Jede neue Nachricht landet sofort in einer dauerhaften Embed im Log-Channel (inkl. Gesamtzähler, letzte Messages, Sprunglinks).
+- **🔍 Verifikation**: `/verify-message-counts` samples real Discord API counts mit Live-Fortschritt und automatischem Fallback bei abgelaufenen Follow-ups.
+- **📆 Geplante Checks**: Tägliche Stichprobe + wöchentliche Tiefenprüfung laufen im Hintergrund und posten ihre Ergebnisse automatisch ins Log (konfigurierbar).
 
 ## 🚀 Quick Start
 
@@ -138,6 +140,11 @@ Perfect for content creators who need to fairly select members for limited guild
   - `🤖 GuildScout gestartet` / `♻️ Reconnected`
   - `📥 Re-Import gestartet` mit Live-Updates (aktueller Kanal, Fortschritt X/Y, importierte Nachrichten, Laufzeit)
   - `✅ Import abgeschlossen` inklusive Dauer und Gesamtnachrichten
+- **Live-Update Embed**: Sobald der Import durch ist, bleibt eine Embed „🟢 Live-Tracking aktiv“ im Log-Channel sichtbar. Sie zeigt:
+  - Gesamtzahl aller Nachrichten in der Datenbank (`MessageStore`)
+  - Anzahl live getrackter Messages seit letztem Bot-Neustart
+  - Die letzten 10 Nachrichten inkl. Sprunglink direkt in Discord
+  - Automatische Aktualisierung: sofort nach Ruhephasen (konfigurierbarer Idle-Gap), sonst spätestens nach dem eingestellten Intervall.
 
 > Hinweis: Solange der Auto-Import läuft, reagiert das manuelle `/import-status` nicht (Discord blockiert doppelte Commands). Prüfe stattdessen den Log-Channel – dort steht der Fortschritt in Echtzeit.
 
@@ -204,7 +211,19 @@ Vergleicht die gespeicherten MessageStore-Werte mit frischen Discord-API Zählun
 
 - Der Command wählt zufällige User mit ≥10 Nachrichten.
 - Fortschritt erscheint sowohl im Command (Ephemeral Message) als auch im Log-Channel (aktueller User, Kanal, Rate-Limit Hinweise).
-- Das Ergebnis-Embed zeigt Accuracy, Max/Average-Differenz und eine Liste aller Abweichungen. So erkennst du sofort, ob ein erneuter Import nötig ist.
+- Das Ergebnis-Embed zeigt Accuracy, Max/Average-Differenz und eine Liste aller Abweichungen. Läuft der ursprüngliche Follow-up-Webhook ab (z. B. bei langen Läufen), sendet der Bot automatisch eine neue Embed und loggt das Ergebnis dennoch.
+
+### Automatisierte Verifikationen
+
+Neben dem manuellen Command laufen zwei Scheduler-Jobs im Hintergrund (konfigurierbar im `verification`-Abschnitt der Config):
+
+- **Tägliche Stichprobe** (Standard 25 User, 03:00 UTC): prüft eine zufällige Auswahl aktiver User (≥10 Nachrichten) gegen die Discord-API und postet Start/Ergebnis als Embed.
+- **Wöchentliche Tiefenprüfung** (Standard Montag 04:30 UTC, 150 User): größere Stichprobe für maximale Sicherheit.
+
+Beide Jobs:
+- werden übersprungen, solange ein Import läuft oder noch keine Daten vorliegen,
+- sperren sich gegenseitig per Lock, damit nie zwei Prüfungen parallel laufen,
+- loggen sämtliche Statuswechsel (`gestartet`, `übersprungen`, `erfolgreich`, `abweichungen`, `fehler`) im Log-Channel inkl. Accuracy, Max Difference und auffälligen Usern.
 
 ### Guild Management Commands (V2.0)
 
@@ -330,8 +349,23 @@ permissions:
 ```yaml
 logging:
   level: "INFO"             # DEBUG, INFO, WARNING, ERROR
-  log_file: "logs/guildscout.log"
-  log_format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/guildscout.log"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  discord_channel_id: 123456789012345678   # setzt der Bot via /setup-log-channel
+  enable_discord_service_logs: true
+  live_tracking_interval_seconds: 3600     # spätestens alle 60 Min. aktualisieren
+  live_tracking_idle_gap_seconds: 180      # nach 3 Min. Ruhe sofortiges Update
+
+verification:
+  enable_daily: true
+  daily_sample_size: 25
+  daily_hour_utc: 3
+  daily_minute: 0
+  enable_weekly: true
+  weekly_sample_size: 150
+  weekly_weekday: 0
+  weekly_hour_utc: 4
+  weekly_minute: 30
 ```
 
 ## 📊 Scoring Algorithm
@@ -446,6 +480,11 @@ Change log level in `config/config.yaml`:
 logging:
   level: "DEBUG"  # For more detailed logs
 ```
+
+Wenn ein Discord-Log-Channel konfiguriert ist (`/setup-log-channel`), erhältst du zusätzlich:
+- Dauerhafte **🟢 Live-Tracking**-Embed mit Gesamtzählung + letzten Nachrichten
+- Automatische Embeds für `📥` Re-Import, `🔍` tägliche/ wöchentliche Verifikationen sowie Fehlermeldungen
+- Manuelle `/verify-message-counts`-Ergebnisse inklusive Fallback, falls das Follow-up abläuft
 
 ## 🔒 Security & Privacy
 

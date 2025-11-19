@@ -85,3 +85,19 @@ logging:
 
   # Whether to log startup/shutdown events to Discord
   enable_discord_service_logs: true
+
+  # Live-tracking embed cadence (seconds)
+  live_tracking_interval_seconds: 3600   # spätestens alle 60 Min. aktualisieren
+  live_tracking_idle_gap_seconds: 180    # nach 3 Min. Ruhe sofortiges Update
+
+verification:
+  enable_daily: true              # tägliche Stichprobe aktivieren/deaktivieren
+  daily_sample_size: 25           # Anzahl zufälliger User (>=10 Nachrichten)
+  daily_hour_utc: 3               # UTC-Stunde für den Lauf
+  daily_minute: 0                 # UTC-Minute
+
+  enable_weekly: true             # wöchentliche Tiefenprüfung
+  weekly_sample_size: 150         # größere Stichprobe
+  weekly_weekday: 0               # 0 = Montag … 6 = Sonntag
+  weekly_hour_utc: 4              # UTC-Stunde
+  weekly_minute: 30               # UTC-Minute
