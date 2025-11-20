@@ -1,5 +1,83 @@
 # Changelog - GuildScout Bot
 
+## Version 2.1.0 - Production Features & Reliability (2025-11-19)
+
+### 🟢 Live Tracking & Verification System
+
+#### Live Message Tracking Embed
+- **Dauerhafte Live-Embed** im Log-Channel zeigt:
+  - Gesamtzahl aller Messages in der Datenbank
+  - Anzahl live getrackter Messages seit Bot-Start
+  - Letzte 10 Nachrichten mit Sprunglinks zu Discord
+  - Automatische Aktualisierung nach Idle-Gap oder festem Intervall
+- Konfigurierbare Update-Intervalle (idle_gap & interval)
+- Thread-safe mit Debouncing für Performance
+
+#### Automatisierte Verification
+- **Tägliche Stichprobe** (Standard: 25 User, 03:00 UTC)
+  - Prüft zufällige User (≥10 Messages) gegen Discord API
+  - Postet Start/Ergebnis als Embed im Log-Channel
+- **Wöchentliche Tiefenprüfung** (Standard: 150 User, Montag 04:30 UTC)
+  - Größere Stichprobe für maximale Genauigkeit
+- Lock-System verhindert gleichzeitige Verifikationen
+- Automatisches Überspringen während laufender Imports
+- Detaillierte Ergebnisse: Accuracy, Max Difference, Abweichungen
+
+#### `/verify-message-counts` Command
+- Manueller Verification-Command für Admins
+- Wählbare Stichprobengröße
+- Live-Fortschritt in Ephemeral Messages & Log-Channel
+- Automatischer Fallback bei abgelaufenen Follow-ups
+- Rate-Limit Hinweise während Prüfung
+
+#### Auto Re-Import bei Bot-Start
+- **Automatischer vollständiger Re-Import** bei jedem Bot-Neustart
+- Hält MessageStore immer auf aktuellem Stand
+- Live-Updates im Log-Channel (aktueller Kanal, Fortschritt, Laufzeit)
+- Concurrent-safe: Neue Messages während Import werden korrekt getracked
+
+#### Log-Channel System
+- `/setup-log-channel` Command für Admin-only Channel
+- Auto-Erstellung falls Channel fehlt
+- Alle Bot-Events werden geloggt:
+  - Bot-Start/Reconnect
+  - Import-Status (Start, Fortschritt, Abschluss)
+  - Verification-Ergebnisse
+  - Fehler und Warnungen
+- Konfigurierbar: `enable_discord_service_logs`
+
+### 🐛 Bugfixes
+
+#### SQLite Concurrency (Bug #11)
+- **SQLite WAL-Modus aktiviert** für bessere Concurrency
+- Verhindert "database is locked" Fehler
+- Erlaubt gleichzeitiges Lesen während Schreibvorgängen
+
+#### Permission & Role Hierarchy Checks (Bug #12)
+- **Bot überprüft jetzt Permissions** vor Role-Assignment
+- Prüft ob Bot die Rolle überhaupt verwalten kann
+- Warnt wenn Bot-Rolle unter Ziel-Rolle in Hierarchie
+- Verhindert fehlgeschlagene Rollenvergaben
+
+#### Rate-Limit Protection
+- Zusätzliche `defer()` Calls in Commands
+- Verhindert "Interaction expired" Fehler
+- Auto-retry für Discord API Calls
+
+#### Thread-Aware Tracking
+- Messages in Threads werden jetzt korrekt erfasst
+- Auto-Reimport berücksichtigt alle Thread-Typen
+- Historische Threads werden nicht vergessen
+
+### 🔧 Improvements
+
+- Bessere Fehlerbehandlung in allen Commands
+- Optimierte Logging-Ausgaben
+- Performance-Verbesserungen bei großen Servern
+- Stabilere Discord API Integration
+
+---
+
 ## Version 2.0.0 - Major Performance & Feature Update (2025-11-14)
 
 ### 🚀 Performance Optimierungen
