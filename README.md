@@ -223,7 +223,10 @@ Neben dem manuellen Command laufen zwei Scheduler-Jobs im Hintergrund (konfiguri
 Beide Jobs:
 - werden übersprungen, solange ein Import läuft oder noch keine Daten vorliegen,
 - sperren sich gegenseitig per Lock, damit nie zwei Prüfungen parallel laufen,
-- loggen sämtliche Statuswechsel (`gestartet`, `übersprungen`, `erfolgreich`, `abweichungen`, `fehler`) im Log-Channel inkl. Accuracy, Max Difference und auffälligen Usern.
+- loggen sämtliche Statuswechsel (`gestartet`, `übersprungen`, `erfolgreich`, `abweichungen`, `fehler`) im Log-Channel inkl. Accuracy, Max Difference, auffälligen Usern **und der vollständigen Liste aller geprüften User mit Store-/API-Werten**,
+- nutzen ein Alert-Ping (`logging.alert_ping`) bei Abweichungen/Fehlern,
+- retryen Discord-API-Fehler (429/5xx) statt Kanäle zu überspringen und bereinigen gelöschte Channels/Threads vor dem Lauf,
+- passen Counts automatisch an, wenn Nachrichten oder Channels/Threads gelöscht werden.
 
 ### Guild Management Commands (V2.0)
 
@@ -352,6 +355,7 @@ logging:
   file: "logs/guildscout.log"
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
   discord_channel_id: 123456789012345678   # setzt der Bot via /setup-log-channel
+  alert_ping: "<@123456789012345678>"      # optionaler Ping bei Fehlern/Abweichungen
   enable_discord_service_logs: true
   live_tracking_interval_seconds: 3600     # spätestens alle 60 Min. aktualisieren
   live_tracking_idle_gap_seconds: 180      # nach 3 Min. Ruhe sofortiges Update

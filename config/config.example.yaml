@@ -83,6 +83,9 @@ logging:
   # Discord log channel (auto-managed)
   discord_channel_id: null
 
+  # Optional ping/mention on Fehlern (e.g. "@here" or "<@&role_id>")
+  alert_ping: null
+
   # Whether to log startup/shutdown events to Discord
   enable_discord_service_logs: true
 

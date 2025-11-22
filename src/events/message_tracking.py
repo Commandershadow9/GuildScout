@@ -305,6 +305,96 @@ class MessageTracker(commands.Cog):
             logger.error(f"Failed to track message: {e}", exc_info=True)
 
     @commands.Cog.listener()
+    async def on_message_delete(self, message: discord.Message):
+        """Reduce counts when a message is deleted."""
+        try:
+            # Only adjust if we have enough context
+            if not message.guild or not message.author or message.author.bot:
+                return
+
+            channel = message.channel
+            if isinstance(channel, (discord.TextChannel, discord.Thread)):
+                if self._should_exclude_channel(channel):
+                    return
+
+            await self.message_store.adjust_message_count(
+                guild_id=message.guild.id,
+                user_id=message.author.id,
+                channel_id=channel.id,
+                delta=-1
+            )
+            logger.debug(
+                "Adjusted count for deleted message from %s in %s",
+                getattr(message.author, "name", "unknown"),
+                getattr(channel, "name", "unknown")
+            )
+        except Exception as exc:
+            logger.error("Failed to handle message deletion: %s", exc, exc_info=True)
+
+    @commands.Cog.listener()
+    async def on_bulk_message_delete(self, messages: List[discord.Message]):
+        """Handle bulk deletions efficiently."""
+        try:
+            aggregate = {}
+            for msg in messages:
+                if not msg.guild or not getattr(msg, "author", None) or msg.author.bot:
+                    continue
+                channel = msg.channel
+                if isinstance(channel, (discord.TextChannel, discord.Thread)):
+                    if self._should_exclude_channel(channel):
+                        continue
+                key = (msg.guild.id, msg.author.id, channel.id)
+                aggregate[key] = aggregate.get(key, 0) + 1
+
+            for (guild_id, user_id, channel_id), count in aggregate.items():
+                await self.message_store.adjust_message_count(
+                    guild_id=guild_id,
+                    user_id=user_id,
+                    channel_id=channel_id,
+                    delta=-count
+                )
+            if aggregate:
+                logger.debug("Adjusted counts for %d deleted messages (bulk)", sum(aggregate.values()))
+        except Exception as exc:
+            logger.error("Failed to handle bulk message deletion: %s", exc, exc_info=True)
+
+    @commands.Cog.listener()
+    async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel):
+        """Purge counts when a channel is deleted."""
+        try:
+            removed = await self.message_store.delete_channel_counts(
+                channel.guild.id,
+                channel.id
+            )
+            if removed:
+                logger.info(
+                    "Removed %d rows for deleted channel #%s (%d)",
+                    removed,
+                    getattr(channel, "name", "unknown"),
+                    channel.id
+                )
+        except Exception as exc:
+            logger.error("Failed to purge deleted channel %s: %s", getattr(channel, "name", "unknown"), exc, exc_info=True)
+
+    @commands.Cog.listener()
+    async def on_thread_delete(self, thread: discord.Thread):
+        """Purge counts when a thread is deleted."""
+        try:
+            removed = await self.message_store.delete_channel_counts(
+                thread.guild.id,
+                thread.id
+            )
+            if removed:
+                logger.info(
+                    "Removed %d rows for deleted thread #%s (%d)",
+                    removed,
+                    getattr(thread, "name", "unknown"),
+                    thread.id
+                )
+        except Exception as exc:
+            logger.error("Failed to purge deleted thread %s: %s", getattr(thread, "name", "unknown"), exc, exc_info=True)
+
+    @commands.Cog.listener()
     async def on_ready(self):
         """Ensure the live-tracking status is visible when the bot connects."""
         for guild in self.bot.guilds:

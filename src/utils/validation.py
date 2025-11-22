@@ -84,7 +84,8 @@ class MessageCountValidator:
             "mismatches": 0,
             "max_difference": 0,
             "avg_difference": 0,
-            "discrepancies": []
+            "discrepancies": [],
+            "user_results": []
         }
 
         total_diff = 0
@@ -127,7 +128,8 @@ class MessageCountValidator:
             total_diff += diff
 
             # Check if within tolerance
-            if diff_percent <= tolerance_percent:
+            match = diff_percent <= tolerance_percent
+            if match:
                 results["matches"] += 1
             else:
                 results["mismatches"] += 1
@@ -139,6 +141,16 @@ class MessageCountValidator:
                     "difference": diff,
                     "difference_percent": diff_percent
                 })
+
+            results["user_results"].append({
+                "user": user.name,
+                "user_id": user.id,
+                "store_count": store_count,
+                "api_count": api_count,
+                "difference": diff,
+                "difference_percent": diff_percent,
+                "match": match
+            })
 
             # Update max difference
             if diff > results["max_difference"]:

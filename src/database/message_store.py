@@ -139,6 +139,69 @@ class MessageStore:
             )
             await db.commit()
 
+    async def adjust_message_count(
+        self,
+        guild_id: int,
+        user_id: int,
+        channel_id: int,
+        delta: int,
+        message_date: Optional[datetime] = None
+    ):
+        """
+        Adjust a user's message count by delta (can be negative).
+
+        Args:
+            guild_id: Discord guild ID
+            user_id: Discord user ID
+            channel_id: Discord channel ID
+            delta: Change to apply (negative to decrement)
+            message_date: Optional timestamp for last_message_date when increasing
+        """
+        if delta == 0:
+            return
+
+        await self.initialize()
+
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """
+                SELECT message_count, last_message_date
+                FROM message_counts
+                WHERE guild_id = ? AND user_id = ? AND channel_id = ?
+                """,
+                (guild_id, user_id, channel_id)
+            )
+            row = await cursor.fetchone()
+            current = row[0] if row else 0
+
+            new_count = max(0, current + delta)
+
+            if new_count == 0:
+                # Remove row entirely to avoid negative/zero entries
+                await db.execute(
+                    "DELETE FROM message_counts WHERE guild_id = ? AND user_id = ? AND channel_id = ?",
+                    (guild_id, user_id, channel_id)
+                )
+            else:
+                # Update or insert
+                message_date_str = (
+                    message_date.isoformat() if message_date else (row[1] if row else None)
+                )
+                await db.execute(
+                    """
+                    INSERT INTO message_counts
+                    (guild_id, user_id, channel_id, message_count, last_message_date)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(guild_id, user_id, channel_id)
+                    DO UPDATE SET
+                        message_count = excluded.message_count,
+                        last_message_date = COALESCE(excluded.last_message_date, last_message_date)
+                    """,
+                    (guild_id, user_id, channel_id, new_count, message_date_str)
+                )
+
+            await db.commit()
+
     async def get_user_total(
         self,
         guild_id: int,
@@ -423,6 +486,70 @@ class MessageStore:
             await db.commit()
 
         logger.info(f"Reset all data for guild {guild_id}")
+
+    async def delete_channel_counts(self, guild_id: int, channel_id: int) -> int:
+        """Delete all message counts for a given channel. Returns rows affected."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "DELETE FROM message_counts WHERE guild_id = ? AND channel_id = ?",
+                (guild_id, channel_id)
+            )
+            await db.commit()
+            return cursor.rowcount or 0
+
+    async def prune_deleted_channels(self, guild: discord.Guild) -> int:
+        """
+        Remove message counts for channels/threads that no longer exist in the guild.
+
+        Args:
+            guild: Discord guild object
+
+        Returns:
+            Number of distinct channels removed
+        """
+        await self.initialize()
+
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT DISTINCT channel_id FROM message_counts WHERE guild_id = ?",
+                (guild.id,)
+            )
+            rows = await cursor.fetchall()
+
+        existing = set()
+        for row in rows:
+            cid = row[0]
+            channel = (
+                guild.get_channel(cid)
+                or (guild.get_thread(cid) if hasattr(guild, "get_thread") else None)
+                or (guild.get_channel_or_thread(cid) if hasattr(guild, "get_channel_or_thread") else None)
+            )
+            if channel:
+                existing.add(cid)
+
+        # Channels present in DB but not in guild cache
+        stale_channels = {row[0] for row in rows} - existing
+
+        if not stale_channels:
+            return 0
+
+        placeholders = ",".join("?" * len(stale_channels))
+        params = [guild.id, *stale_channels]
+
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                f"DELETE FROM message_counts WHERE guild_id = ? AND channel_id IN ({placeholders})",
+                params
+            )
+            await db.commit()
+
+        logger.info(
+            "Pruned %d deleted channels from message_counts for guild %s",
+            len(stale_channels),
+            guild.name
+        )
+        return len(stale_channels)
 
     async def get_stats(self, guild_id: int) -> Dict:
         """

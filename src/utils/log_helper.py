@@ -42,7 +42,8 @@ class DiscordLogger:
         *,
         status: str,
         color: discord.Color = discord.Color.blurple(),
-        message: Optional[discord.Message] = None
+        message: Optional[discord.Message] = None,
+        ping: Optional[str] = None
     ) -> Optional[discord.Message]:
         channel = self.get_channel(guild)
         if not channel:
@@ -60,7 +61,10 @@ class DiscordLogger:
             if message:
                 await message.edit(embed=embed)
                 return message
-            return await channel.send(embed=embed)
+            return await channel.send(
+                content=ping if ping else None,
+                embed=embed
+            )
         except Exception as exc:
             logger.warning("Failed to send Discord log entry: %s", exc)
             return None

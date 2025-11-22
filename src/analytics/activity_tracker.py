@@ -158,12 +158,16 @@ class ActivityTracker:
                     break
 
                 except discord.HTTPException as e:
-                    if e.status == 429:
-                        # Rate limited - retry with exponential backoff
-                        retry_after = e.retry_after if hasattr(e, 'retry_after') else min(2 ** retry_count, max_wait)
+                    # Handle rate limits and transient errors with retries
+                    transient_statuses = {500, 502, 503, 504}
+                    if e.status == 429 or e.status in transient_statuses:
+                        retry_after = (
+                            e.retry_after if hasattr(e, "retry_after")
+                            else min(2 ** retry_count, max_wait)
+                        )
                         retry_count += 1
                         logger.warning(
-                            f"⏳ Rate limited on #{channel.name} for user {user.name}. "
+                            f"⏳ HTTP {e.status} on #{channel.name} for user {user.name}. "
                             f"Waiting {retry_after:.1f}s (attempt #{retry_count})"
                         )
                         await asyncio.sleep(retry_after)
@@ -251,19 +255,20 @@ class ActivityTracker:
                 break
 
             except discord.HTTPException as e:
-                # Handle rate limiting - wait as long as needed
-                if e.status == 429:
+                # Handle rate limiting and transient server errors
+                transient_statuses = {500, 502, 503, 504}
+                if e.status == 429 or e.status in transient_statuses:
                     # Use Discord's suggested wait time, or exponential backoff
                     retry_after = e.retry_after if hasattr(e, 'retry_after') else min(2 ** retry_count, max_wait)
                     retry_count += 1
 
                     logger.warning(
-                        f"⏳ Rate limited on channel {channel.name}. "
+                        f"⏳ HTTP {e.status} on channel {channel.name}. "
                         f"Waiting {retry_after:.1f}s (attempt #{retry_count}). "
-                        f"Will retry indefinitely to ensure complete data."
+                        f"Will retry to ensure complete data."
                     )
                     await asyncio.sleep(retry_after)
-                    # Continue loop - never give up on rate limits
+                    # Continue loop - never give up on rate limits/transients
                     continue
                 else:
                     logger.error(f"HTTP error in channel {channel.name}: {e}")

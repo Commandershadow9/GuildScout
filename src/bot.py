@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.utils import Config, setup_logger
 from src.utils.log_helper import DiscordLogger
+from src.utils.health_server import HealthCheckServer
 from src.database import MessageCache
 from src.database.message_store import MessageStore
 from src.commands.analyze import setup as setup_analyze
@@ -52,6 +53,9 @@ class GuildScoutBot(commands.Bot):
         self.message_store = message_store
         self.logger = logging.getLogger("guildscout.bot")
         self.discord_logger = DiscordLogger(bot=self, config=config)
+
+        # Health check HTTP server
+        self.health_server = HealthCheckServer(bot=self, port=8765)
 
         # Background task management
         self._import_task = None  # Store background import task to prevent garbage collection
@@ -113,6 +117,12 @@ class GuildScoutBot(commands.Bot):
             self.logger.info(f"Synced commands to guild {self.config.guild_id}")
         except Exception as e:
             self.logger.error(f"Failed to sync commands: {e}")
+
+        # Start health check server
+        try:
+            await self.health_server.start()
+        except Exception as e:
+            self.logger.error(f"Failed to start health check server: {e}")
 
     async def on_ready(self):
         """
@@ -741,6 +751,21 @@ class GuildScoutBot(commands.Bot):
                 f"❌ An error occurred: {str(error)}",
                 ephemeral=True
             )
+
+    async def close(self):
+        """Clean shutdown of the bot"""
+        self.logger.info("Shutting down GuildScout...")
+
+        # Stop health check server
+        try:
+            await self.health_server.stop()
+        except Exception as e:
+            self.logger.error(f"Error stopping health server: {e}")
+
+        # Close parent bot
+        await super().close()
+
+        self.logger.info("GuildScout shutdown complete")
 
 
 def main():

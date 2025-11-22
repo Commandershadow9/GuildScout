@@ -163,6 +163,11 @@ class Config:
         return int(channel_id) if channel_id else None
 
     @property
+    def alert_ping(self) -> Optional[str]:
+        """Optional mention content to ping on errors (e.g., '@here' or '<@&role>')."""
+        return self.get("logging.alert_ping")
+
+    @property
     def live_tracking_interval_seconds(self) -> int:
         """Interval for posting live tracking summaries to Discord."""
         interval = self.get("logging.live_tracking_interval_seconds", 3600)

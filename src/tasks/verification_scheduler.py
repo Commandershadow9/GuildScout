@@ -111,6 +111,18 @@ class VerificationScheduler(commands.Cog):
                 )
                 return
 
+            # Clean up stale channels so counts match current guild state
+            try:
+                pruned = await self.message_store.prune_deleted_channels(guild)
+                if pruned:
+                    logger.info("Pruned %d deleted channels before %s", pruned, label)
+            except Exception as cleanup_exc:
+                logger.warning(
+                    "Failed to prune deleted channels before %s: %s",
+                    label,
+                    cleanup_exc
+                )
+
             log_message = await self._log_status(
                 guild,
                 title=f"🔍 {label}",
@@ -193,11 +205,23 @@ class VerificationScheduler(commands.Cog):
                             f"- {disc['user']}: Store {disc['store_count']} | "
                             f"API {disc['api_count']} "
                             f"(Diff {disc['difference']}, {disc['difference_percent']:.1f}%)"
-                        )
+                    )
                     description += "\n\n**Auffällige User:**\n" + "\n".join(diff_lines)
+
+                user_lines = []
+                for user_res in results.get("user_results", []):
+                    status_icon = "✅" if user_res["match"] else "❌"
+                    user_lines.append(
+                        f"- {status_icon} {user_res['user']}: "
+                        f"Store {user_res['store_count']} | API {user_res['api_count']} "
+                        f"(Diff {user_res['difference']}, {user_res['difference_percent']:.1f}%)"
+                    )
+                if user_lines:
+                    description += "\n\n**Geprüfte User:**\n" + "\n".join(user_lines)
 
                 status_text = "✅ Erfolgreich" if results["passed"] else "⚠️ Abweichungen"
                 color = discord.Color.green() if results["passed"] else discord.Color.orange()
+                ping = self.config.alert_ping if not results["passed"] else None
 
                 await self._log_status(
                     guild,
@@ -205,7 +229,8 @@ class VerificationScheduler(commands.Cog):
                     description=description,
                     status=status_text,
                     color=color,
-                    message=log_message
+                    message=log_message,
+                    ping=ping
                 )
 
                 logger.info(
@@ -223,7 +248,8 @@ class VerificationScheduler(commands.Cog):
                     description=f"Fehler: {exc}",
                     status="❌ Fehler",
                     color=discord.Color.red(),
-                    message=log_message
+                    message=log_message,
+                    ping=self.config.alert_ping
                 )
 
     async def _log_status(
@@ -234,7 +260,8 @@ class VerificationScheduler(commands.Cog):
         *,
         status: str,
         color: discord.Color,
-        message: Optional[discord.Message] = None
+        message: Optional[discord.Message] = None,
+        ping: Optional[str] = None
     ) -> Optional[discord.Message]:
         """Helper to send/update log messages via DiscordLogger."""
         if not self.discord_logger:
@@ -245,7 +272,8 @@ class VerificationScheduler(commands.Cog):
             description,
             status=status,
             color=color,
-            message=message
+            message=message,
+            ping=ping
         )
 
     def _should_run_today(self, now: datetime) -> bool:
