@@ -3,7 +3,6 @@
 import logging
 import discord
 import asyncio
-import aiosqlite
 from typing import List, Optional, Callable, Dict
 from collections import defaultdict
 
@@ -346,18 +345,7 @@ class HistoricalImporter:
 
             # Clean up import state to allow retry
             try:
-                # Clear the import_started flag so import can be retried
-                await self.message_store.mark_import_completed(
-                    guild_id=self.guild.id,
-                    total_messages=0  # Mark as 0 to indicate failure
-                )
-                # But immediately clear it again to allow retry
-                async with aiosqlite.connect(self.message_store.db_path) as db:
-                    await db.execute(
-                        "UPDATE import_metadata SET import_completed = 0, import_start_time = NULL, import_end_time = NULL WHERE guild_id = ?",
-                        (self.guild.id,)
-                    )
-                    await db.commit()
+                await self.message_store.reset_import_status(self.guild.id)
                 logger.info("Import state cleared - can retry")
             except Exception as cleanup_error:
                 logger.error(f"Failed to clean up import state: {cleanup_error}")
@@ -377,10 +365,6 @@ class HistoricalImporter:
         Args:
             message_counts: Dictionary of (guild_id, user_id, channel_id) -> count
         """
-        for (guild_id, user_id, channel_id), count in message_counts.items():
-            await self.message_store.increment_message(
-                guild_id=guild_id,
-                user_id=user_id,
-                channel_id=channel_id,
-                count=count
-            )
+        if not message_counts:
+            return
+        await self.message_store.bulk_increment_messages(message_counts)

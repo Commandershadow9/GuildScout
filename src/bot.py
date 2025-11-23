@@ -55,7 +55,7 @@ class GuildScoutBot(commands.Bot):
         self.discord_logger = DiscordLogger(bot=self, config=config)
 
         # Health check HTTP server
-        self.health_server = HealthCheckServer(bot=self, port=8765)
+        self.health_server = HealthCheckServer(bot=self, port=self.config.health_check_port)
 
         # Background task management
         self._import_task = None  # Store background import task to prevent garbage collection
@@ -70,7 +70,7 @@ class GuildScoutBot(commands.Bot):
         intents.message_content = True  # Required for message counting
 
         super().__init__(
-            command_prefix="!",  # Prefix for text commands (not used in slash commands)
+            command_prefix=None,  # No prefix for text commands, using slash commands
             intents=intents,
             *args,
             **kwargs
@@ -814,6 +814,3 @@ def main():
         logger.error(f"Fatal error: {e}", exc_info=True)
         sys.exit(1)
 
-
-if __name__ == "__main__":
-    main()

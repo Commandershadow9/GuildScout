@@ -9,6 +9,10 @@ discord:
   # Enable Developer Mode in Discord, right-click your server, Copy ID
   guild_id: 123456789012345678
 
+health_check:
+  # Port for the health check HTTP server
+  port: 8765
+
 scoring:
   # Scoring weights (must sum to 1.0)
   weights:

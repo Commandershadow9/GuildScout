@@ -139,6 +139,40 @@ class MessageStore:
             )
             await db.commit()
 
+    async def bulk_increment_messages(self, message_counts: Dict):
+        """
+        Increment message counts for multiple users/channels in bulk.
+
+        Args:
+            message_counts: Dictionary of (guild_id, user_id, channel_id) -> count
+        """
+        await self.initialize()
+
+        if not message_counts:
+            return
+
+        now_str = datetime.now(timezone.utc).isoformat()
+
+        records = [
+            (guild_id, user_id, channel_id, count, now_str, count, now_str)
+            for (guild_id, user_id, channel_id), count in message_counts.items()
+        ]
+
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.executemany(
+                """
+                INSERT INTO message_counts
+                (guild_id, user_id, channel_id, message_count, last_message_date)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(guild_id, user_id, channel_id)
+                DO UPDATE SET
+                    message_count = message_count + ?,
+                    last_message_date = ?
+                """,
+                records
+            )
+            await db.commit()
+
     async def adjust_message_count(
         self,
         guild_id: int,
@@ -405,6 +439,27 @@ class MessageStore:
             await db.commit()
 
         logger.info(f"Marked import as completed for guild {guild_id} ({total_messages} messages)")
+
+    async def reset_import_status(self, guild_id: int):
+        """
+        Reset the import status for a guild to allow re-import after a failure.
+
+        Args:
+            guild_id: Discord guild ID
+        """
+        await self.initialize()
+
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """
+                UPDATE import_metadata
+                SET import_completed = 0, import_start_time = NULL, import_end_time = NULL
+                WHERE guild_id = ?
+                """,
+                (guild_id,)
+            )
+            await db.commit()
+        logger.info(f"Reset import status for guild {guild_id}")
 
     async def is_import_running(self, guild_id: int) -> bool:
         """

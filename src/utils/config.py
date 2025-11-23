@@ -81,6 +81,11 @@ class Config:
         return int(guild_id)
 
     @property
+    def health_check_port(self) -> int:
+        """Get the port for the health check server."""
+        return self.get("health_check.port", 8765)
+
+    @property
     def scoring_weights(self) -> Dict[str, float]:
         """Get scoring weights."""
         return {
