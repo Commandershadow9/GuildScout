@@ -356,7 +356,7 @@ logging:
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
   discord_channel_id: 123456789012345678   # setzt der Bot via /setup-log-channel
   alert_ping: "<@123456789012345678>"      # optionaler Ping bei Fehlern/Abweichungen
-  enable_discord_service_logs: true
+  enable_discord_service_logs: true        # false wenn ShadowOps Bot das Monitoring übernimmt
   live_tracking_interval_seconds: 3600     # spätestens alle 60 Min. aktualisieren
   live_tracking_idle_gap_seconds: 180      # nach 3 Min. Ruhe sofortiges Update
 
@@ -490,12 +490,96 @@ Wenn ein Discord-Log-Channel konfiguriert ist (`/setup-log-channel`), erhältst 
 - Automatische Embeds für `📥` Re-Import, `🔍` tägliche/ wöchentliche Verifikationen sowie Fehlermeldungen
 - Manuelle `/verify-message-counts`-Ergebnisse inklusive Fallback, falls das Follow-up abläuft
 
+## 🤝 Integration with ShadowOps Bot (Centralized Monitoring)
+
+GuildScout can be integrated with [ShadowOps Bot](https://github.com/Commandershadow9/shadowops-bot) for centralized monitoring and notifications.
+
+### Centralized Monitoring Setup (Option B)
+
+When using ShadowOps Bot for centralized monitoring:
+
+1. **Disable GuildScout Self-Reporting:**
+   ```yaml
+   discord:
+     discord_service_logs_enabled: false
+   ```
+
+2. **ShadowOps Bot handles:**
+   - Git push notifications with AI-generated patch notes
+   - Bot status monitoring (online/offline)
+   - Error alerts
+   - Professional customer-facing updates
+
+3. **Benefits:**
+   - No duplicate status messages
+   - Professional AI-generated patch notes (Ollama llama3.1)
+   - Multi-language support (German/English)
+   - Centralized monitoring for all projects
+   - Automatic channel setup on customer servers
+
+### How It Works
+
+```
+GitHub Push → ShadowOps Bot Webhook
+    ↓
+AI generates patch notes (llama3.1)
+    ↓
+Internal embed (German, technical) → Dev server
+Customer embed (English, friendly) → Customer server
+    ↓
+GuildScout updates channel (if configured)
+```
+
+### Configuration Example
+
+**ShadowOps Bot `config.yaml`:**
+```yaml
+projects:
+  guildscout:
+    enabled: true
+    patch_notes:
+      language: en
+      use_ai: true
+    external_notifications:
+      - guild_id: 1390695394777890897  # Customer Discord server
+        channel_id: 1442887630034440426  # Updates channel
+        enabled: true
+        notify_on:
+          git_push: true
+          offline: false
+          online: false
+          errors: false
+```
+
+**GuildScout `config.yaml`:**
+```yaml
+discord:
+  token: YOUR_TOKEN
+  guild_id: 1390695394777890897
+  discord_service_logs_enabled: false  # ShadowOps handles status
+```
+
+### Manual Monitoring Mode
+
+To use GuildScout with independent monitoring:
+
+```yaml
+discord:
+  discord_service_logs_enabled: true  # GuildScout posts own status
+```
+
+This is useful for:
+- Standalone deployments without ShadowOps
+- Development/testing environments
+- Separate monitoring requirements
+
 ## 🔒 Security & Privacy
 
 - **Bot Token**: Never share your bot token! It's in `config/config.yaml` which is gitignored
 - **Data Storage**: Bot doesn't store user messages, only counts them
 - **Privacy**: Bot can only read messages in channels it has access to
 - **Permissions**: Use role-based permissions to restrict who can run analysis
+- **Centralized Monitoring**: When using ShadowOps, only admins see monitoring channels
 
 ## 🛠️ Troubleshooting
 
@@ -522,7 +606,29 @@ cp config/config.example.yaml config/config.yaml
 
 ## 🚀 Version History
 
-### Version 2.0.0 (Current) ✅
+### Version 2.0.1 (2025-11-25) - Current ✅
+**Integration with ShadowOps Bot**
+
+**Changes:**
+- ✅ **Centralized Monitoring Support**: `discord_service_logs_enabled: false` for ShadowOps integration
+- ✅ **Documentation**: Added multi-bot monitoring setup guide
+- ✅ **Compatibility**: Works with ShadowOps Bot v3.2.0+ for external notifications
+
+**Configuration:**
+```yaml
+discord:
+  discord_service_logs_enabled: false  # When using ShadowOps for monitoring
+```
+
+**Benefits:**
+- Professional AI-generated patch notes on customer servers
+- Centralized status monitoring across all projects
+- No duplicate notification spam
+- Multi-language support (DE/EN)
+
+See [CHANGELOG.md](CHANGELOG.md) for full version history.
+
+### Version 2.0.0 ✅
 **Major Performance, Guild Management & Features Update**
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed changes.
