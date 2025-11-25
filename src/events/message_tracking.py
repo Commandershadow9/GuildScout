@@ -47,6 +47,7 @@ class MessageTracker(commands.Cog):
         self.dashboard_manager = dashboard_manager
         self._live_log_state: Dict[int, Dict[str, Any]] = {}
         self._live_log_locks: Dict[int, asyncio.Lock] = {}
+        self._live_log_initialized: Dict[int, bool] = {}  # Track initialization per guild
         interval = live_log_interval_seconds or 3600
         idle_gap = live_log_idle_gap_seconds or 180
         self._live_log_update_interval = max(5, interval)
