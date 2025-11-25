@@ -11,6 +11,7 @@ from discord.ext import commands
 
 from src.database.message_store import MessageStore
 from src.utils.log_helper import DiscordLogger
+from src.utils.dashboard_manager import DashboardManager
 
 
 logger = logging.getLogger("guildscout.message_tracking")
@@ -25,6 +26,7 @@ class MessageTracker(commands.Cog):
         message_store: MessageStore,
         excluded_channel_names: Optional[List[str]] = None,
         discord_logger: Optional[DiscordLogger] = None,
+        dashboard_manager: Optional[DashboardManager] = None,
         live_log_interval_seconds: Optional[int] = None,
         live_log_idle_gap_seconds: Optional[int] = None
     ):
@@ -35,11 +37,14 @@ class MessageTracker(commands.Cog):
             bot: Discord bot instance
             message_store: MessageStore instance
             excluded_channel_names: List of channel name patterns to exclude
+            discord_logger: DiscordLogger for log channel
+            dashboard_manager: DashboardManager for ranking channel dashboard
         """
         self.bot = bot
         self.message_store = message_store
         self.excluded_channel_names = excluded_channel_names or []
         self.discord_logger = discord_logger
+        self.dashboard_manager = dashboard_manager
         self._live_log_state: Dict[int, Dict[str, Any]] = {}
         self._live_log_locks: Dict[int, asyncio.Lock] = {}
         interval = live_log_interval_seconds or 3600
@@ -290,7 +295,7 @@ class MessageTracker(commands.Cog):
             logger.debug(
                 f"Tracked message from {message.author.name} in {channel.name}"
             )
-            logger.info(
+            logger.debug(
                 "🟢 Live-Tracking | Guild: %s (%d) | Channel: #%s (%d) | User: %s (%d) | Message ID: %d",
                 message.guild.name,
                 message.guild.id,
@@ -300,6 +305,12 @@ class MessageTracker(commands.Cog):
                 message.author.id,
                 message.id
             )
+
+            # Update dashboard in ranking channel (Commands + Live Activity)
+            if self.dashboard_manager:
+                await self.dashboard_manager.add_message_event(message, channel)
+
+            # Update live-tracking embed in log channel (technical details)
             await self._log_live_tracking_to_discord(message, channel)
         except Exception as e:
             logger.error(f"Failed to track message: {e}", exc_info=True)
@@ -399,9 +410,14 @@ class MessageTracker(commands.Cog):
         """Ensure the live-tracking status is visible when the bot connects."""
         for guild in self.bot.guilds:
             try:
+                # Initialize dashboard in ranking channel
+                if self.dashboard_manager:
+                    await self.dashboard_manager.ensure_dashboard_exists(guild)
+
+                # Initialize live-tracking embed in log channel
                 await self._ensure_live_log_placeholder(guild)
             except Exception as exc:
-                logger.warning("Failed to initialize live-tracking log for %s: %s", guild.name, exc)
+                logger.warning("Failed to initialize tracking for %s: %s", guild.name, exc)
 
 
 async def setup(bot: commands.Bot, config, message_store: MessageStore):
@@ -419,16 +435,23 @@ async def setup(bot: commands.Bot, config, message_store: MessageStore):
         ['nsfw', 'bot-spam']
     )
     discord_logger = DiscordLogger(bot, config)
-    live_tracking_interval = getattr(
+
+    # Dashboard intervals (faster updates for user-facing dashboard)
+    dashboard_interval = getattr(config, 'dashboard_update_interval_seconds', 300)  # 5 min default
+    dashboard_idle_gap = getattr(config, 'dashboard_idle_gap_seconds', 120)  # 2 min default
+
+    # Create dashboard manager for ranking channel
+    dashboard_manager = DashboardManager(
+        bot,
         config,
-        'live_tracking_interval_seconds',
-        3600
+        message_store,
+        update_interval_seconds=dashboard_interval,
+        idle_gap_seconds=dashboard_idle_gap
     )
-    live_tracking_idle_gap = getattr(
-        config,
-        'live_tracking_idle_gap_seconds',
-        180
-    )
+
+    # Log channel intervals (slower, technical logs)
+    live_tracking_interval = getattr(config, 'live_tracking_interval_seconds', 3600)  # 1 hour default
+    live_tracking_idle_gap = getattr(config, 'live_tracking_idle_gap_seconds', 180)  # 3 min default
 
     # Add the cog to the bot
     await bot.add_cog(
@@ -437,8 +460,9 @@ async def setup(bot: commands.Bot, config, message_store: MessageStore):
             message_store,
             excluded_channel_names=excluded_channel_names,
             discord_logger=discord_logger,
+            dashboard_manager=dashboard_manager,
             live_log_interval_seconds=live_tracking_interval,
             live_log_idle_gap_seconds=live_tracking_idle_gap
         )
     )
-    logger.info("Message tracking cog loaded")
+    logger.info("Message tracking cog loaded with dashboard support")

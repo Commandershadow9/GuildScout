@@ -173,8 +173,28 @@ class Config:
         return self.get("logging.alert_ping")
 
     @property
+    def dashboard_update_interval_seconds(self) -> int:
+        """Interval for updating the dashboard embed in ranking channel."""
+        interval = self.get("logging.dashboard_update_interval_seconds", 300)
+        try:
+            interval_int = int(interval)
+        except (TypeError, ValueError):
+            interval_int = 300
+        return max(60, interval_int)  # Min 1 minute
+
+    @property
+    def dashboard_idle_gap_seconds(self) -> int:
+        """Gap after which the dashboard should refresh immediately."""
+        gap = self.get("logging.dashboard_idle_gap_seconds", 120)
+        try:
+            gap_int = int(gap)
+        except (TypeError, ValueError):
+            gap_int = 120
+        return max(30, gap_int)  # Min 30 seconds
+
+    @property
     def live_tracking_interval_seconds(self) -> int:
-        """Interval for posting live tracking summaries to Discord."""
+        """Interval for posting live tracking summaries to Discord log channel."""
         interval = self.get("logging.live_tracking_interval_seconds", 3600)
         try:
             interval_int = int(interval)
