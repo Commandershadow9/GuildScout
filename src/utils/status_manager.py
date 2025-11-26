@@ -203,6 +203,56 @@ class StatusManager:
             color=discord.Color.orange()
         )
 
+    async def send_temp_status(
+        self,
+        guild: discord.Guild,
+        title: str,
+        description: str,
+        *,
+        color: discord.Color = discord.Color.blue(),
+        message: Optional[discord.Message] = None
+    ) -> Optional[discord.Message]:
+        """
+        Send or update a temporary status message (without acknowledgment button).
+        Used for "Running..." or progress messages that will be deleted later.
+
+        Args:
+            guild: Discord guild
+            title: Status title
+            description: Status description
+            color: Embed color (default blue)
+            message: Existing message to update (or None to create new)
+
+        Returns:
+            Sent/updated message or None if failed
+        """
+        async with self._lock:
+            channel = self._get_status_channel(guild)
+            if not channel:
+                return None
+
+            # Create embed
+            embed = discord.Embed(
+                title=title,
+                description=description,
+                color=color,
+                timestamp=datetime.utcnow()
+            )
+
+            try:
+                if message:
+                    # Update existing message
+                    await message.edit(embed=embed)
+                    return message
+                else:
+                    # Send new message
+                    message = await channel.send(embed=embed)
+                    return message
+
+            except Exception as e:
+                logger.error(f"Failed to send temp status: {e}", exc_info=True)
+                return None
+
     def get_unacknowledged_count(self, guild_id: int) -> int:
         """Get count of unacknowledged status messages (not yet implemented - would need tracking)."""
         # TODO: Track active messages and count unacknowledged ones

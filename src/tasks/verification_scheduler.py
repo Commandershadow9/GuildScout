@@ -10,7 +10,6 @@ import discord
 from discord.ext import commands, tasks
 
 from src.utils import Config
-from src.utils.log_helper import DiscordLogger
 from src.database import MessageCache
 from src.database.message_store import MessageStore
 from src.analytics.activity_tracker import ActivityTracker
@@ -39,7 +38,6 @@ class VerificationScheduler(commands.Cog):
         self.bot = bot
         self.config = config
         self.message_store = message_store
-        self.discord_logger = DiscordLogger(bot, config)
         self.verification_stats = VerificationStats()
 
         self.daily_enabled = config.daily_verification_enabled
@@ -300,18 +298,31 @@ class VerificationScheduler(commands.Cog):
         message: Optional[discord.Message] = None,
         ping: Optional[str] = None
     ) -> Optional[discord.Message]:
-        """Helper to send/update log messages via DiscordLogger."""
-        if not self.discord_logger:
+        """Helper to send/update status messages via StatusManager."""
+        if not hasattr(self.bot, 'status_manager'):
             return None
-        return await self.discord_logger.send(
-            guild,
-            title,
-            description,
-            status=status,
-            color=color,
-            message=message,
-            ping=ping
-        )
+
+        # Determine if this is an error/warning (needs acknowledgment) or temp status
+        is_error = "❌" in title or "⚠️" in title or "Fehler" in title.lower()
+
+        if is_error:
+            # Error/Warning: Send with acknowledgment button
+            return await self.bot.status_manager.send_error(
+                guild,
+                title,
+                description,
+                ping=ping,
+                color=color
+            )
+        else:
+            # Temporary status (Running...): Send without button
+            return await self.bot.status_manager.send_temp_status(
+                guild,
+                title,
+                description,
+                color=color,
+                message=message
+            )
 
     def _should_run_today(self, now: datetime) -> bool:
         target_dt = _combine_datetime(
