@@ -363,7 +363,7 @@ class GuildScoutBot(commands.Bot):
 
     async def _create_import_status_message(self, guild: discord.Guild):
         """
-        Create initial import status message in Discord.
+        Create initial import status message in Ranking Channel.
 
         Args:
             guild: Discord guild
@@ -371,16 +371,13 @@ class GuildScoutBot(commands.Bot):
         Returns:
             Discord message object for updating
         """
-        if not self.config.discord_service_logs_enabled:
+        # Post import status in ranking channel (user-facing)
+        ranking_channel_id = self.config.ranking_channel_id
+        if not ranking_channel_id:
             return None
 
-        # Get log channel
-        log_channel_id = self.config.log_channel_id
-        if not log_channel_id:
-            return None
-
-        log_channel = guild.get_channel(log_channel_id)
-        if not log_channel:
+        ranking_channel = guild.get_channel(ranking_channel_id)
+        if not ranking_channel:
             return None
 
         # Create initial embed
@@ -396,8 +393,8 @@ class GuildScoutBot(commands.Bot):
         embed.timestamp = discord.utils.utcnow()
 
         try:
-            message = await log_channel.send(embed=embed)
-            self.logger.info(f"Created live status message in #{log_channel.name}")
+            message = await ranking_channel.send(embed=embed)
+            self.logger.info(f"Created import status message in #{ranking_channel.name}")
             return message
         except Exception as e:
             self.logger.error(f"Failed to create status message: {e}")
@@ -546,9 +543,8 @@ class GuildScoutBot(commands.Bot):
             self.logger.info("🚀 AUTOMATIC HISTORICAL IMPORT STARTED")
             self.logger.info("=" * 70)
 
-            # Create initial status message in Discord
-            if self.config.discord_service_logs_enabled:
-                status_message = await self._create_import_status_message(guild)
+            # Create initial status message in ranking channel (always show to users)
+            status_message = await self._create_import_status_message(guild)
 
             # Create importer
             excluded_channel_names = getattr(
@@ -591,7 +587,7 @@ class GuildScoutBot(commands.Bot):
                     pass
 
             # Update the live status message with final result
-            if status_message and self.config.discord_service_logs_enabled:
+            if status_message:
                 try:
                     if result['success']:
                         # Calculate final duration
@@ -675,6 +671,14 @@ class GuildScoutBot(commands.Bot):
                                 self.logger.info("✅ Dashboard updated with import results")
                 except Exception as dash_err:
                     self.logger.warning(f"Could not update dashboard after import: {dash_err}")
+
+                # Delete import status message (success = clean channel)
+                if status_message:
+                    try:
+                        await status_message.delete()
+                        self.logger.info("🧹 Deleted import status message (import successful)")
+                    except Exception as del_err:
+                        self.logger.warning(f"Could not delete import status message: {del_err}")
 
                 # Send success notification
                 if self.config.discord_service_logs_enabled:
