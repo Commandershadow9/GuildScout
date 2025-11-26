@@ -342,19 +342,6 @@ class DashboardManager:
         except Exception as e:
             logger.error(f"Failed to cleanup old messages: {e}", exc_info=True)
 
-    async def cleanup_log_channel(self, guild: discord.Guild):
-        """Clean up old bot messages in the log channel."""
-        log_channel_id = self.config.log_channel_id
-        if not log_channel_id:
-            return
-
-        channel = guild.get_channel(log_channel_id)
-        if not isinstance(channel, discord.TextChannel):
-            return
-
-        # Clean up old messages in log channel (scan more messages - 500)
-        await self._cleanup_old_messages(channel, max_scan=500)
-
     def protect_message(self, message_id: int):
         """Protect a message from cleanup (e.g., import status)."""
         self._protected_messages.add(message_id)
