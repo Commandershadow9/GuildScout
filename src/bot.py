@@ -672,7 +672,7 @@ class GuildScoutBot(commands.Bot):
         Called on every restart to catch up with messages sent while bot was offline.
         """
         try:
-            from datetime import datetime, timedelta
+            from datetime import datetime, timedelta, timezone
             from src.utils.historical_import import HistoricalImporter
 
             # Get last known message timestamp from database
@@ -688,9 +688,13 @@ class GuildScoutBot(commands.Bot):
                 from dateutil import parser
                 last_import_time = parser.parse(last_import_time)
 
+            # Ensure timezone-aware datetime
+            if last_import_time.tzinfo is None:
+                last_import_time = last_import_time.replace(tzinfo=timezone.utc)
+
             # Add small buffer to avoid duplicates (already have messages up to this point)
             since_time = last_import_time + timedelta(milliseconds=1)
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
 
             # Calculate time since last message
             downtime = now - last_import_time
