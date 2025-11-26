@@ -519,27 +519,8 @@ class GuildScoutBot(commands.Bot):
                 # Import not completed - start it in background
                 self.logger.info(f"📥 Starting automatic historical import for {guild.name}")
 
-                # Send Discord notification
-                if self.config.discord_service_logs_enabled:
-                    await self.discord_logger.send(
-                        guild,
-                        "📥 Re-Import gestartet" if force_reimport else "📥 Automatischer Datenimport gestartet",
-                        (
-                            "Der Bot importiert jetzt alle historischen Nachrichten erneut.\n"
-                            "Dies kann einige Minuten dauern.\n\n"
-                            "**Bot bleibt währenddessen voll funktionsfähig!**\n"
-                            "Commands funktionieren normal (ggf. etwas langsamer).\n\n"
-                            "Fortschritt wird in den Logs angezeigt."
-                        ) if force_reimport else (
-                            "Der Bot importiert jetzt alle historischen Nachrichten.\n"
-                            "Dies kann 30-60 Minuten dauern.\n\n"
-                            "**Bot bleibt währenddessen voll funktionsfähig!**\n"
-                            "Commands funktionieren normal (ggf. etwas langsamer).\n\n"
-                            "Fortschritt wird in den Logs angezeigt."
-                        ),
-                        status="🔄 Import läuft",
-                        color=discord.Color.blue()
-                    )
+                # Note: Live status message is created in _run_auto_import()
+                # No separate notification needed here
 
                 # Start import in background
                 self._import_task = asyncio.create_task(self._run_auto_import(guild))

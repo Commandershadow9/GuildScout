@@ -265,8 +265,14 @@ class DashboardManager:
         except Exception as pin_err:
             logger.error(f"Failed to manage pins: {pin_err}", exc_info=True)
 
-    async def _cleanup_old_messages(self, channel: discord.TextChannel):
-        """Delete old bot messages from the ranking channel to keep it clean."""
+    async def _cleanup_old_messages(self, channel: discord.TextChannel, max_scan: int = 500):
+        """
+        Delete old bot messages from the channel to keep it clean.
+
+        Args:
+            channel: Channel to clean up
+            max_scan: Maximum number of messages to scan (default 500)
+        """
         try:
             bot_user_id = self.bot.user.id
             deleted_count = 0
@@ -286,8 +292,8 @@ class DashboardManager:
             except Exception as pin_err:
                 logger.warning(f"Could not fetch pinned messages: {pin_err}")
 
-            # Fetch last 100 messages and delete all old bot messages + system messages
-            async for message in channel.history(limit=100):
+            # Fetch messages and delete all old bot messages + system messages
+            async for message in channel.history(limit=max_scan):
                 should_delete = False
 
                 # Delete all bot messages (including previously pinned ones)
@@ -315,3 +321,16 @@ class DashboardManager:
                 logger.info(f"🧹 Cleaned up {deleted_count} messages and unpinned {unpinned_count} in #{channel.name}")
         except Exception as e:
             logger.error(f"Failed to cleanup old messages: {e}", exc_info=True)
+
+    async def cleanup_log_channel(self, guild: discord.Guild):
+        """Clean up old bot messages in the log channel."""
+        log_channel_id = self.config.log_channel_id
+        if not log_channel_id:
+            return
+
+        channel = guild.get_channel(log_channel_id)
+        if not isinstance(channel, discord.TextChannel):
+            return
+
+        # Clean up old messages in log channel (scan more messages - 500)
+        await self._cleanup_old_messages(channel, max_scan=500)

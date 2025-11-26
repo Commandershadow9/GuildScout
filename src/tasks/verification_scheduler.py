@@ -141,14 +141,14 @@ class VerificationScheduler(commands.Cog):
                 ]
 
                 if not eligible_ids:
-                    await self._log_status(
-                        guild,
-                        title=f"⚠️ {label}",
-                        description="Keine passenden User (>=10 Nachrichten) für die Stichprobe gefunden.",
-                        status="⚠️ Abgebrochen",
-                        color=discord.Color.red(),
-                        message=log_message
-                    )
+                    # Silently skip if no eligible users (common after restart/import)
+                    logger.info("%s übersprungen: Keine User mit >=10 Nachrichten", label)
+                    # Delete the "running" status message
+                    if log_message:
+                        try:
+                            await log_message.delete()
+                        except:
+                            pass
                     return
 
                 actual_sample_size = min(sample_size, len(eligible_ids))

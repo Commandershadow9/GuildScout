@@ -311,8 +311,7 @@ class MessageTracker(commands.Cog):
             if self.dashboard_manager:
                 await self.dashboard_manager.add_message_event(message, channel)
 
-            # Update live-tracking embed in log channel (technical details)
-            await self._log_live_tracking_to_discord(message, channel)
+            # Note: Live-tracking is now part of dashboard, no separate log embed needed
         except Exception as e:
             logger.error(f"Failed to track message: {e}", exc_info=True)
 
@@ -414,9 +413,10 @@ class MessageTracker(commands.Cog):
                 # Initialize dashboard in ranking channel
                 if self.dashboard_manager:
                     await self.dashboard_manager.ensure_dashboard_exists(guild)
+                    # Also cleanup log channel
+                    await self.dashboard_manager.cleanup_log_channel(guild)
 
-                # Initialize live-tracking embed in log channel
-                await self._ensure_live_log_placeholder(guild)
+                # Note: Live-tracking embed is now part of dashboard, no separate embed needed
             except Exception as exc:
                 logger.warning("Failed to initialize tracking for %s: %s", guild.name, exc)
 
