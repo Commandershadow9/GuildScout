@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.utils import Config, setup_logger
 from src.utils.log_helper import DiscordLogger
+from src.utils.status_manager import StatusManager
 from src.utils.health_server import HealthCheckServer
 from src.database import MessageCache
 from src.database.message_store import MessageStore
@@ -53,6 +54,7 @@ class GuildScoutBot(commands.Bot):
         self.message_store = message_store
         self.logger = logging.getLogger("guildscout.bot")
         self.discord_logger = DiscordLogger(bot=self, config=config)
+        self.status_manager = StatusManager(bot=self, config=config)
 
         # Health check HTTP server
         self.health_server = HealthCheckServer(bot=self, port=self.config.health_check_port)
@@ -708,28 +710,26 @@ class GuildScoutBot(commands.Bot):
             else:
                 self.logger.error(f"❌ Auto-import failed: {result.get('error', 'Unknown error')}")
 
-                if self.config.discord_service_logs_enabled:
-                    await self.discord_logger.send(
-                        guild,
-                        "❌ Import fehlgeschlagen",
-                        f"Fehler: {result.get('error', 'Unbekannter Fehler')}\n\n"
-                        "Bitte `/import-messages force=True` manuell ausführen.",
-                        status="❌ Fehler",
-                        color=discord.Color.red()
-                    )
+                # Send error to status channel with acknowledgment button
+                await self.status_manager.send_error(
+                    guild,
+                    "❌ Import fehlgeschlagen",
+                    f"Fehler: {result.get('error', 'Unbekannter Fehler')}\n\n"
+                    "Bitte `/import-messages force=True` manuell ausführen.",
+                    ping=self.config.alert_ping
+                )
 
         except Exception as e:
             self.logger.error(f"❌ CRITICAL: Auto-import failed with exception: {e}", exc_info=True)
 
-            if self.config.discord_service_logs_enabled:
-                await self.discord_logger.send(
-                    guild,
-                    "❌ Import-Fehler",
-                    f"Kritischer Fehler beim Import:\n```{str(e)}```\n\n"
-                    "Bitte Logs prüfen und `/import-messages` manuell ausführen.",
-                    status="❌ Fehler",
-                    color=discord.Color.red()
-                )
+            # Send critical error to status channel with ping
+            await self.status_manager.send_error(
+                guild,
+                "❌ Import-Fehler",
+                f"Kritischer Fehler beim Import:\n```{str(e)}```\n\n"
+                "Bitte Logs prüfen und `/import-messages` manuell ausführen.",
+                ping=self.config.alert_ping
+            )
 
     async def on_command_error(self, ctx, error):
         """Handle command errors."""
