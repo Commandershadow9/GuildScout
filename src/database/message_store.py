@@ -649,6 +649,13 @@ class MessageStore:
             import_completed = bool(import_row[0]) if import_row else False
             import_date = import_row[1] if import_row else None
 
+            # Last message timestamp (for delta imports)
+            cursor = await db.execute(
+                "SELECT MAX(last_message_date) FROM message_counts WHERE guild_id = ?",
+                (guild_id,)
+            )
+            last_message_timestamp = (await cursor.fetchone())[0]
+
             # Database size
             db_size = self.db_path.stat().st_size if self.db_path.exists() else 0
 
@@ -659,6 +666,7 @@ class MessageStore:
             "total_members": await self._get_tracked_member_count(guild_id),
             "import_completed": import_completed,
             "import_date": import_date,
+            "last_message_timestamp": last_message_timestamp,
             "db_size_bytes": db_size,
             "db_size_mb": round(db_size / 1024 / 1024, 2)
         }
