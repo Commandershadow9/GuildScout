@@ -464,17 +464,7 @@ class AnalyzeCommand(commands.Cog):
                     )
                 return
 
-            log_message = await self._log_event(
-                guild,
-                "Analyse gestartet",
-                (
-                    f"Rolle: **@{role.name}**\n"
-                    f"Kandidaten: {len(members)}\n"
-                    f"Reservierte Plätze: {len(excluded_members)}"
-                ),
-                status="⏳ Läuft",
-                color=discord.Color.orange()
-            )
+            log_message = None
 
             # Step 2: Count messages
             logger.info(f"Counting messages for {len(members)} members...")
@@ -487,32 +477,7 @@ class AnalyzeCommand(commands.Cog):
             )
 
             # Progress callback
-            last_progress = 0
-            heartbeat_stop = asyncio.Event()
-
-            async def heartbeat():
-                while not heartbeat_stop.is_set():
-                    await asyncio.sleep(30)
-                    if heartbeat_stop.is_set():
-                        break
-                    if log_message:
-                        await self._log_event(
-                            guild,
-                            "Analyse läuft",
-                            (
-                                f"Rolle: **@{role.name}**\n"
-                                f"Fortschritt: {last_progress}/{len(members)} Mitglieder"
-                            ),
-                            status="⏳ Läuft weiter",
-                            color=discord.Color.orange(),
-                            message=log_message
-                        )
-
-            heartbeat_task = asyncio.create_task(heartbeat())
-
             async def progress_callback(current: int, total: int):
-                nonlocal last_progress
-                last_progress = current
                 try:
                     await progress_msg.edit(
                         embed=discord_exporter.create_progress_embed(
@@ -522,28 +487,11 @@ class AnalyzeCommand(commands.Cog):
                 except:
                     pass  # Ignore edit errors
 
-                if log_message and (current == 1 or current % 5 == 0 or current == total):
-                    await self._log_event(
-                        guild,
-                        "Analyse läuft",
-                        (
-                            f"Rolle: **@{role.name}**\n"
-                            f"Fortschritt: {current}/{total} Mitglieder"
-                        ),
-                        status=f"🔍 {current}/{total}",
-                        color=discord.Color.orange(),
-                        message=log_message
-                    )
-
-            try:
-                message_counts, cache_stats = await activity_tracker.count_messages_for_users(
-                    members,
-                    days_lookback=days,
-                    progress_callback=progress_callback
-                )
-            finally:
-                heartbeat_stop.set()
-                await heartbeat_task
+            message_counts, cache_stats = await activity_tracker.count_messages_for_users(
+                members,
+                days_lookback=days,
+                progress_callback=progress_callback
+            )
 
             # Step 3: Calculate scores
             scores = scorer.calculate_scores(members, message_counts)
@@ -673,20 +621,6 @@ class AnalyzeCommand(commands.Cog):
             logger.info(
                 f"Analysis completed in {duration:.1f}s - "
                 f"{len(ranked_users)} users ranked"
-            )
-
-            await self._log_event(
-                guild,
-                "Analyse abgeschlossen",
-                (
-                    f"Rolle: **@{role.name}**\n"
-                    f"Platzierte Nutzer: {len(ranked_users)}\n"
-                    f"Dauer: {duration:.1f}s\n"
-                    f"Cache: {cache_stats['cache_hits']} Hits / {cache_stats['cache_misses']} Misses"
-                ),
-                status="✅ Abgeschlossen",
-                color=discord.Color.green(),
-                message=log_message
             )
 
         except Exception as e:
