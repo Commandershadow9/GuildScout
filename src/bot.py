@@ -672,6 +672,7 @@ class GuildScoutBot(commands.Bot):
         Called on every restart to catch up with messages sent while bot was offline.
         """
         try:
+            import asyncio
             from datetime import datetime, timedelta, timezone
             from src.utils.historical_import import HistoricalImporter
 
