@@ -19,18 +19,17 @@ class DiscordLogger:
         self.config = config
 
     def get_channel(self, guild: discord.Guild) -> Optional[discord.TextChannel]:
-        channel_id = None
-        if hasattr(self.bot, "log_channels") and guild.id in self.bot.log_channels:
-            channel_id = self.bot.log_channels[guild.id]
-        elif self.config.log_channel_id:
-            channel_id = self.config.log_channel_id
+        channel_id = self.config.status_channel_id
 
         if not channel_id:
             return None
 
         channel = guild.get_channel(channel_id)
         if not isinstance(channel, discord.TextChannel):
-            logger.warning("Configured log channel %s not found", channel_id)
+            # Only log once per channel to avoid spam
+            if not hasattr(self, "_logged_missing_channel"):
+                logger.warning("Configured status channel %s not found", channel_id)
+                self._logged_missing_channel = True
             return None
         return channel
 
