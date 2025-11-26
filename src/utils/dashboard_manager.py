@@ -12,6 +12,7 @@ from discord.ext import commands
 from src.database.message_store import MessageStore
 from src.utils.config import Config
 from src.utils.verification_stats import VerificationStats
+from src.utils.bot_statistics import BotStatistics
 
 logger = logging.getLogger("guildscout.dashboard")
 
@@ -41,6 +42,7 @@ class DashboardManager:
         self.config = config
         self.message_store = message_store
         self.verification_stats = VerificationStats()
+        self.bot_statistics = BotStatistics()
         self._update_interval = max(60, update_interval_seconds)  # Min 1 minute
         self._idle_gap = max(30, idle_gap_seconds)  # Min 30 seconds
         self._dashboard_state: Dict[int, Dict[str, Any]] = {}
@@ -108,6 +110,9 @@ class DashboardManager:
             state["last_message_time"] = now
             state["total_tracked"] += 1
 
+            # Track message in bot statistics (lifetime + session)
+            self.bot_statistics.track_message()
+
             # Decide if we should update now
             idle_break = (
                 previous_message_time is None
@@ -171,9 +176,12 @@ class DashboardManager:
             logger.warning(f"Could not load stats: {e}")
             db_total = 0
 
+        # Get bot statistics (session + lifetime)
+        bot_stats_summary = self.bot_statistics.get_dashboard_summary()
+
         activity_text = (
             f"**📊 Database Total:** {db_total:,} messages\n"
-            f"**🔄 Tracked Since Restart:** {state['total_tracked']} messages\n"
+            f"{bot_stats_summary}\n"
             f"**🕐 Last Update:** <t:{int(discord.utils.utcnow().timestamp())}:R>"
         )
 
