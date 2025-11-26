@@ -2,6 +2,8 @@
 
 ## Version 2.2.0 - Resilience & Dashboard Update (2025-11-26)
 
+> **Note:** Detaillierte Patch Notes mit verbessertem AI-System verfügbar im Discord Update-Channel.
+
 ### 🛡️ Resilience & Maintenance
 - **Automatisierte Backups**: Tägliches Backup der Datenbank (05:00 UTC) in `backups/`. Rotation behält die letzten 7 Tage.
 - **Datenbank-Optimierung**: Indizes für `user_id` und `channel_id` hinzugefügt für schnellere Abfragen bei großen Datenmengen.
