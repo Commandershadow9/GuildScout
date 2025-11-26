@@ -120,31 +120,47 @@ class DashboardManager:
                 await self._update_dashboard(guild, state)
 
     async def _update_dashboard(self, guild: discord.Guild, state: Dict[str, Any]):
-        """Update the dashboard embed with current info."""
+        """Update the combined dashboard + welcome message embed."""
         channel = self._get_ranking_channel(guild)
         if not channel:
             logger.warning(f"No ranking channel configured for guild {guild.name}")
             return
 
-        # Build embed
+        # Build comprehensive embed combining dashboard + welcome content
         embed = discord.Embed(
-            title="📋 GuildScout Dashboard",
-            description="",
+            title="📊 GuildScout Ranking-Kanal",
+            description=(
+                "Hier erscheinen automatisch alle Auswertungen von GuildScout.\n"
+                "Die Bewertung kombiniert **40 %** Tage im Server und **60 %** Nachrichtenaktivität."
+            ),
             color=discord.Color.blue(),
             timestamp=discord.utils.utcnow()
         )
 
-        # Commands Section
-        commands_text = (
-            "**📖 Available Commands:**\n"
-            "• `/analyze` - Rank users by role\n"
-            "• `/guild-status` - View guild members  \n"
-            "• `/my-score` - Check your ranking\n"
-            "• `/verify-message-counts` - Verify data accuracy"
+        # ========== AKTUELLE BELEGUNG ==========
+        from ..analytics import RoleScanner
+        role = guild.get_role(self.config.guild_role_id) if self.config.guild_role_id else None
+        scanner = RoleScanner(
+            guild,
+            exclusion_role_ids=self.config.exclusion_roles,
+            exclusion_user_ids=self.config.exclusion_users
         )
-        embed.add_field(name="Commands", value=commands_text, inline=False)
+        member_count = scanner.count_all_excluded_members()
+        max_spots = self.config.max_guild_spots
+        free_spots = max(max_spots - member_count, 0)
 
-        # Live Activity Section
+        if role:
+            belegung_text = (
+                f"Rolle: {role.mention}\n"
+                f"Mitglieder: **{member_count}** / {max_spots}\n"
+                f"Freie Plätze: **{free_spots}**"
+            )
+        else:
+            belegung_text = "Keine Gildenrolle im Config-File hinterlegt (`guild_role_id`)."
+
+        embed.add_field(name="Aktuelle Belegung", value=belegung_text, inline=False)
+
+        # ========== LIVE ACTIVITY ==========
         try:
             stats = await self.message_store.get_stats(guild.id)
             db_total = stats.get("total_messages", 0)
@@ -157,7 +173,6 @@ class DashboardManager:
             f"**🔄 Tracked Since Restart:** {state['total_tracked']} messages\n"
             f"**🕐 Last Update:** <t:{int(discord.utils.utcnow().timestamp())}:R>"
         )
-        embed.add_field(name="Live Activity", value=activity_text, inline=False)
 
         # Recent Messages Section
         if state["entries"]:
@@ -168,21 +183,44 @@ class DashboardManager:
                 entries_text.append(
                     f"• {timestamp_relative} {entry['user_mention']} in {entry['channel_mention']} {link}"
                 )
-            recent_text = "\n".join(entries_text)
-        else:
-            recent_text = "*No messages tracked yet.*"
+            activity_text += "\n\n**Letzte Nachrichten:**\n" + "\n".join(entries_text)
 
-        embed.add_field(name="Recent Messages", value=recent_text, inline=False)
-        embed.set_footer(text="Updates automatically • Live tracking active")
+        embed.add_field(name="Live Activity", value=activity_text, inline=False)
+
+        # ========== COMMANDS ==========
+        commands_text = (
+            "**Basis-Commands:**\n"
+            "• `/analyze role:@Rolle [days] [top_n]` – Auswertung starten\n"
+            "• `/guild-status` – Aktuelle Besetzung & Restplätze\n"
+            "• `/my-score [role:@Rolle]` – Eigenen Score prüfen\n\n"
+            "**Admin-Werkzeuge:**\n"
+            "• `/assign-guild-role ranking_role:@Rolle count:10` – Gildenrolle vergeben\n"
+            "• `/set-max-spots value:<Zahl>` – Verfügbare Plätze festlegen\n"
+            "• `/cache-stats` & `/cache-clear` – Cache verwalten\n"
+            "• `/bot-info` – System- und Laufzeitinfos"
+        )
+        embed.add_field(name="📖 Commands", value=commands_text, inline=False)
+
+        # ========== DATEN & TRACKING ==========
+        daten_text = (
+            "• `/import-status` – Import-Status prüfen\n"
+            "• `/import-messages [force]` – Historische Nachrichten einlesen\n"
+            "• `/message-store-stats` – Datenbankgröße prüfen\n"
+            "• `/verify-message-counts [sample_size]` – Stichprobenkontrolle"
+        )
+        embed.add_field(name="📂 Daten & Tracking", value=daten_text, inline=False)
+
+        embed.set_footer(text="GuildScout – faire und transparente Auswahl • Updates automatically")
 
         try:
             if state["dashboard_message"]:
                 # Update existing message
                 await state["dashboard_message"].edit(embed=embed)
             else:
-                # Create new message
+                # Create new message and pin it
                 state["dashboard_message"] = await channel.send(embed=embed)
-                logger.info(f"✅ Created dashboard in #{channel.name} for {guild.name}")
+                await self._pin_dashboard(channel, state["dashboard_message"])
+                logger.info(f"✅ Created combined dashboard in #{channel.name} for {guild.name}")
 
             state["last_update"] = discord.utils.utcnow()
         except Exception as e:
@@ -196,5 +234,84 @@ class DashboardManager:
             if state["dashboard_message"]:
                 return  # Already exists
 
+            channel = self._get_ranking_channel(guild)
+            if channel:
+                # Clean up old bot messages before creating new dashboard
+                await self._cleanup_old_messages(channel)
+
             # Create initial dashboard
             await self._update_dashboard(guild, state)
+
+    async def _pin_dashboard(self, channel: discord.TextChannel, message: discord.Message):
+        """Pin the dashboard message and unpin all other messages."""
+        try:
+            # Get all pinned messages
+            pinned_messages = await channel.pins()
+
+            # Unpin all messages except the dashboard
+            for pinned_msg in pinned_messages:
+                if pinned_msg.id != message.id:
+                    try:
+                        await pinned_msg.unpin()
+                        logger.info(f"Unpinned old message {pinned_msg.id} in #{channel.name}")
+                    except Exception as unpin_err:
+                        logger.warning(f"Could not unpin message {pinned_msg.id}: {unpin_err}")
+
+            # Pin the dashboard
+            await message.pin()
+            logger.info(f"Pinned dashboard {message.id} in #{channel.name}")
+        except discord.Forbidden:
+            logger.warning(f"Missing permissions to pin/unpin in #{channel.name}")
+        except Exception as pin_err:
+            logger.error(f"Failed to manage pins: {pin_err}", exc_info=True)
+
+    async def _cleanup_old_messages(self, channel: discord.TextChannel):
+        """Delete old bot messages from the ranking channel to keep it clean."""
+        try:
+            bot_user_id = self.bot.user.id
+            deleted_count = 0
+            unpinned_count = 0
+
+            # First, unpin all old pinned messages from the bot
+            try:
+                pinned_messages = await channel.pins()
+                for pinned_msg in pinned_messages:
+                    if pinned_msg.author.id == bot_user_id:
+                        try:
+                            await pinned_msg.unpin()
+                            unpinned_count += 1
+                            logger.info(f"Unpinned old bot message {pinned_msg.id} in #{channel.name}")
+                        except Exception as unpin_err:
+                            logger.warning(f"Could not unpin message {pinned_msg.id}: {unpin_err}")
+            except Exception as pin_err:
+                logger.warning(f"Could not fetch pinned messages: {pin_err}")
+
+            # Fetch last 100 messages and delete all old bot messages + system messages
+            async for message in channel.history(limit=100):
+                should_delete = False
+
+                # Delete all bot messages (including previously pinned ones)
+                if message.author.id == bot_user_id:
+                    should_delete = True
+
+                # Delete Discord system messages (pin notifications, etc.)
+                elif message.type in [
+                    discord.MessageType.pins_add,
+                    discord.MessageType.channel_name_change,
+                    discord.MessageType.channel_icon_change
+                ]:
+                    should_delete = True
+
+                if should_delete:
+                    try:
+                        await message.delete()
+                        deleted_count += 1
+                    except discord.NotFound:
+                        pass  # Already deleted
+                    except Exception as del_err:
+                        logger.warning(f"Could not delete message {message.id}: {del_err}")
+
+            if deleted_count > 0 or unpinned_count > 0:
+                logger.info(f"🧹 Cleaned up {deleted_count} messages and unpinned {unpinned_count} in #{channel.name}")
+        except Exception as e:
+            logger.error(f"Failed to cleanup old messages: {e}", exc_info=True)

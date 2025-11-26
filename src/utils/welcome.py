@@ -178,18 +178,14 @@ async def refresh_welcome_message(
     *,
     force: bool = False
 ) -> Optional[discord.Message]:
-    """Refresh the ranking channel welcome message if possible."""
-    channel_id = config.ranking_channel_id
-    if not channel_id:
-        return None
+    """
+    Refresh the ranking channel welcome message if possible.
 
-    channel = guild.get_channel(channel_id)
-    if not isinstance(channel, discord.TextChannel):
-        return None
-
-    return await post_welcome_message(
-        config,
-        channel,
-        previous_channel_id=channel_id,
-        force=force
-    )
+    NOTE: This function is now a no-op. The combined dashboard in DashboardManager
+    automatically handles welcome content updates. Keeping this function for
+    backwards compatibility with existing code.
+    """
+    # Dashboard now handles all ranking channel content
+    # No need to create/update separate welcome messages
+    logger.info(f"Welcome refresh skipped - dashboard handles all content in {guild.name}")
+    return None
