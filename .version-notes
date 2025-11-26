@@ -1,4 +1,36 @@
 Version 2.2.0 - Major System Overhaul Complete
 
-This release includes significant architectural improvements for reliability and user experience.
+**🆕 Neue Features:**
+
+• **Intelligenter Dashboard**: Eine verbesserte Benutzeroberfläche für Ihre Gilden- und Ranglisten
+
+Der neue Dashboard bietet Ihnen eine übersichtliche Ansicht Ihrer Gilden und deren Ranglisten. Sie können nun wichtige Informationen wie aktuelle Platzierungen, Mitgliederzahlen und weitere statistische Daten schnell und einfach abrufen.
+
+**Erweiterung um Commands**: Der Dashboard enthält jetzt auch die Möglichkeit, direkt von hier aus Kommandos für Ihre Gilde zu verwenden, was die Organisation Ihrer Ranglisten noch erleichtert.
+
+• **Smart Verification Integration & Dashboard-Verbesserungen**
+
+Die Smart Verification Integration ermöglicht es Ihnen nun, automatisch Informationen über Ihre Mitglieder und deren Aktivität zu erhalten. Der Bot kann auch wichtige Daten wie das Letzte Log-In-Datum, aktuelle Spielstunden und weitere auswerten und in Ihrem Dashboard darstellen.
+
+**🐛 Bugfixes:**
+
+• **Fehler bei Import-Status**: Wir haben einen Fehler behoben, der dazu führte, dass der Status des Imports nicht korrekt angezeigt wurde. Dies sollte nun kein Problem mehr sein!
+
+• **Log Channel-Entfernung**: Wir haben alle veralteten Log-Kanäle entfernt und das System an die neue Status-Channel-Struktur angepasst.
+
+**⚡ Verbesserungen:**
+
+• **Delta Import implementiert**
+
+Der Bot erkennt jetzt automatisch, wenn er offline war und importiert nur die Nachrichten, die während der Downtime verpasst wurden. Dies bedeutet:
+
+• Keine verlorenen Nachrichten mehr bei Bot-Neustarts
+• Deutlich schnellerer Start (nur neue Nachrichten statt komplett neu importieren)
+• Automatische Erkennung von Downtime über 1 Minute
+• Fortschrittsanzeige im Dashboard während des Imports
+
+• **Persistent Lifetime Statistics**
+
+Die statistischen Daten werden nun auch bei einem Bot-Neustart beibehalten und aktualisiert, was die Erfassung wichtiger Informationen für Ihre Gilden erleichtert.
+
 All features are now fully tested and production-ready.
