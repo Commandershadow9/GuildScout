@@ -253,6 +253,80 @@ class StatusManager:
                 logger.error(f"Failed to send temp status: {e}", exc_info=True)
                 return None
 
+    async def cleanup_status_channel(self, guild: discord.Guild):
+        """
+        Clean up obsolete status messages (e.g., old startup/success messages).
+        Preserves active errors and warnings.
+        """
+        async with self._lock:
+            channel = self._get_status_channel(guild)
+            if not channel:
+                return
+
+            try:
+                # Define phrases that indicate a message can be safely deleted
+                cleanup_phrases = [
+                    "GuildScout gestartet",
+                    "GuildScout verbunden",
+                    "Verifikation abgeschlossen",
+                    "Verifikation erfolgreich",
+                    "Delta-Import abgeschlossen",
+                    "Import abgeschlossen",
+                    "Stichproben-Verifikation",
+                    "Tiefenprüfung"
+                ]
+
+                deleted_count = 0
+                
+                # Check last 50 messages
+                async for message in channel.history(limit=50):
+                    # Only check messages from this bot
+                    if message.author.id != self.bot.user.id:
+                        continue
+
+                    # Skip if it has no embeds (unlikely for us, but safe check)
+                    if not message.embeds:
+                        continue
+
+                    embed = message.embeds[0]
+                    title = embed.title or ""
+                    
+                    # CRITICAL: Do NOT delete errors or warnings
+                    # These usually have "❌" or "⚠️" in the title, or color red/orange
+                    if "❌" in title or "⚠️" in title or "Fehler" in title:
+                        continue
+                        
+                    if embed.color == discord.Color.red():
+                        continue
+
+                    # Delete if title matches known cleanup phrases
+                    should_delete = False
+                    for phrase in cleanup_phrases:
+                        if phrase in title:
+                            should_delete = True
+                            break
+                    
+                    # Also cleanup temporary "Running" messages that might have stuck
+                    if "Läuft" in title or "Verifiziere" in title or "Import läuft" in title:
+                        # Only delete if older than 30 minutes (stuck process)
+                        age = datetime.utcnow() - message.created_at
+                        if age.total_seconds() > 1800:
+                            should_delete = True
+
+                    if should_delete:
+                        try:
+                            await message.delete()
+                            deleted_count += 1
+                            await asyncio.sleep(0.5)  # Avoid rate limits
+                        except Exception:
+                            pass
+
+                if deleted_count > 0:
+                    logger.info(f"Cleaned up {deleted_count} obsolete messages in status channel for {guild.name}")
+
+            except Exception as e:
+                logger.error(f"Failed to cleanup status channel: {e}")
+
     def get_unacknowledged_count(self, guild_id: int) -> int:
         """Get count of unacknowledged status messages (not yet implemented - would need tracking)."""
         # TODO: Track active messages and count unacknowledged ones

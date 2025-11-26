@@ -599,15 +599,17 @@ class MessageStoreAdminCommands(commands.Cog):
 
     @app_commands.command(
         name="verify-message-counts",
-        description="[Admin] Verify accuracy of message counts by sampling users"
+        description="[Admin] Verify accuracy of message counts by sampling users or checking a specific user"
     )
     @app_commands.describe(
-        sample_size="Number of users to check (default: 10)"
+        sample_size="Number of users to check (default: 10, ignored if user is specified)",
+        user="Specific user to verify (optional)"
     )
     async def verify_message_counts(
         self,
         interaction: discord.Interaction,
-        sample_size: int = 10
+        sample_size: int = 10,
+        user: Optional[discord.User] = None
     ):
         """
         Verify message count accuracy by comparing with Discord API.
@@ -615,6 +617,7 @@ class MessageStoreAdminCommands(commands.Cog):
         Args:
             interaction: Discord interaction
             sample_size: Number of users to sample
+            user: Specific user to verify
         """
         # Check permissions
         if not self._has_permission(interaction):
@@ -656,73 +659,97 @@ class MessageStoreAdminCommands(commands.Cog):
                 )
                 return
 
+            # Determine target users
+            sample_users = []
+            
+            if user:
+                # Target specific user
+                member = interaction.guild.get_member(user.id)
+                if not member:
+                    await interaction.followup.send(
+                        f"❌ User {user.name} is not a member of this guild.",
+                        ephemeral=True
+                    )
+                    return
+                sample_users = [member]
+                status_text = f"🔍 Starte gezielte Verifikation für **{member.display_name}**..."
+                log_text = (
+                    f"{interaction.user.mention} überprüft Nachrichtenzähler "
+                    f"gezielt für {member.mention}."
+                )
+            else:
+                # Random sampling
+                status_text = f"🔍 Starte Verifikation mit {sample_size} zufälligen Usern..."
+                log_text = (
+                    f"{interaction.user.mention} überprüft Nachrichtenzähler "
+                    f"für {sample_size} zufällig ausgewählte Mitglieder."
+                )
+
             status_message = await interaction.followup.send(
-                f"🔍 Starte Verifikation mit {sample_size} zufälligen Usern...\n"
-                "Das kann ein paar Minuten dauern.",
+                f"{status_text}\nDas kann ein paar Minuten dauern.",
                 ephemeral=True
             )
 
             log_message = await self._log_event(
                 interaction.guild,
                 "🔍 Verifikation gestartet",
-                (
-                    f"{interaction.user.mention} überprüft Nachrichtenzähler "
-                    f"für {sample_size} zufällig ausgewählte Mitglieder."
-                ),
+                log_text,
                 status="🔄 Läuft",
                 color=discord.Color.orange()
             )
 
-            # Get random sample of members with messages
-            guild_totals = await self.message_store.get_guild_totals(
-                interaction.guild.id
-            )
-
-            # Filter to members with at least 10 messages
-            eligible_user_ids = [
-                uid for uid, count in guild_totals.items() if count >= 10
-            ]
-
-            if not eligible_user_ids:
-                await status_message.edit(
-                    content="❌ Keine passenden User gefunden (mind. 10 Nachrichten erforderlich)."
+            # If random sampling, pick users
+            if not user:
+                # Get random sample of members with messages
+                guild_totals = await self.message_store.get_guild_totals(
+                    interaction.guild.id
                 )
-                if log_message:
-                    await self._log_event(
-                        interaction.guild,
-                        "🔍 Verifikation abgebrochen",
-                        "Keine User mit genügend Nachrichten vorhanden.",
-                        status="⚠️ Abgebrochen",
-                        color=discord.Color.red(),
-                        message=log_message
+
+                # Filter to members with at least 10 messages
+                eligible_user_ids = [
+                    uid for uid, count in guild_totals.items() if count >= 10
+                ]
+
+                if not eligible_user_ids:
+                    await status_message.edit(
+                        content="❌ Keine passenden User gefunden (mind. 10 Nachrichten erforderlich)."
                     )
-                return
+                    if log_message:
+                        await self._log_event(
+                            interaction.guild,
+                            "🔍 Verifikation abgebrochen",
+                            "Keine User mit genügend Nachrichten vorhanden.",
+                            status="⚠️ Abgebrochen",
+                            color=discord.Color.red(),
+                            message=log_message
+                        )
+                    return
 
-            # Sample random users
-            sample_size = min(sample_size, len(eligible_user_ids))
-            sampled_user_ids = random.sample(eligible_user_ids, sample_size)
+                # Sample random users
+                sample_size = min(sample_size, len(eligible_user_ids))
+                sampled_user_ids = random.sample(eligible_user_ids, sample_size)
 
-            # Get Member objects
-            sample_users = []
-            for uid in sampled_user_ids:
-                member = interaction.guild.get_member(uid)
-                if member:
-                    sample_users.append(member)
+                # Get Member objects
+                for uid in sampled_user_ids:
+                    member = interaction.guild.get_member(uid)
+                    if member:
+                        sample_users.append(member)
 
-            if not sample_users:
-                await status_message.edit(
-                    content="❌ Konnte keine der zufälligen User im Server finden."
-                )
-                if log_message:
-                    await self._log_event(
-                        interaction.guild,
-                        "🔍 Verifikation abgebrochen",
-                        "Keine Mitglieder für die Stichprobe gefunden.",
-                        status="⚠️ Abgebrochen",
-                        color=discord.Color.red(),
-                        message=log_message
+                if not sample_users:
+                    await status_message.edit(
+                        content="❌ Konnte keine der zufälligen User im Server finden."
                     )
-                return
+                    if log_message:
+                        await self._log_event(
+                            interaction.guild,
+                            "🔍 Verifikation abgebrochen",
+                            "Keine Mitglieder für die Stichprobe gefunden.",
+                            status="⚠️ Abgebrochen",
+                            color=discord.Color.red(),
+                            message=log_message
+                        )
+                    return
+
 
             total_to_check = len(sample_users)
             await status_message.edit(

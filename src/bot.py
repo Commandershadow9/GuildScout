@@ -28,6 +28,7 @@ from src.commands.message_store_admin import setup as setup_message_store_admin
 from src.events.guild_events import setup as setup_guild_events
 from src.events.message_tracking import setup as setup_message_tracking
 from src.tasks.verification_scheduler import setup as setup_verification_scheduler
+from src.tasks.backup_scheduler import setup as setup_backup_scheduler
 
 
 class GuildScoutBot(commands.Bot):
@@ -65,6 +66,7 @@ class GuildScoutBot(commands.Bot):
         self._ready_called = False  # Flag to track if on_ready initialization is complete
         self._chunking_done = False  # Flag to track if chunking is complete
         self._chunking_task = None  # Store chunking task to prevent garbage collection
+        self._initial_startup_complete = False # Flag for initial setup completion
 
         # Initialize bot with intents
         intents = discord.Intents.default()
@@ -72,7 +74,7 @@ class GuildScoutBot(commands.Bot):
         intents.message_content = True  # Required for message counting
 
         super().__init__(
-            command_prefix=None,  # No prefix for text commands, using slash commands
+            command_prefix="!",  # Use a dummy prefix to avoid "NoneType is not iterable" error in on_message
             intents=intents,
             *args,
             **kwargs
@@ -109,6 +111,7 @@ class GuildScoutBot(commands.Bot):
 
         # Load background tasks
         await setup_verification_scheduler(self, self.config, self.message_store)
+        await setup_backup_scheduler(self, self.config)
         self.logger.info("Background tasks loaded")
 
         # Sync commands to guild
@@ -159,24 +162,9 @@ class GuildScoutBot(commands.Bot):
                 import asyncio
                 self._chunking_task = asyncio.create_task(self._chunk_all_guilds())
 
-            # Send startup notification and start auto-import
-            guild = self.get_guild(self.config.guild_id)
-            if guild:
-                description = (
-                    f"Verbunden mit **{len(self.guilds)}** Server(n)\n"
-                    f"Cache bereit, Commands synchronisiert\n"
-                    f"Member-Cache wird geladen..."
-                )
-                await self._log_service_status(
-                    guild,
-                    "🤖 GuildScout gestartet",
-                    description,
-                    status="✅ Online",
-                    color=discord.Color.green()
-                )
-
-                # Check for missed messages or start full import if needed
-                await self._check_and_start_auto_import(guild, force_reimport=False)
+            # Start initial startup sequence in background with delay
+            import asyncio
+            self._initial_startup_task = asyncio.create_task(self._perform_initial_startup_sequence())
         else:
             # Reconnect event - just log it
             self.logger.info(f"Bot reconnected (ready event #{2 if self._ready_called else 1})")
@@ -189,6 +177,43 @@ class GuildScoutBot(commands.Bot):
                     status="🔄 Reconnected",
                     color=discord.Color.blurple()
                 )
+
+    async def _perform_initial_startup_sequence(self):
+        """
+        Performs initial startup sequence including logging, cleanup, and import checks.
+        This runs only once after the first on_ready event.
+        """
+        guild = self.get_guild(self.config.guild_id)
+        if not guild:
+            self.logger.error("Initial startup sequence failed: Guild not found.")
+            return
+
+        # Initial log entry
+        description = (
+            f"Verbunden mit **{len(self.guilds)}** Server(n)\n"
+            f"Cache bereit, Commands synchronisiert\n"
+            f"Member-Cache wird geladen..."
+        )
+        await self._log_service_status(
+            guild,
+            "🤖 GuildScout gestartet",
+            description,
+            status="✅ Online",
+            color=discord.Color.green()
+        )
+
+        # Cleanup old status messages
+        await self.status_manager.cleanup_status_channel(guild)
+
+        # Check for missed messages or start full import if needed
+        await self._check_and_start_auto_import(guild, force_reimport=False)
+
+        # Signal that initial startup is complete after a short delay
+        # This allows verification tasks to start after everything else is settled
+        self.logger.info("Initial startup sequence completed. Waiting 10 seconds before enabling background tasks...")
+        await asyncio.sleep(10) # Give some time for dashboard to update, etc.
+        self._initial_startup_complete = True
+        self.logger.info("Background tasks enabled.")
 
     async def _chunk_all_guilds(self):
         """

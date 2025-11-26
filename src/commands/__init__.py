@@ -7,7 +7,7 @@ from .ranking_channel import RankingChannelCommands
 from .assign_guild_role import AssignGuildRoleCommand
 from .guild_status import GuildStatusCommand
 from .set_max_spots import SetMaxSpotsCommand
-from .log_channel import LogChannelCommands
+
 
 __all__ = [
     "AnalyzeCommand",

@@ -21,20 +21,31 @@ class BotStatistics:
 
     def _load(self) -> Dict[str, Any]:
         """Load stats from file."""
-        if not self.data_file.exists():
-            return {
-                "first_startup": datetime.utcnow().isoformat(),
-                "last_restart": datetime.utcnow().isoformat(),
-                "total_restarts": 0,
-                "lifetime_messages_tracked": 0
-            }
         try:
+            if not self.data_file.exists():
+                data = {
+                    "first_startup": datetime.utcnow().isoformat(),
+                    "last_restart": datetime.utcnow().isoformat(),
+                    "total_restarts": 1,  # First start is restart #1
+                    "lifetime_messages_tracked": 0
+                }
+                # Save immediately to create file
+                with open(self.data_file, 'w') as f:
+                    json.dump(data, f, indent=2)
+                return data
+
             with open(self.data_file, 'r') as f:
                 data = json.load(f)
-                # Increment restart counter
-                data["total_restarts"] = data.get("total_restarts", 0) + 1
-                data["last_restart"] = datetime.utcnow().isoformat()
-                return data
+            
+            # Increment restart counter and update timestamp
+            data["total_restarts"] = data.get("total_restarts", 0) + 1
+            data["last_restart"] = datetime.utcnow().isoformat()
+            
+            # Persist the increment immediately
+            with open(self.data_file, 'w') as f:
+                json.dump(data, f, indent=2)
+                
+            return data
         except Exception as e:
             logger.warning(f"Could not load bot statistics: {e}")
             return {
@@ -99,16 +110,24 @@ class BotStatistics:
                 "total_days_online": 0
             }
 
-    def get_dashboard_summary(self) -> str:
-        """Get formatted summary for dashboard."""
+    def get_dashboard_summary(self, total_db_messages: Optional[int] = None) -> str:
+        """
+        Get formatted summary for dashboard.
+        
+        Args:
+            total_db_messages: Optional total message count from DB (more accurate)
+        """
         session = self.get_session_stats()
         lifetime = self.get_lifetime_stats()
 
         last_restart_ts = int(lifetime["last_restart"].timestamp())
+        
+        # Use DB count if provided, otherwise internal counter
+        total_messages = total_db_messages if total_db_messages is not None else lifetime['lifetime_messages_tracked']
 
         summary = (
             f"**📊 Seit Restart:** {session['session_messages_tracked']:,} Nachrichten ({session['uptime_formatted']} uptime)\n"
-            f"**📈 Lifetime:** {lifetime['lifetime_messages_tracked']:,} Nachrichten getrackt\n"
+            f"**📈 Lifetime:** {total_messages:,} Nachrichten getrackt\n"
             f"**🔄 Letzter Restart:** <t:{last_restart_ts}:R> ({lifetime['total_restarts']} Restarts gesamt)"
         )
 

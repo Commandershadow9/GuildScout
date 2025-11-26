@@ -1,27 +1,29 @@
 # Changelog - GuildScout Bot
 
-## Version 2.2.0 - Delta Import & Dashboard System (2025-11-26)
+## Version 2.2.0 - Resilience & Dashboard Update (2025-11-26)
+
+### 🛡️ Resilience & Maintenance
+- **Automatisierte Backups**: Tägliches Backup der Datenbank (05:00 UTC) in `backups/`. Rotation behält die letzten 7 Tage.
+- **Datenbank-Optimierung**: Indizes für `user_id` und `channel_id` hinzugefügt für schnellere Abfragen bei großen Datenmengen.
+- **Robuster Startprozess**: Neue Startsequenz verhindert Race Conditions zwischen Aufräum-Skripten, Delta-Import und Verifikations-Tasks.
+- **Self-Cleaning Status**: Der Status-Kanal räumt sich bei jedem Neustart selbst auf (löscht alte Erfolgsmeldungen, behält Fehler).
 
 ### 🔄 Intelligent Delta Import
 - **Keine verlorenen Nachrichten mehr**: Erkennt automatisch Downtime des Bots.
 - **Delta-Import**: Importiert beim Start nur die Nachrichten, die während der Offline-Zeit verpasst wurden.
-- **Performance**: Spart Zeit, da nicht mehr bei jedem Neustart komplett neu importiert werden muss (nur beim ersten Mal).
-- **Last Message Tracking**: Speichert den Zeitstempel der letzten Nachricht in der Datenbank für präzise Fortsetzung.
+- **Performance**: Spart Zeit, da nicht mehr bei jedem Neustart komplett neu importiert werden muss.
 
 ### 📊 Dashboard & Status System
-- **Dashboard Channel**: Zentraler Hub für alle wichtigen Infos (früher "Ranking Channel").
-- **Status Channel**: Neuer Kanal speziell für Fehlermeldungen und Warnungen.
-- **Error Acknowledgment**: Fehler im Status-Channel haben einen "Acknowledge"-Button für Admins -> Nachricht löscht sich nach Bestätigung.
-- **Log Channel entfernt**: Veraltetes Log-System komplett entfernt zugunsten von Dashboard + Status Channel.
+- **Persistentes Dashboard**: Die Dashboard-Nachricht wird nun wiederverwendet (ID gespeichert), statt ständig neu erstellt zu werden.
+- **Lifetime Stats**: "Lifetime Nachrichten" kommen jetzt direkt aus der Datenbank (akkurat) statt aus dem RAM.
+- **Live-Fortschritt**: Verifikations-Tasks zeigen nun einen Live-Fortschrittsbalken im Status-Kanal.
+- **Error Acknowledgment**: Fehler im Status-Channel haben einen "Acknowledge"-Button für Admins.
 
-### 🛠️ Refactoring & Fixes
-- **Timezone Handling**: Alle Zeitstempel sind nun konsequent Timezone-Aware (UTC), um Rechenfehler bei Importen zu vermeiden.
-- **Config Cleanup**: Entfernung veralteter Konfigurationswerte (`log_channel_id`, `live_tracking`).
-- **Bot Startup**: Optimierter Startprozess mit intelligenter Import-Entscheidung (Full vs. Delta).
-
-### ⚠️ Breaking Changes
-- `log_channel_id` wurde aus der Config entfernt. Bitte `/setup-log-channel` nicht mehr nutzen.
-- Ranking Channel heißt nun intern Dashboard Channel (`dashboard_channel_id`).
+### 🛠️ Bugfixes
+- Fix: `command_prefix` Fehler behoben.
+- Fix: Restart-Counter zählt jetzt korrekt hoch.
+- Fix: Race Condition beim Bot-Start behoben (Verifikation wartet nun 10s auf Initialisierung).
+- Cleanup: Log-Channel Code komplett entfernt.
 
 ---
 

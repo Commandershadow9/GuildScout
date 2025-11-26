@@ -127,6 +127,44 @@ class DashboardManager:
             if should_update:
                 await self._update_dashboard(guild, state)
 
+    async def ensure_dashboard_exists(self, guild: discord.Guild):
+        """Ensure the dashboard message exists for a guild."""
+        lock = self._dashboard_locks.setdefault(guild.id, asyncio.Lock())
+        async with lock:
+            state = self._get_dashboard_state(guild.id)
+            
+            # If we already have a message in memory, we are good
+            if state["dashboard_message"]:
+                return
+
+            channel = self._get_dashboard_channel(guild)
+            if not channel:
+                return
+
+            # Try to recover message from config
+            stored_message_id = self.config.ranking_channel_message_id
+            recovered_message = None
+            
+            if stored_message_id:
+                try:
+                    recovered_message = await channel.fetch_message(stored_message_id)
+                    logger.info(f"Recovered existing dashboard message {stored_message_id}")
+                except discord.NotFound:
+                    logger.warning(f"Stored dashboard message {stored_message_id} not found, will create new one")
+                    self.config.set_ranking_channel_message_id(None)
+                except Exception as e:
+                    logger.error(f"Error fetching stored message: {e}")
+
+            if recovered_message:
+                state["dashboard_message"] = recovered_message
+                # Update it immediately to ensure it's fresh
+                await self._update_dashboard(guild, state)
+            else:
+                # Clean up old bot messages before creating new dashboard
+                await self._cleanup_old_messages(channel)
+                # Create initial dashboard
+                await self._update_dashboard(guild, state)
+
     async def _update_dashboard(self, guild: discord.Guild, state: Dict[str, Any]):
         """Update the combined dashboard + welcome message embed."""
         channel = self._get_dashboard_channel(guild)
@@ -134,6 +172,7 @@ class DashboardManager:
             logger.warning(f"No dashboard channel configured for guild {guild.name}")
             return
 
+        # ... (embed creation logic skipped for brevity, it remains the same) ...
         # Build comprehensive embed combining dashboard + welcome content
         embed = discord.Embed(
             title="📊 GuildScout Dashboard",
@@ -177,10 +216,10 @@ class DashboardManager:
             db_total = 0
 
         # Get bot statistics (session + lifetime)
-        bot_stats_summary = self.bot_statistics.get_dashboard_summary()
+        # Pass db_total to display accurate lifetime count
+        bot_stats_summary = self.bot_statistics.get_dashboard_summary(total_db_messages=db_total)
 
         activity_text = (
-            f"**📊 Database Total:** {db_total:,} messages\n"
             f"{bot_stats_summary}\n"
             f"**🕐 Last Update:** <t:{int(discord.utils.utcnow().timestamp())}:R>"
         )
@@ -235,28 +274,20 @@ class DashboardManager:
             else:
                 # Create new message and pin it
                 state["dashboard_message"] = await channel.send(embed=embed)
+                
+                # PERSIST MESSAGE ID
+                try:
+                    self.config.set_ranking_channel_message_id(state["dashboard_message"].id)
+                    logger.info(f"Persisted dashboard message ID: {state['dashboard_message'].id}")
+                except Exception as e:
+                    logger.warning(f"Failed to persist dashboard message ID: {e}")
+
                 await self._pin_dashboard(channel, state["dashboard_message"])
                 logger.info(f"✅ Created combined dashboard in #{channel.name} for {guild.name}")
 
             state["last_update"] = discord.utils.utcnow()
         except Exception as e:
             logger.error(f"Failed to update dashboard: {e}", exc_info=True)
-
-    async def ensure_dashboard_exists(self, guild: discord.Guild):
-        """Ensure the dashboard message exists for a guild."""
-        lock = self._dashboard_locks.setdefault(guild.id, asyncio.Lock())
-        async with lock:
-            state = self._get_dashboard_state(guild.id)
-            if state["dashboard_message"]:
-                return  # Already exists
-
-            channel = self._get_dashboard_channel(guild)
-            if channel:
-                # Clean up old bot messages before creating new dashboard
-                await self._cleanup_old_messages(channel)
-
-            # Create initial dashboard
-            await self._update_dashboard(guild, state)
 
     async def _pin_dashboard(self, channel: discord.TextChannel, message: discord.Message):
         """Pin the dashboard message and unpin all other messages."""
@@ -281,17 +312,17 @@ class DashboardManager:
         except Exception as pin_err:
             logger.error(f"Failed to manage pins: {pin_err}", exc_info=True)
 
-    async def _cleanup_old_messages(self, channel: discord.TextChannel, max_scan: int = 500):
+    async def _cleanup_old_messages(self, channel: discord.TextChannel, max_scan: int = 100):
         """
         Delete old bot messages from the channel to keep it clean.
 
         Args:
             channel: Channel to clean up
-            max_scan: Maximum number of messages to scan (default 500)
+            max_scan: Maximum number of messages to scan (default 100)
         """
         try:
             bot_user_id = self.bot.user.id
-            deleted_count = 0
+            messages_to_delete = []
             unpinned_count = 0
 
             # First, unpin all old pinned messages from the bot
@@ -299,16 +330,19 @@ class DashboardManager:
                 pinned_messages = await channel.pins()
                 for pinned_msg in pinned_messages:
                     if pinned_msg.author.id == bot_user_id:
+                        # Skip if it's a protected message
+                        if pinned_msg.id in self._protected_messages:
+                            continue
+                            
                         try:
                             await pinned_msg.unpin()
                             unpinned_count += 1
-                            logger.info(f"Unpinned old bot message {pinned_msg.id} in #{channel.name}")
                         except Exception as unpin_err:
                             logger.warning(f"Could not unpin message {pinned_msg.id}: {unpin_err}")
             except Exception as pin_err:
                 logger.warning(f"Could not fetch pinned messages: {pin_err}")
 
-            # Fetch messages and delete all old bot messages + system messages
+            # Fetch messages to delete
             async for message in channel.history(limit=max_scan):
                 # Skip protected messages (e.g., import status)
                 if message.id in self._protected_messages:
@@ -316,7 +350,7 @@ class DashboardManager:
 
                 should_delete = False
 
-                # Delete all bot messages (including previously pinned ones)
+                # Delete all bot messages
                 if message.author.id == bot_user_id:
                     should_delete = True
 
@@ -329,16 +363,36 @@ class DashboardManager:
                     should_delete = True
 
                 if should_delete:
-                    try:
-                        await message.delete()
-                        deleted_count += 1
-                    except discord.NotFound:
-                        pass  # Already deleted
-                    except Exception as del_err:
-                        logger.warning(f"Could not delete message {message.id}: {del_err}")
+                    messages_to_delete.append(message)
 
-            if deleted_count > 0 or unpinned_count > 0:
-                logger.info(f"🧹 Cleaned up {deleted_count} messages and unpinned {unpinned_count} in #{channel.name}")
+            # Delete messages
+            if messages_to_delete:
+                # Try bulk delete first (only works for messages < 14 days old)
+                try:
+                    if len(messages_to_delete) > 1:
+                        await channel.delete_messages(messages_to_delete)
+                        logger.info(f"🧹 Bulk deleted {len(messages_to_delete)} messages in #{channel.name}")
+                    else:
+                        await messages_to_delete[0].delete()
+                        logger.info(f"🧹 Deleted 1 message in #{channel.name}")
+                except discord.HTTPException:
+                    # Fallback to individual deletion if bulk fails (e.g. messages too old)
+                    deleted_count = 0
+                    for msg in messages_to_delete:
+                        try:
+                            await msg.delete()
+                            deleted_count += 1
+                            await asyncio.sleep(0.5)  # Avoid rate limits
+                        except discord.NotFound:
+                            pass
+                        except Exception as del_err:
+                            logger.warning(f"Could not delete message {msg.id}: {del_err}")
+                    logger.info(f"🧹 Individually deleted {deleted_count} messages in #{channel.name}")
+
+            # Wait a moment for Discord to sync updates
+            if messages_to_delete or unpinned_count > 0:
+                await asyncio.sleep(2)
+
         except Exception as e:
             logger.error(f"Failed to cleanup old messages: {e}", exc_info=True)
 

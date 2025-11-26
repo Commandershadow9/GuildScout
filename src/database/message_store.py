@@ -81,6 +81,12 @@ class MessageStore:
                 ON message_counts(guild_id)
             """)
 
+            # Create index for faster channel lookups (crucial for pruning and adjustments)
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_channel
+                ON message_counts(channel_id)
+            """)
+
             # Create metadata table for tracking import status
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS import_metadata (

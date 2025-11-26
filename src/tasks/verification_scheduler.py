@@ -46,6 +46,7 @@ class VerificationScheduler(commands.Cog):
         self._daily_last_run: Optional[datetime.date] = None
         self._weekly_last_run: Optional[datetime.date] = None
         self._run_lock = asyncio.Lock()
+        # No initial_delay_done flag here anymore, delay is handled globally
 
         if self.daily_enabled:
             self.daily_verification_task.start()
@@ -183,9 +184,33 @@ class VerificationScheduler(commands.Cog):
                     activity_tracker
                 )
 
+                # Define progress callback to update status message
+                async def progress_callback(
+                    processed: int,
+                    total: int,
+                    member: discord.Member,
+                    store_count: int,
+                    api_count: int
+                ):
+                    # Only update every 20% or at end to avoid rate limits
+                    if processed == total or processed == 1 or processed % max(1, total // 5) == 0:
+                        await self._log_status(
+                            guild,
+                            title=f"🔍 {label}",
+                            description=(
+                                f"Fortschritt: **{processed}/{total}** User geprüft.\n"
+                                f"Letzter Check: **{member.display_name}**\n"
+                                "Vergleiche Datenbank mit Live-API…"
+                            ),
+                            status=f"🔄 {int(processed/total*100)}%",
+                            color=discord.Color.orange(),
+                            message=log_message
+                        )
+
                 results = await validator.validate_sample(
                     sample_members,
-                    tolerance_percent=tolerance_percent
+                    tolerance_percent=tolerance_percent,
+                    progress_callback=progress_callback
                 )
 
                 description = (
@@ -344,6 +369,12 @@ class VerificationScheduler(commands.Cog):
 
     @tasks.loop(minutes=5)
     async def daily_verification_task(self):
+        # Wait until the initial startup sequence (cleanup, delta import) is complete
+        await self.bot.wait_until_ready()
+        if not hasattr(self.bot, '_initial_startup_complete') or not self.bot._initial_startup_complete:
+            logger.debug("Daily verification task waiting for initial startup to complete.")
+            return
+
         if not self.daily_enabled:
             return
         now = datetime.utcnow()
@@ -363,6 +394,12 @@ class VerificationScheduler(commands.Cog):
 
     @tasks.loop(minutes=10)
     async def weekly_verification_task(self):
+        # Wait until the initial startup sequence (cleanup, delta import) is complete
+        await self.bot.wait_until_ready()
+        if not hasattr(self.bot, '_initial_startup_complete') or not self.bot._initial_startup_complete:
+            logger.debug("Weekly verification task waiting for initial startup to complete.")
+            return
+
         if not self.weekly_enabled:
             return
         now = datetime.utcnow()
