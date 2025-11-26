@@ -33,7 +33,6 @@ class GuildEvents(commands.Cog):
             if guild.id != self.config.guild_id:
                 continue
             await self._ensure_ranking_channel(guild)
-            await self._ensure_log_channel(guild)
             await refresh_welcome_message(self.config, guild, force=True)
             await self._sync_members(guild)
 
@@ -50,7 +49,6 @@ class GuildEvents(commands.Cog):
         try:
             logger.info(f"Bot joined new guild: {guild.name} (ID: {guild.id})")
             await self._create_ranking_channel(guild, notify_owner=True)
-            await self._create_log_channel(guild)
             await refresh_welcome_message(self.config, guild, force=True)
             await self._sync_members(guild)
             logger.info(f"Auto-setup completed for guild: {guild.name}")
@@ -75,7 +73,6 @@ class GuildEvents(commands.Cog):
                 self.config.set_ranking_channel_message_id(None)
             if self.config.ranking_channel_message_version:
                 self.config.set_ranking_channel_message_version(0)
-            self.config.set_log_channel_id(None)
             # Clear tracked members for that guild
             if self.message_store:
                 await self.message_store.reset_guild(guild.id)
@@ -212,40 +209,6 @@ class GuildEvents(commands.Cog):
 
         return None
 
-    async def _create_log_channel(self, guild: discord.Guild) -> Optional[discord.TextChannel]:
-        """Create the Discord log channel"""
-        overwrites = self._build_channel_overwrites(guild)
-        log_channel = await guild.create_text_channel(
-            name="guildscout-logs",
-            topic="🧾 GuildScout Logs – Analysen und Systemereignisse",
-            overwrites=overwrites
-        )
-
-        self._store_log_channel(guild, log_channel.id)
-        await self._post_log_intro(log_channel)
-        logger.info("Created log channel #%s (%s)", log_channel.name, log_channel.id)
-        return log_channel
-
-    async def _ensure_log_channel(self, guild: discord.Guild) -> Optional[discord.TextChannel]:
-        channel_id = self.config.log_channel_id
-        channel = guild.get_channel(channel_id) if channel_id else None
-        if channel:
-            self._store_log_channel(guild, channel.id)
-            return channel
-
-        existing = discord.utils.get(guild.text_channels, name="guildscout-logs")
-        if existing:
-            self._store_log_channel(guild, existing.id)
-            return existing
-
-        try:
-            return await self._create_log_channel(guild)
-        except discord.Forbidden:
-            logger.error("Missing permissions to create log channel in %s", guild.name)
-        except Exception as exc:
-            logger.error("Failed to create log channel in %s: %s", guild.name, exc, exc_info=True)
-        return None
-
     def _build_channel_overwrites(self, guild: discord.Guild) -> dict:
         """Build permission overwrites for the ranking channel."""
         overwrites = {
@@ -277,34 +240,6 @@ class GuildEvents(commands.Cog):
         self.bot.ranking_channels[guild.id] = channel_id
         if self.config.ranking_channel_id != channel_id:
             self.config.set_ranking_channel_id(channel_id)
-
-    def _store_log_channel(self, guild: discord.Guild, channel_id: int) -> None:
-        if not hasattr(self.bot, 'log_channels'):
-            self.bot.log_channels = {}
-        self.bot.log_channels[guild.id] = channel_id
-        if self.config.log_channel_id != channel_id:
-            self.config.set_log_channel_id(channel_id)
-
-    async def _post_log_intro(self, channel: discord.TextChannel) -> None:
-        embed = discord.Embed(
-            title="🧾 GuildScout Logs",
-            description=(
-                "Automatische Protokolle: Analyse-Starts, Ergebnisse und Fehler werden hier festgehalten."
-            ),
-            color=discord.Color.dark_gold(),
-            timestamp=datetime.utcnow()
-        )
-        embed.add_field(
-            name="Was wird geloggt?",
-            value=(
-                "• `/analyze` Start & Ergebnis\n"
-                "• Cache-Informationen\n"
-                "• Fehlermeldungen"
-            ),
-            inline=False
-        )
-        embed.set_footer(text="GuildScout Monitoring")
-        await channel.send(embed=embed)
 
     async def _notify_owner(self, guild: discord.Guild, ranking_channel: discord.TextChannel) -> None:
         """Send setup confirmation to the guild owner."""
