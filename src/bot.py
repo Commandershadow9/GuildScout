@@ -703,29 +703,7 @@ class GuildScoutBot(commands.Bot):
                     except Exception as del_err:
                         self.logger.warning(f"Could not delete import status message: {del_err}")
 
-                # Send success notification
-                if self.config.discord_service_logs_enabled:
-                    color = (
-                        discord.Color.green() if result['channels_failed'] == 0
-                        else discord.Color.orange()
-                    )
-
-                    description = (
-                        f"**Importierte Nachrichten:** {result['total_messages']:,}\n"
-                        f"**Verarbeitete Channels:** {result['channels_processed']}\n"
-                        f"**Fehlgeschlagene Channels:** {result['channels_failed']}\n"
-                        f"**Gesamt Channels:** {result['total_channels']}\n\n"
-                        "✅ Der Bot nutzt jetzt die schnelle Datenbank!\n"
-                        "Commands wie `/analyze` sind jetzt instant."
-                    )
-
-                    await self.discord_logger.send(
-                        guild,
-                        "✅ Historischer Import abgeschlossen",
-                        description,
-                        status="✅ Bereit",
-                        color=color
-                    )
+                # Success notification removed - info already visible in dashboard
 
             else:
                 self.logger.error(f"❌ Auto-import failed: {result.get('error', 'Unknown error')}")
