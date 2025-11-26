@@ -175,8 +175,8 @@ class GuildScoutBot(commands.Bot):
                     color=discord.Color.green()
                 )
 
-                # Always run a fresh historical import on startup
-                await self._check_and_start_auto_import(guild, force_reimport=True)
+                # Check for missed messages or start full import if needed
+                await self._check_and_start_auto_import(guild, force_reimport=False)
         else:
             # Reconnect event - just log it
             self.logger.info(f"Bot reconnected (ready event #{2 if self._ready_called else 1})")
