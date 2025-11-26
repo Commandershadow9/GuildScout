@@ -6,6 +6,7 @@ from discord.ext import commands
 import sys
 from pathlib import Path
 from typing import Optional
+import asyncio # Moved from on_ready
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
