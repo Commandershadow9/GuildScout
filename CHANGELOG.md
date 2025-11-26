@@ -1,5 +1,30 @@
 # Changelog - GuildScout Bot
 
+## Version 2.2.0 - Delta Import & Dashboard System (2025-11-26)
+
+### 🔄 Intelligent Delta Import
+- **Keine verlorenen Nachrichten mehr**: Erkennt automatisch Downtime des Bots.
+- **Delta-Import**: Importiert beim Start nur die Nachrichten, die während der Offline-Zeit verpasst wurden.
+- **Performance**: Spart Zeit, da nicht mehr bei jedem Neustart komplett neu importiert werden muss (nur beim ersten Mal).
+- **Last Message Tracking**: Speichert den Zeitstempel der letzten Nachricht in der Datenbank für präzise Fortsetzung.
+
+### 📊 Dashboard & Status System
+- **Dashboard Channel**: Zentraler Hub für alle wichtigen Infos (früher "Ranking Channel").
+- **Status Channel**: Neuer Kanal speziell für Fehlermeldungen und Warnungen.
+- **Error Acknowledgment**: Fehler im Status-Channel haben einen "Acknowledge"-Button für Admins -> Nachricht löscht sich nach Bestätigung.
+- **Log Channel entfernt**: Veraltetes Log-System komplett entfernt zugunsten von Dashboard + Status Channel.
+
+### 🛠️ Refactoring & Fixes
+- **Timezone Handling**: Alle Zeitstempel sind nun konsequent Timezone-Aware (UTC), um Rechenfehler bei Importen zu vermeiden.
+- **Config Cleanup**: Entfernung veralteter Konfigurationswerte (`log_channel_id`, `live_tracking`).
+- **Bot Startup**: Optimierter Startprozess mit intelligenter Import-Entscheidung (Full vs. Delta).
+
+### ⚠️ Breaking Changes
+- `log_channel_id` wurde aus der Config entfernt. Bitte `/setup-log-channel` nicht mehr nutzen.
+- Ranking Channel heißt nun intern Dashboard Channel (`dashboard_channel_id`).
+
+---
+
 ## Version 2.1.0 - Production Features & Reliability (2025-11-19)
 
 ### 🟢 Live Tracking & Verification System

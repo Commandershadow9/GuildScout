@@ -42,12 +42,11 @@ Perfect for content creators who need to fairly select members for limited guild
 - **🏆 Transparent Scoring**: See exactly how your score is calculated
 - **📈 Percentile Ranking**: Know where you stand compared to others
 
-### Import & Logging
-- **♻️ Auto Re-Import**: On every bot start, GuildScout performs a full historical re-import so counts stay 100% accurate.
-- **🧾 Log Channel**: Setup once with `/setup-log-channel` – all lifecycle events and import progress get posted automatically.
-- **🟢 Live-Tracking Embed**: Jede neue Nachricht landet sofort in einer dauerhaften Embed im Log-Channel (inkl. Gesamtzähler, letzte Messages, Sprunglinks).
-- **🔍 Verifikation**: `/verify-message-counts` samples real Discord API counts mit Live-Fortschritt und automatischem Fallback bei abgelaufenen Follow-ups.
-- **📆 Geplante Checks**: Tägliche Stichprobe + wöchentliche Tiefenprüfung laufen im Hintergrund und posten ihre Ergebnisse automatisch ins Log (konfigurierbar).
+### Import & Intelligence
+- **🔄 Delta Import**: Der Bot erkennt automatisch, wie lange er offline war, und importiert beim Start nur die verpassten Nachrichten (Delta).
+- **♻️ Auto Re-Import**: Bei Erstinstallation oder `force=True` wird ein vollständiger historischer Import durchgeführt.
+- **📊 Dashboard**: Zentraler Kanal (`/setup-ranking-channel`) für Rankings, Import-Status und Willkommens-Nachricht.
+- **🚨 Status Channel**: Fehlermeldungen und Warnungen landen in einem separaten Kanal (konfigurierbar), inkl. "Acknowledge"-Button für Admins.
 
 ## 🚀 Quick Start
 
@@ -133,20 +132,16 @@ Perfect for content creators who need to fairly select members for limited guild
 
 ## 📖 Usage
 
-### Historische Importe & Logs
+### Dashboard & Status
 
-- **Auto-Re-Import**: Bei jedem Bot-Neustart wird automatisch `/import-messages force:true` ausgeführt. Dadurch sind die Datenbank (`data/messages.db`) und der MessageStore immer auf aktuellem Stand (inkl. Threads).
-- **Log-Channel**: Richte mit `/setup-log-channel` einen Admin-only Kanal wie `#guildscout-logs` ein. GuildScout erstellt ihn automatisch, falls er fehlt, und postet dort:
-  - `🤖 GuildScout gestartet` / `♻️ Reconnected`
-  - `📥 Re-Import gestartet` mit Live-Updates (aktueller Kanal, Fortschritt X/Y, importierte Nachrichten, Laufzeit)
-  - `✅ Import abgeschlossen` inklusive Dauer und Gesamtnachrichten
-- **Live-Update Embed**: Sobald der Import durch ist, bleibt eine Embed „🟢 Live-Tracking aktiv“ im Log-Channel sichtbar. Sie zeigt:
-  - Gesamtzahl aller Nachrichten in der Datenbank (`MessageStore`)
-  - Anzahl live getrackter Messages seit letztem Bot-Neustart
-  - Die letzten 10 Nachrichten inkl. Sprunglink direkt in Discord
-  - Automatische Aktualisierung: sofort nach Ruhephasen (konfigurierbarer Idle-Gap), sonst spätestens nach dem eingestellten Intervall.
-
-> Hinweis: Solange der Auto-Import läuft, reagiert das manuelle `/import-status` nicht (Discord blockiert doppelte Commands). Prüfe stattdessen den Log-Channel – dort steht der Fortschritt in Echtzeit.
+- **Dashboard Channel**: Richte mit `/setup-ranking-channel` den Dashboard-Kanal ein. Hier postet der Bot automatisch:
+  - Rankings (`/analyze` Ergebnisse)
+  - Import-Status (Fortschrittsbalken bei Importen)
+  - Willkommens-Übersicht mit Guild-Status
+- **Status Channel**: In der `config.yaml` kannst du eine `status_channel_id` eintragen (oder manuell erstellen).
+  - Hier landen Fehler, Warnungen und fehlgeschlagene Verifikationen.
+  - Admins können Fehler mit einem Button bestätigen ("Acknowledged"), woraufhin die Nachricht gelöscht wird.
+- **Delta Import**: Wenn der Bot neu startet, prüft er den Zeitstempel der letzten bekannten Nachricht. Liegt diese länger als 1 Minute zurück, startet er einen **Delta-Import** für die Zwischenzeit. Fortschritt wird im Dashboard angezeigt.
 
 ### `/analyze` Command
 
@@ -177,7 +172,7 @@ Analyze users with a specific role and generate rankings.
 - Analysis duration
 - Cache statistics (hits/misses for performance tracking)
 
-### `/my-score` Command (Phase 2)
+### `/my-score` Command
 
 Check your own ranking score with detailed breakdown.
 
@@ -210,23 +205,20 @@ Vergleicht die gespeicherten MessageStore-Werte mit frischen Discord-API Zählun
 ```
 
 - Der Command wählt zufällige User mit ≥10 Nachrichten.
-- Fortschritt erscheint sowohl im Command (Ephemeral Message) als auch im Log-Channel (aktueller User, Kanal, Rate-Limit Hinweise).
-- Das Ergebnis-Embed zeigt Accuracy, Max/Average-Differenz und eine Liste aller Abweichungen. Läuft der ursprüngliche Follow-up-Webhook ab (z. B. bei langen Läufen), sendet der Bot automatisch eine neue Embed und loggt das Ergebnis dennoch.
+- Fortschritt erscheint als Ephemeral Message.
+- Fehler/Abweichungen werden im Status-Channel geloggt.
 
 ### Automatisierte Verifikationen
 
 Neben dem manuellen Command laufen zwei Scheduler-Jobs im Hintergrund (konfigurierbar im `verification`-Abschnitt der Config):
 
-- **Tägliche Stichprobe** (Standard 25 User, 03:00 UTC): prüft eine zufällige Auswahl aktiver User (≥10 Nachrichten) gegen die Discord-API und postet Start/Ergebnis als Embed.
-- **Wöchentliche Tiefenprüfung** (Standard Montag 04:30 UTC, 150 User): größere Stichprobe für maximale Sicherheit.
+- **Tägliche Stichprobe** (Standard 25 User, 03:00 UTC)
+- **Wöchentliche Tiefenprüfung** (Standard Montag 04:30 UTC, 150 User)
 
 Beide Jobs:
-- werden übersprungen, solange ein Import läuft oder noch keine Daten vorliegen,
-- sperren sich gegenseitig per Lock, damit nie zwei Prüfungen parallel laufen,
-- loggen sämtliche Statuswechsel (`gestartet`, `übersprungen`, `erfolgreich`, `abweichungen`, `fehler`) im Log-Channel inkl. Accuracy, Max Difference, auffälligen Usern **und der vollständigen Liste aller geprüften User mit Store-/API-Werten**,
-- nutzen ein Alert-Ping (`logging.alert_ping`) bei Abweichungen/Fehlern,
-- retryen Discord-API-Fehler (429/5xx) statt Kanäle zu überspringen und bereinigen gelöschte Channels/Threads vor dem Lauf,
-- passen Counts automatisch an, wenn Nachrichten oder Channels/Threads gelöscht werden.
+- werden übersprungen, solange ein Import läuft.
+- melden Fehler oder Auffälligkeiten in den **Status-Channel**.
+- nutzen ein Alert-Ping (`logging.alert_ping`) bei kritischen Fehlern.
 
 ### Guild Management Commands (V2.0)
 
@@ -254,7 +246,7 @@ View current guild members and spot availability (admin only)
 - Visual progress bar
 
 #### `/setup-ranking-channel`
-Create or update the ranking channel (admin only)
+Einrichten des **Dashboard-Kanals** (ehemals Ranking Channel). Hier werden Rankings und Status-Updates gepostet.
 
 #### `/set-max-spots`
 Set maximum guild spots (admin only)
@@ -310,7 +302,8 @@ guild_management:
     - 9876543210
   exclusion_users:             # Specific users to exclude
     - 1111111111
-  ranking_channel_id: null     # Auto-filled by /setup-ranking-channel
+  dashboard_channel_id: null   # Auto-filled by /setup-ranking-channel
+  status_channel_id: null      # For errors/warnings (optional)
 ```
 
 ### Scoring Weights
@@ -354,11 +347,10 @@ logging:
   level: "INFO"             # DEBUG, INFO, WARNING, ERROR
   file: "logs/guildscout.log"
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-  discord_channel_id: 123456789012345678   # setzt der Bot via /setup-log-channel
   alert_ping: "<@123456789012345678>"      # optionaler Ping bei Fehlern/Abweichungen
   enable_discord_service_logs: true        # false wenn ShadowOps Bot das Monitoring übernimmt
-  live_tracking_interval_seconds: 3600     # spätestens alle 60 Min. aktualisieren
-  live_tracking_idle_gap_seconds: 180      # nach 3 Min. Ruhe sofortiges Update
+  dashboard_update_interval_seconds: 300   # Dashboard update interval
+  dashboard_idle_gap_seconds: 120          # Idle gap for updates
 
 verification:
   enable_daily: true
@@ -485,11 +477,6 @@ logging:
   level: "DEBUG"  # For more detailed logs
 ```
 
-Wenn ein Discord-Log-Channel konfiguriert ist (`/setup-log-channel`), erhältst du zusätzlich:
-- Dauerhafte **🟢 Live-Tracking**-Embed mit Gesamtzählung + letzten Nachrichten
-- Automatische Embeds für `📥` Re-Import, `🔍` tägliche/ wöchentliche Verifikationen sowie Fehlermeldungen
-- Manuelle `/verify-message-counts`-Ergebnisse inklusive Fallback, falls das Follow-up abläuft
-
 ## 🤝 Integration with ShadowOps Bot (Centralized Monitoring)
 
 GuildScout can be integrated with [ShadowOps Bot](https://github.com/Commandershadow9/shadowops-bot) for centralized monitoring and notifications.
@@ -606,57 +593,32 @@ cp config/config.example.yaml config/config.yaml
 
 ## 🚀 Version History
 
-### Version 2.0.1 (2025-11-25) - Current ✅
-**Integration with ShadowOps Bot**
+### Version 2.2.0 (2025-11-26) - Current ✅
+**Delta Import & Dashboard System**
 
-**Changes:**
-- ✅ **Centralized Monitoring Support**: `discord_service_logs_enabled: false` for ShadowOps integration
-- ✅ **Documentation**: Added multi-bot monitoring setup guide
-- ✅ **Compatibility**: Works with ShadowOps Bot v3.2.0+ for external notifications
-
-**Configuration:**
-```yaml
-discord:
-  discord_service_logs_enabled: false  # When using ShadowOps for monitoring
-```
-
-**Benefits:**
-- Professional AI-generated patch notes on customer servers
-- Centralized status monitoring across all projects
-- No duplicate notification spam
-- Multi-language support (DE/EN)
+- **Delta Import**: Smarter imports, catching missed messages during downtime.
+- **Dashboard**: Centralized ranking and status display.
+- **Status Channel**: Dedicated error/warning channel with admin acknowledgment.
+- **Cleanup**: Removed old log channel system.
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
-### Version 2.0.0 ✅
+### Version 2.0.1 (2025-11-25)
+**Integration with ShadowOps Bot**
+
+- ✅ **Centralized Monitoring Support**
+- ✅ **Documentation Update**
+
+### Version 2.0.0
 **Major Performance, Guild Management & Features Update**
 
-See [CHANGELOG.md](CHANGELOG.md) for detailed changes.
+- ✅ **5x Faster Analysis**
+- ✅ **Smart Caching**
+- ✅ **Guild Management Features**
 
-**Performance:**
-- ✅ **5x Faster**: Channel-first message counting algorithm
-- ✅ **Smart Caching**: Infinite TTL SQLite cache (60-70% hit rate)
-- ✅ **Parallel Processing**: Configurable batch parallelism
-- ✅ **Robust Rate Limiting**: Auto-retry with exponential backoff
-
-**Guild Management:**
-- ✅ **WWM Release Timer**: Auto-updating countdown (10s intervals)
-- ✅ **Interactive Role Assignment**: Button confirmation system
-- ✅ **Guild Status Command**: Full member overview with CSV
-- ✅ **Welcome Messages**: Auto-updating with debouncing
-- ✅ **Spot Management**: Correct exclusion role counting
-
-**User Features:**
-- ✅ **`/my-score`**: Personal score checking
-- ✅ **Enhanced Logging**: Batch progress updates
-- ✅ **Better UI**: Improved embeds and formatting
-
-### Phase 1 (Initial Release) ✅
-- ✅ `/analyze` command with role-based ranking
-- ✅ Fair scoring system (configurable weights)
-- ✅ Discord embed + CSV export
-- ✅ Progress updates during analysis
-- ✅ Role-based permissions
+### Phase 1 (Initial Release)
+- ✅ `/analyze` command
+- ✅ Fair scoring system
 
 ## 🛠️ Service Script
 

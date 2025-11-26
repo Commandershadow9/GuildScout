@@ -23,7 +23,7 @@ from src.commands.ranking_channel import setup as setup_ranking_channel
 from src.commands.assign_guild_role import setup as setup_assign_guild_role
 from src.commands.guild_status import setup as setup_guild_status
 from src.commands.set_max_spots import setup as setup_set_max_spots
-from src.commands.log_channel import setup as setup_log_channel
+
 from src.commands.message_store_admin import setup as setup_message_store_admin
 from src.events.guild_events import setup as setup_guild_events
 from src.events.message_tracking import setup as setup_message_tracking
@@ -98,7 +98,7 @@ class GuildScoutBot(commands.Bot):
         await setup_assign_guild_role(self, self.config, self.cache)
         await setup_guild_status(self, self.config)
         await setup_set_max_spots(self, self.config)
-        await setup_log_channel(self, self.config)
+
         await setup_message_store_admin(self, self.config, self.message_store)
         self.logger.info("Commands loaded")
 
