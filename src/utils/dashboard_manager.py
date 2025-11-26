@@ -45,6 +45,7 @@ class DashboardManager:
         self._idle_gap = max(30, idle_gap_seconds)  # Min 30 seconds
         self._dashboard_state: Dict[int, Dict[str, Any]] = {}
         self._dashboard_locks: Dict[int, asyncio.Lock] = {}
+        self._protected_messages: set = set()  # Message IDs to skip during cleanup
 
     def _get_ranking_channel(self, guild: discord.Guild) -> Optional[discord.TextChannel]:
         """Get the ranking channel for a guild."""
@@ -301,6 +302,10 @@ class DashboardManager:
 
             # Fetch messages and delete all old bot messages + system messages
             async for message in channel.history(limit=max_scan):
+                # Skip protected messages (e.g., import status)
+                if message.id in self._protected_messages:
+                    continue
+
                 should_delete = False
 
                 # Delete all bot messages (including previously pinned ones)
@@ -341,3 +346,13 @@ class DashboardManager:
 
         # Clean up old messages in log channel (scan more messages - 500)
         await self._cleanup_old_messages(channel, max_scan=500)
+
+    def protect_message(self, message_id: int):
+        """Protect a message from cleanup (e.g., import status)."""
+        self._protected_messages.add(message_id)
+        logger.info(f"Protected message {message_id} from cleanup")
+
+    def unprotect_message(self, message_id: int):
+        """Remove message protection."""
+        self._protected_messages.discard(message_id)
+        logger.info(f"Unprotected message {message_id}")

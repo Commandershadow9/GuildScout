@@ -546,6 +546,18 @@ class GuildScoutBot(commands.Bot):
             # Create initial status message in ranking channel (always show to users)
             status_message = await self._create_import_status_message(guild)
 
+            # Protect import status message from dashboard cleanup
+            if status_message:
+                try:
+                    from src.events.message_tracking import MessageTracker
+                    message_tracker = self.get_cog('MessageTracker')
+                    if message_tracker and hasattr(message_tracker, 'dashboard_manager'):
+                        dashboard_manager = message_tracker.dashboard_manager
+                        if dashboard_manager:
+                            dashboard_manager.protect_message(status_message.id)
+                except Exception as protect_err:
+                    self.logger.warning(f"Could not protect import status message: {protect_err}")
+
             # Create importer
             excluded_channel_names = getattr(
                 self.config,
@@ -675,6 +687,17 @@ class GuildScoutBot(commands.Bot):
                 # Delete import status message (success = clean channel)
                 if status_message:
                     try:
+                        # Unprotect before deleting
+                        try:
+                            from src.events.message_tracking import MessageTracker
+                            message_tracker = self.get_cog('MessageTracker')
+                            if message_tracker and hasattr(message_tracker, 'dashboard_manager'):
+                                dashboard_manager = message_tracker.dashboard_manager
+                                if dashboard_manager:
+                                    dashboard_manager.unprotect_message(status_message.id)
+                        except:
+                            pass
+
                         await status_message.delete()
                         self.logger.info("🧹 Deleted import status message (import successful)")
                     except Exception as del_err:
