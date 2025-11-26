@@ -660,6 +660,22 @@ class GuildScoutBot(commands.Bot):
                 self.logger.info("✅ AUTOMATIC IMPORT COMPLETED SUCCESSFULLY")
                 self.logger.info("=" * 70)
 
+                # Update dashboard with final message count
+                try:
+                    from src.events.message_tracking import MessageTracker
+                    message_tracker = self.get_cog('MessageTracker')
+                    if message_tracker and hasattr(message_tracker, 'dashboard_manager'):
+                        dashboard_manager = message_tracker.dashboard_manager
+                        if dashboard_manager:
+                            # Force dashboard update after import completion
+                            lock = dashboard_manager._dashboard_locks.setdefault(guild.id, asyncio.Lock())
+                            async with lock:
+                                state = dashboard_manager._get_dashboard_state(guild.id)
+                                await dashboard_manager._update_dashboard(guild, state)
+                                self.logger.info("✅ Dashboard updated with import results")
+                except Exception as dash_err:
+                    self.logger.warning(f"Could not update dashboard after import: {dash_err}")
+
                 # Send success notification
                 if self.config.discord_service_logs_enabled:
                     color = (

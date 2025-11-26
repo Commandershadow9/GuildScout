@@ -11,6 +11,7 @@ from discord.ext import commands
 
 from src.database.message_store import MessageStore
 from src.utils.config import Config
+from src.utils.verification_stats import VerificationStats
 
 logger = logging.getLogger("guildscout.dashboard")
 
@@ -39,6 +40,7 @@ class DashboardManager:
         self.bot = bot
         self.config = config
         self.message_store = message_store
+        self.verification_stats = VerificationStats()
         self._update_interval = max(60, update_interval_seconds)  # Min 1 minute
         self._idle_gap = max(30, idle_gap_seconds)  # Min 30 seconds
         self._dashboard_state: Dict[int, Dict[str, Any]] = {}
@@ -186,6 +188,11 @@ class DashboardManager:
             activity_text += "\n\n**Letzte Nachrichten:**\n" + "\n".join(entries_text)
 
         embed.add_field(name="Live Activity", value=activity_text, inline=False)
+
+        # ========== VERIFIKATIONEN ==========
+        verification_summary = self.verification_stats.get_summary(guild.id)
+        if verification_summary and verification_summary != "Keine Verifikationen durchgeführt":
+            embed.add_field(name="🔍 Datenqualität", value=verification_summary, inline=False)
 
         # ========== COMMANDS ==========
         commands_text = (

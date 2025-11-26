@@ -15,6 +15,7 @@ from src.database import MessageCache
 from src.database.message_store import MessageStore
 from src.analytics.activity_tracker import ActivityTracker
 from src.utils.validation import MessageCountValidator
+from src.utils.verification_stats import VerificationStats
 
 
 logger = logging.getLogger("guildscout.verification_scheduler")
@@ -39,6 +40,7 @@ class VerificationScheduler(commands.Cog):
         self.config = config
         self.message_store = message_store
         self.discord_logger = DiscordLogger(bot, config)
+        self.verification_stats = VerificationStats()
 
         self.daily_enabled = config.daily_verification_enabled
         self.weekly_enabled = config.weekly_verification_enabled
@@ -223,15 +225,50 @@ class VerificationScheduler(commands.Cog):
                 color = discord.Color.green() if results["passed"] else discord.Color.orange()
                 ping = self.config.alert_ping if not results["passed"] else None
 
-                await self._log_status(
-                    guild,
-                    title=f"🔍 {label}",
-                    description=description,
-                    status=status_text,
-                    color=color,
-                    message=log_message,
-                    ping=ping
+                # Record stats for dashboard
+                self.verification_stats.record_verification(
+                    guild.id,
+                    passed=results["passed"],
+                    accuracy=results["accuracy_percent"],
+                    sample_size=results["total_users"],
+                    mismatches=results["mismatches"]
                 )
+
+                # If successful, delete the message (don't spam log channel)
+                # If failed, keep the message for visibility
+                if results["passed"]:
+                    if log_message:
+                        try:
+                            await log_message.delete()
+                            logger.info(f"✅ {label} erfolgreich - Message gelöscht (clean logs)")
+                        except:
+                            pass
+                else:
+                    # Failed - post persistent warning message
+                    await self._log_status(
+                        guild,
+                        title=f"🔍 {label}",
+                        description=description,
+                        status=status_text,
+                        color=color,
+                        message=log_message,
+                        ping=ping
+                    )
+
+                # Update dashboard with new stats
+                try:
+                    from src.events.message_tracking import MessageTracker
+                    message_tracker = self.bot.get_cog('MessageTracker')
+                    if message_tracker and hasattr(message_tracker, 'dashboard_manager'):
+                        dashboard_manager = message_tracker.dashboard_manager
+                        if dashboard_manager:
+                            lock = dashboard_manager._dashboard_locks.setdefault(guild.id, asyncio.Lock())
+                            async with lock:
+                                state = dashboard_manager._get_dashboard_state(guild.id)
+                                await dashboard_manager._update_dashboard(guild, state)
+                                logger.info("✅ Dashboard updated with verification stats")
+                except Exception as dash_err:
+                    logger.warning(f"Could not update dashboard after verification: {dash_err}")
 
                 logger.info(
                     "%s abgeschlossen: %s (Accuracy %.1f%%)",
