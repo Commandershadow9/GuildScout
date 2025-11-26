@@ -162,7 +162,6 @@ class GuildScoutBot(commands.Bot):
             # Send startup notification and start auto-import
             guild = self.get_guild(self.config.guild_id)
             if guild:
-                await self._ensure_log_channel_exists(guild)
                 description = (
                     f"Verbunden mit **{len(self.guilds)}** Server(n)\n"
                     f"Cache bereit, Commands synchronisiert\n"
@@ -183,7 +182,6 @@ class GuildScoutBot(commands.Bot):
             self.logger.info(f"Bot reconnected (ready event #{2 if self._ready_called else 1})")
             guild = self.get_guild(self.config.guild_id)
             if guild:
-                await self._ensure_log_channel_exists(guild)
                 await self._log_service_status(
                     guild,
                     "♻️ GuildScout verbunden",
@@ -297,71 +295,6 @@ class GuildScoutBot(commands.Bot):
             await status_message.edit(embed=embed)
         except Exception as exc:
             self.logger.debug("Failed to update import progress embed: %s", exc)
-
-    async def _ensure_log_channel_exists(self, guild: discord.Guild) -> Optional[discord.TextChannel]:
-        """
-        Make sure there is a Discord channel available for service logs.
-        Falls back to creating #guildscout-logs if necessary.
-        """
-        channel_id = self.config.log_channel_id
-        channel = guild.get_channel(channel_id) if channel_id else None
-
-        if not channel:
-            # Try to find an existing channel by name
-            channel = discord.utils.get(guild.text_channels, name="guildscout-logs")
-
-        if not channel:
-            # Create a dedicated log channel
-            try:
-                overwrites = {
-                    guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                    guild.me: discord.PermissionOverwrite(
-                        read_messages=True,
-                        send_messages=True,
-                        embed_links=True,
-                        attach_files=True
-                    )
-                }
-                for role_id in self.config.admin_roles:
-                    role = guild.get_role(role_id)
-                    if role:
-                        overwrites[role] = discord.PermissionOverwrite(
-                            read_messages=True,
-                            send_messages=True
-                        )
-
-                channel = await guild.create_text_channel(
-                    name="guildscout-logs",
-                    topic="🧾 GuildScout Logs – Analysen und Systemereignisse",
-                    overwrites=overwrites
-                )
-                embed = discord.Embed(
-                    title="🧾 GuildScout Logs",
-                    description="Analysen, Systemereignisse und Fehler werden hier protokolliert.",
-                    color=discord.Color.dark_gold(),
-                    timestamp=discord.utils.utcnow()
-                )
-                embed.add_field(
-                    name="Was wird geloggt?",
-                    value="• /analyze Starts & Ergebnisse\n• Cache-Infos\n• Fehler / Warnungen",
-                    inline=False
-                )
-                embed.set_footer(text="GuildScout Monitoring")
-                await channel.send(embed=embed)
-            except discord.Forbidden:
-                self.logger.warning("Cannot create log channel in guild %s", guild.name)
-                return None
-            except Exception as exc:
-                self.logger.error("Failed to ensure log channel: %s", exc, exc_info=True)
-                return None
-
-        if not hasattr(self, 'log_channels'):
-            self.log_channels = {}
-        self.log_channels[guild.id] = channel.id
-        if self.config.log_channel_id != channel.id:
-            self.config.set_log_channel_id(channel.id)
-
-        return channel
 
     async def _create_import_status_message(self, guild: discord.Guild):
         """
