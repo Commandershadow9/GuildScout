@@ -3,6 +3,7 @@
 import logging
 import discord
 import asyncio
+from datetime import datetime
 from typing import List, Optional, Callable, Dict
 from collections import defaultdict
 
@@ -118,13 +119,15 @@ class HistoricalImporter:
 
     async def _process_channel(
         self,
-        channel: discord.abc.GuildChannel
+        channel: discord.abc.GuildChannel,
+        after: Optional[datetime] = None
     ) -> Dict[str, int]:
         """
         Process a single channel with robust rate-limit handling.
 
         Args:
             channel: Channel to process
+            after: Optional datetime to only import messages after this time
 
         Returns:
             Dictionary with channel statistics
@@ -140,7 +143,8 @@ class HistoricalImporter:
                 logger.info(f"📖 Reading #{channel.name}...")
 
                 # Iterate through all messages in the channel
-                async for message in channel.history(limit=None, oldest_first=False):
+                # For delta imports, only fetch messages after the specified time
+                async for message in channel.history(limit=None, oldest_first=False, after=after):
                     # Skip bot messages
                     if message.author.bot:
                         continue
@@ -196,28 +200,41 @@ class HistoricalImporter:
 
     async def import_guild_history(
         self,
-        progress_callback: Optional[Callable[[str, int, int], None]] = None
+        progress_callback: Optional[Callable[[str, int, int], None]] = None,
+        after: Optional[datetime] = None
     ) -> dict:
         """
         Import all historical messages for a guild.
 
         Args:
             progress_callback: Optional callback function(channel_name, current, total)
+            after: Optional datetime to only import messages after this time (for delta imports)
 
         Returns:
             Dictionary with import statistics
         """
-        # Check if import already completed
-        if await self.message_store.is_import_completed(self.guild.id):
-            logger.warning(f"Import already completed for guild {self.guild.id}")
-            return {
-                "success": False,
-                "error": "Import already completed. Use reset_guild() to re-import."
-            }
+        # For delta imports (after is set), skip the "already completed" check
+        # Delta imports are incremental updates to catch missed messages
+        is_delta_import = after is not None
 
-        # Mark import as started (before we begin processing)
-        await self.message_store.mark_import_started(self.guild.id)
-        logger.info(f"Starting historical import for guild: {self.guild.name}")
+        if not is_delta_import:
+            # Check if import already completed (only for full imports)
+            if await self.message_store.is_import_completed(self.guild.id):
+                logger.warning(f"Import already completed for guild {self.guild.id}")
+                return {
+                    "success": False,
+                    "error": "Import already completed. Use reset_guild() to re-import."
+                }
+
+            # Mark import as started (before we begin processing)
+            await self.message_store.mark_import_started(self.guild.id)
+            logger.info(f"Starting historical import for guild: {self.guild.name}")
+        else:
+            logger.info(
+                f"Starting delta import for guild: {self.guild.name} "
+                f"(messages after {after.strftime('%Y-%m-%d %H:%M:%S UTC')})"
+            )
+
         await self.message_store.sync_guild_members(self.guild)
 
         # Use try-finally to ensure cleanup on crash
@@ -262,7 +279,7 @@ class HistoricalImporter:
                         await progress_callback(channel_label, idx, total_channels)
 
                     # Process channel with robust rate-limit handling
-                    result = await self._process_channel(channel)
+                    result = await self._process_channel(channel, after=after)
 
                     # Add counts from this channel
                     for key, count in result["message_counts"].items():
@@ -306,11 +323,12 @@ class HistoricalImporter:
             # Refresh member snapshot at the end to capture any late join/leave events
             await self.message_store.sync_guild_members(self.guild)
 
-            # Mark import as completed
-            await self.message_store.mark_import_completed(
-                guild_id=self.guild.id,
-                total_messages=total_messages
-            )
+            # Mark import as completed (only for full imports, not delta imports)
+            if not is_delta_import:
+                await self.message_store.mark_import_completed(
+                    guild_id=self.guild.id,
+                    total_messages=total_messages
+                )
 
             result = {
                 "success": True,

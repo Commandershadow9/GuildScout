@@ -499,7 +499,9 @@ class GuildScoutBot(commands.Bot):
                 if not force_reimport:
                     is_completed = await self.message_store.is_import_completed(guild.id)
                     if is_completed:
+                        # Import completed, but check for missed messages during downtime
                         self.logger.info(f"✅ Historical import already completed for {guild.name}")
+                        await self._import_missed_messages(guild)
                         return
                 else:
                     self.logger.info(f"♻️ Forcing historical re-import for {guild.name}")
@@ -730,6 +732,126 @@ class GuildScoutBot(commands.Bot):
                 "Bitte Logs prüfen und `/import-messages` manuell ausführen.",
                 ping=self.config.alert_ping
             )
+
+    async def _import_missed_messages(self, guild: discord.Guild):
+        """
+        Import messages that were missed during bot downtime.
+        Called on every restart to catch up with messages sent while bot was offline.
+        """
+        try:
+            from datetime import datetime, timedelta
+            from src.utils.historical_import import HistoricalImporter
+
+            # Get last known message timestamp from database
+            stats = await self.message_store.get_stats(guild.id)
+            last_import_time = stats.get("last_message_timestamp")
+
+            if not last_import_time:
+                self.logger.info("No last import timestamp found - skipping delta import")
+                return
+
+            # Parse timestamp
+            if isinstance(last_import_time, str):
+                from dateutil import parser
+                last_import_time = parser.parse(last_import_time)
+
+            # Add small buffer to avoid duplicates (already have messages up to this point)
+            since_time = last_import_time + timedelta(milliseconds=1)
+            now = datetime.utcnow()
+
+            # Calculate time since last message
+            downtime = now - last_import_time
+
+            # Only import if downtime > 1 minute (avoid unnecessary imports for quick restarts)
+            if downtime.total_seconds() < 60:
+                self.logger.info(f"⏱️ Bot downtime < 1 minute - skipping delta import")
+                return
+
+            self.logger.info(
+                f"🔄 Checking for missed messages during downtime "
+                f"({downtime.total_seconds():.0f}s offline)"
+            )
+
+            # Create status message in dashboard
+            dashboard_channel_id = self.config.dashboard_channel_id
+            if dashboard_channel_id:
+                dashboard_channel = guild.get_channel(dashboard_channel_id)
+                if dashboard_channel:
+                    embed = discord.Embed(
+                        title="🔄 Delta-Import",
+                        description=(
+                            f"Prüfe verpasste Nachrichten...\n"
+                            f"Bot war offline: **{downtime.total_seconds():.0f}s**"
+                        ),
+                        color=discord.Color.orange()
+                    )
+                    status_msg = await dashboard_channel.send(embed=embed)
+
+                    # Protect message from cleanup
+                    try:
+                        from src.events.message_tracking import MessageTracker
+                        message_tracker = self.get_cog('MessageTracker')
+                        if message_tracker and hasattr(message_tracker, 'dashboard_manager'):
+                            dashboard_manager = message_tracker.dashboard_manager
+                            if dashboard_manager:
+                                dashboard_manager.protect_message(status_msg.id)
+                    except:
+                        pass
+                else:
+                    status_msg = None
+            else:
+                status_msg = None
+
+            # Perform delta import
+            importer = HistoricalImporter(
+                guild=guild,
+                message_store=self.message_store,
+                excluded_channel_names=self.config.excluded_channel_names
+            )
+
+            # Import only messages after last known timestamp
+            result = await importer.import_guild_history(after=since_time)
+
+            # Update status message
+            if status_msg:
+                try:
+                    # Unprotect before deleting
+                    from src.events.message_tracking import MessageTracker
+                    message_tracker = self.get_cog('MessageTracker')
+                    if message_tracker and hasattr(message_tracker, 'dashboard_manager'):
+                        dashboard_manager = message_tracker.dashboard_manager
+                        if dashboard_manager:
+                            dashboard_manager.unprotect_message(status_msg.id)
+                except:
+                    pass
+
+                if result['success'] and result['total_messages'] > 0:
+                    embed = discord.Embed(
+                        title="✅ Delta-Import abgeschlossen",
+                        description=f"**{result['total_messages']:,}** verpasste Nachrichten importiert",
+                        color=discord.Color.green()
+                    )
+                    await status_msg.edit(embed=embed)
+                    await asyncio.sleep(5)
+                    await status_msg.delete()
+                    self.logger.info(
+                        f"✅ Delta-Import completed: {result['total_messages']:,} messages caught up"
+                    )
+                elif result['total_messages'] == 0:
+                    # No missed messages - delete status quietly
+                    await status_msg.delete()
+                    self.logger.info("✅ No missed messages - bot was up to date")
+                else:
+                    # Error
+                    embed = discord.Embed(
+                        title="⚠️ Delta-Import Warnung",
+                        description=f"Fehler beim Import verpasster Nachrichten",
+                        color=discord.Color.orange()
+                    )
+                    await status_msg.edit(embed=embed)
+
+        except Exception as e:
+            self.logger.error(f"Error during delta import: {e}", exc_info=True)
 
     async def on_command_error(self, ctx, error):
         """Handle command errors."""
