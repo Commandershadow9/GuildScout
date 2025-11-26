@@ -371,13 +371,13 @@ class GuildScoutBot(commands.Bot):
         Returns:
             Discord message object for updating
         """
-        # Post import status in ranking channel (user-facing)
-        ranking_channel_id = self.config.ranking_channel_id
-        if not ranking_channel_id:
+        # Post import status in dashboard channel (user-facing)
+        dashboard_channel_id = self.config.dashboard_channel_id
+        if not dashboard_channel_id:
             return None
 
-        ranking_channel = guild.get_channel(ranking_channel_id)
-        if not ranking_channel:
+        dashboard_channel = guild.get_channel(dashboard_channel_id)
+        if not dashboard_channel:
             return None
 
         # Create initial embed
@@ -393,8 +393,8 @@ class GuildScoutBot(commands.Bot):
         embed.timestamp = discord.utils.utcnow()
 
         try:
-            message = await ranking_channel.send(embed=embed)
-            self.logger.info(f"Created import status message in #{ranking_channel.name}")
+            message = await dashboard_channel.send(embed=embed)
+            self.logger.info(f"Created import status message in #{dashboard_channel.name}")
             return message
         except Exception as e:
             self.logger.error(f"Failed to create status message: {e}")

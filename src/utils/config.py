@@ -162,12 +162,6 @@ class Config:
         )
 
     @property
-    def log_channel_id(self) -> Optional[int]:
-        """Get Discord log channel ID (if configured)."""
-        channel_id = self.get("logging.discord_channel_id")
-        return int(channel_id) if channel_id else None
-
-    @property
     def alert_ping(self) -> Optional[str]:
         """Optional mention content to ping on errors (e.g., '@here' or '<@&role>')."""
         return self.get("logging.alert_ping")
@@ -191,26 +185,6 @@ class Config:
         except (TypeError, ValueError):
             gap_int = 120
         return max(30, gap_int)  # Min 30 seconds
-
-    @property
-    def live_tracking_interval_seconds(self) -> int:
-        """Interval for posting live tracking summaries to Discord log channel."""
-        interval = self.get("logging.live_tracking_interval_seconds", 3600)
-        try:
-            interval_int = int(interval)
-        except (TypeError, ValueError):
-            interval_int = 3600
-        return max(5, interval_int)
-
-    @property
-    def live_tracking_idle_gap_seconds(self) -> int:
-        """Gap after which the live embed should refresh immediately."""
-        gap = self.get("logging.live_tracking_idle_gap_seconds", 180)
-        try:
-            gap_int = int(gap)
-        except (TypeError, ValueError):
-            gap_int = 180
-        return max(10, gap_int)
 
     @property
     def daily_verification_enabled(self) -> bool:
@@ -285,11 +259,6 @@ class Config:
         except (TypeError, ValueError):
             return 30
 
-    def set_log_channel_id(self, channel_id: Optional[int]) -> None:
-        """Persist Discord log channel ID."""
-        self._set_nested_value("logging.discord_channel_id", channel_id)
-        self.save()
-
     @property
     def discord_service_logs_enabled(self) -> bool:
         """Whether service lifecycle events should be logged to Discord."""
@@ -317,14 +286,37 @@ class Config:
         return self.get("guild_management.exclusion_users", [])
 
     @property
-    def ranking_channel_id(self) -> Optional[int]:
-        """Get ranking channel ID (auto-managed)."""
-        channel_id = self.get("guild_management.ranking_channel_id")
+    def dashboard_channel_id(self) -> Optional[int]:
+        """Get dashboard channel ID (formerly ranking channel)."""
+        # Try new key first, fallback to old key for backward compatibility
+        channel_id = self.get("guild_management.dashboard_channel_id")
+        if not channel_id:
+            channel_id = self.get("guild_management.ranking_channel_id")
         return int(channel_id) if channel_id else None
 
+    def set_dashboard_channel_id(self, channel_id: Optional[int]) -> None:
+        """Update dashboard channel ID in config."""
+        self._set_nested_value("guild_management.dashboard_channel_id", channel_id)
+        self.save()
+
+    @property
+    def ranking_channel_id(self) -> Optional[int]:
+        """Deprecated: Use dashboard_channel_id instead."""
+        return self.dashboard_channel_id
+
     def set_ranking_channel_id(self, channel_id: Optional[int]) -> None:
-        """Update ranking channel ID in config."""
-        self._set_nested_value("guild_management.ranking_channel_id", channel_id)
+        """Deprecated: Use set_dashboard_channel_id instead."""
+        self.set_dashboard_channel_id(channel_id)
+
+    @property
+    def status_channel_id(self) -> Optional[int]:
+        """Get status channel ID for errors and warnings."""
+        channel_id = self.get("guild_management.status_channel_id")
+        return int(channel_id) if channel_id else None
+
+    def set_status_channel_id(self, channel_id: Optional[int]) -> None:
+        """Update status channel ID in config."""
+        self._set_nested_value("guild_management.status_channel_id", channel_id)
         self.save()
 
     @property

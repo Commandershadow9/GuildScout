@@ -49,15 +49,15 @@ class DashboardManager:
         self._dashboard_locks: Dict[int, asyncio.Lock] = {}
         self._protected_messages: set = set()  # Message IDs to skip during cleanup
 
-    def _get_ranking_channel(self, guild: discord.Guild) -> Optional[discord.TextChannel]:
-        """Get the ranking channel for a guild."""
-        channel_id = self.config.ranking_channel_id
+    def _get_dashboard_channel(self, guild: discord.Guild) -> Optional[discord.TextChannel]:
+        """Get the dashboard channel for a guild."""
+        channel_id = self.config.dashboard_channel_id
         if not channel_id:
             return None
 
         channel = guild.get_channel(channel_id)
         if not isinstance(channel, discord.TextChannel):
-            logger.warning(f"Ranking channel {channel_id} not found or not a text channel")
+            logger.warning(f"Dashboard channel {channel_id} not found or not a text channel")
             return None
 
         return channel
@@ -129,16 +129,16 @@ class DashboardManager:
 
     async def _update_dashboard(self, guild: discord.Guild, state: Dict[str, Any]):
         """Update the combined dashboard + welcome message embed."""
-        channel = self._get_ranking_channel(guild)
+        channel = self._get_dashboard_channel(guild)
         if not channel:
-            logger.warning(f"No ranking channel configured for guild {guild.name}")
+            logger.warning(f"No dashboard channel configured for guild {guild.name}")
             return
 
         # Build comprehensive embed combining dashboard + welcome content
         embed = discord.Embed(
-            title="📊 GuildScout Ranking-Kanal",
+            title="📊 GuildScout Dashboard",
             description=(
-                "Hier erscheinen automatisch alle Auswertungen von GuildScout.\n"
+                "Zentrale Übersicht für alle GuildScout-Funktionen und Auswertungen.\n"
                 "Die Bewertung kombiniert **40 %** Tage im Server und **60 %** Nachrichtenaktivität."
             ),
             color=discord.Color.blue(),
@@ -250,7 +250,7 @@ class DashboardManager:
             if state["dashboard_message"]:
                 return  # Already exists
 
-            channel = self._get_ranking_channel(guild)
+            channel = self._get_dashboard_channel(guild)
             if channel:
                 # Clean up old bot messages before creating new dashboard
                 await self._cleanup_old_messages(channel)

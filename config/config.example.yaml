@@ -60,8 +60,12 @@ guild_management:
   # Guild role ID to assign to selected users
   guild_role_id: 1438703780362321991  # The actual guild role to assign
 
-  # Ranking channel ID where analysis results are posted (auto-filled)
-  ranking_channel_id: null
+  # Dashboard channel ID where dashboard and rankings are posted (auto-filled)
+  dashboard_channel_id: null
+
+  # Status channel ID for errors and warnings (optional, recommended)
+  status_channel_id: null
+
   ranking_channel_message_id: null
   ranking_channel_message_version: 0
 
@@ -84,18 +88,12 @@ logging:
   # Log format
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-  # Discord log channel (auto-managed)
-  discord_channel_id: null
-
-  # Optional ping/mention on Fehlern (e.g. "@here" or "<@&role_id>")
+  # Optional ping/mention on critical errors (e.g. "@here" or "<@&role_id>")
   alert_ping: null
 
-  # Whether to log startup/shutdown events to Discord
-  enable_discord_service_logs: true
-
-  # Live-tracking embed cadence (seconds)
-  live_tracking_interval_seconds: 3600   # spätestens alle 60 Min. aktualisieren
-  live_tracking_idle_gap_seconds: 180    # nach 3 Min. Ruhe sofortiges Update
+  # Dashboard update settings
+  dashboard_update_interval_seconds: 300  # Update at least every 5 minutes
+  dashboard_idle_gap_seconds: 120         # Update after 2 minutes of inactivity
 
 verification:
   enable_daily: true              # tägliche Stichprobe aktivieren/deaktivieren
