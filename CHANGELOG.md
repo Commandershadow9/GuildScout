@@ -5,6 +5,7 @@
 > **Note:** Detaillierte Patch Notes mit verbessertem AI-System verfügbar im Discord Update-Channel.
 
 ### 🛡️ Resilience & Maintenance
+- **Single Instance Lock**: Verhindert zuverlässig, dass mehrere Bot-Instanzen gleichzeitig laufen. Nutzt File-Locking für maximale Sicherheit.
 - **Automatisierte Backups**: Tägliches Backup der Datenbank (05:00 UTC) in `backups/`. Rotation behält die letzten 7 Tage.
 - **Datenbank-Optimierung**: Indizes für `user_id` und `channel_id` hinzugefügt für schnellere Abfragen bei großen Datenmengen.
 - **Robuster Startprozess**: Neue Startsequenz verhindert Race Conditions zwischen Aufräum-Skripten, Delta-Import und Verifikations-Tasks.
