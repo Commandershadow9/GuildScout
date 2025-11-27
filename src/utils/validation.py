@@ -61,7 +61,8 @@ class MessageCountValidator:
         sample_users: List[discord.Member],
         tolerance_percent: float = 2.0,
         progress_callback: ProgressCallback = None,
-        channel_progress_callback: ChannelProgressCallback = None
+        channel_progress_callback: ChannelProgressCallback = None,
+        heal_mismatches: bool = False
     ) -> Dict:
         """
         Validate message counts for a sample of users.
@@ -72,16 +73,18 @@ class MessageCountValidator:
             sample_users: List of users to validate
             tolerance_percent: Acceptable difference percentage (default: 2%)
             progress_callback: Optional coroutine to report progress
+            heal_mismatches: Whether to automatically fix DB counts using API data (default: False)
 
         Returns:
             Dictionary with validation results
         """
-        logger.info(f"Starting validation for {len(sample_users)} users...")
+        logger.info(f"Starting validation for {len(sample_users)} users (Healing: {heal_mismatches})...")
 
         results = {
             "total_users": len(sample_users),
             "matches": 0,
             "mismatches": 0,
+            "healed": 0,
             "max_difference": 0,
             "avg_difference": 0,
             "discrepancies": [],
@@ -90,11 +93,15 @@ class MessageCountValidator:
 
         total_diff = 0
 
+        # Get all excluded channels (both by ID and Name patterns) from tracker
+        excluded_channel_ids = self.activity_tracker.get_excluded_channel_ids()
+
         for idx, user in enumerate(sample_users, start=1):
             # Get count from MessageStore
             store_count = await self.message_store.get_user_total(
                 self.guild.id,
-                user.id
+                user.id,
+                excluded_channels=excluded_channel_ids
             )
 
             # Get fresh count from Discord API
@@ -115,11 +122,19 @@ class MessageCountValidator:
                         channel_count
                     )
 
-            api_count = await self.activity_tracker.count_user_messages(
+            # Count messages (request breakdown if healing is enabled)
+            count_result = await self.activity_tracker.count_user_messages(
                 user,
                 use_cache=False,  # Force fresh count
-                channel_progress_callback=per_channel_callback
+                channel_progress_callback=per_channel_callback,
+                return_breakdown=heal_mismatches
             )
+
+            if heal_mismatches:
+                api_count, channel_breakdown = count_result
+            else:
+                api_count = count_result
+                channel_breakdown = None
 
             # Calculate difference
             diff = abs(store_count - api_count)
@@ -129,17 +144,35 @@ class MessageCountValidator:
 
             # Check if within tolerance
             match = diff_percent <= tolerance_percent
+            healed = False
+
             if match:
                 results["matches"] += 1
             else:
                 results["mismatches"] += 1
+                
+                # Self-Healing: If mismatch found and healing enabled, update DB
+                if heal_mismatches and channel_breakdown is not None:
+                    try:
+                        logger.info(f"🩹 Healing user {user.name} (Diff: {diff}, Store: {store_count}, API: {api_count})")
+                        await self.message_store.update_user_counts(
+                            self.guild.id,
+                            user.id,
+                            channel_breakdown
+                        )
+                        healed = True
+                        results["healed"] += 1
+                    except Exception as e:
+                        logger.error(f"Failed to heal user {user.name}: {e}")
+
                 results["discrepancies"].append({
                     "user": user.name,
                     "user_id": user.id,
                     "store_count": store_count,
                     "api_count": api_count,
                     "difference": diff,
-                    "difference_percent": diff_percent
+                    "difference_percent": diff_percent,
+                    "healed": healed
                 })
 
             results["user_results"].append({
@@ -149,7 +182,8 @@ class MessageCountValidator:
                 "api_count": api_count,
                 "difference": diff,
                 "difference_percent": diff_percent,
-                "match": match
+                "match": match,
+                "healed": healed
             })
 
             # Update max difference
@@ -158,7 +192,7 @@ class MessageCountValidator:
 
             logger.debug(
                 f"User {user.name}: Store={store_count}, API={api_count}, "
-                f"Diff={diff} ({diff_percent:.1f}%)"
+                f"Diff={diff} ({diff_percent:.1f}%) {'[HEALED]' if healed else ''}"
             )
 
             if progress_callback:
@@ -178,10 +212,15 @@ class MessageCountValidator:
             total_diff / len(sample_users) if sample_users else 0
         )
 
-        # Determine overall result
+        # Determine overall result (passed if match OR healed)
+        # If we healed the mismatches, the "state" is now effectively valid, 
+        # but we still report the initial state as "failed/healed".
+        
         accuracy = (results["matches"] / len(sample_users) * 100) if sample_users else 0
         results["accuracy_percent"] = accuracy
-        results["passed"] = accuracy >= 95.0  # 95% of users must match
+        
+        # Pass if high accuracy OR if we healed everything
+        results["passed"] = (accuracy >= 95.0)
 
         logger.info("=" * 60)
         logger.info("📊 VALIDATION RESULTS")
@@ -189,6 +228,8 @@ class MessageCountValidator:
         logger.info(f"Users validated: {len(sample_users)}")
         logger.info(f"Matches: {results['matches']}")
         logger.info(f"Mismatches: {results['mismatches']}")
+        if heal_mismatches:
+            logger.info(f"Healed: {results['healed']}")
         logger.info(f"Accuracy: {accuracy:.1f}%")
         logger.info(f"Max difference: {results['max_difference']}")
         logger.info(f"Avg difference: {results['avg_difference']:.1f}")

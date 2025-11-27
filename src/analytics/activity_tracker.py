@@ -37,6 +37,23 @@ class ActivityTracker:
         self.cache = cache
         self.message_store = message_store
 
+    def get_excluded_channel_ids(self) -> List[int]:
+        """
+        Get all excluded channel IDs (explicit + pattern-based).
+
+        Returns:
+            List of channel IDs that are excluded
+        """
+        excluded = set(self.excluded_channels)
+        
+        for channel in self.guild.text_channels:
+            if channel.id in excluded:
+                continue
+            if self._should_exclude_channel(channel):
+                excluded.add(channel.id)
+                
+        return list(excluded)
+
     def _should_exclude_channel(self, channel: discord.abc.GuildChannel) -> bool:
         """
         Check if a channel should be excluded from counting.
@@ -76,8 +93,9 @@ class ActivityTracker:
         use_cache: bool = True,
         channel_progress_callback: Optional[
             Callable[[discord.TextChannel, int, int, int], Awaitable[None]]
-        ] = None
-    ) -> int:
+        ] = None,
+        return_breakdown: bool = False
+    ) -> int | tuple[int, Dict[int, int]]:
         """
         Count messages for a specific user across all channels.
 
@@ -85,12 +103,14 @@ class ActivityTracker:
             user: Member to count messages for
             days_lookback: Optional number of days to look back (None = all time)
             use_cache: Whether to use cache (default: True)
+            return_breakdown: Whether to return (total, breakdown_dict)
 
         Returns:
-            Total message count
+            Total message count (int) OR (total, breakdown) if return_breakdown=True
         """
         # If message store is available and import is completed, use it for instant results
-        if self.message_store and days_lookback is None:
+        # NOTE: Store cannot provide breakdown efficiently here without query, and we usually use this for verification against store.
+        if self.message_store and days_lookback is None and not return_breakdown:
             is_imported = await self.message_store.is_import_completed(self.guild.id)
             if is_imported:
                 count = await self.message_store.get_user_total(
@@ -101,8 +121,8 @@ class ActivityTracker:
                 logger.debug(f"Using message store for {user.name}: {count}")
                 return count
 
-        # Try to get from cache first
-        if use_cache and self.cache:
+        # Try to get from cache first (only if breakdown not needed)
+        if use_cache and self.cache and not return_breakdown:
             cached_count = await self.cache.get(
                 self.guild.id,
                 user.id,
@@ -115,6 +135,7 @@ class ActivityTracker:
 
         # Count messages (cache miss or cache disabled)
         total_messages = 0
+        breakdown = {}
 
         # Calculate cutoff date if specified
         after_date = None
@@ -148,8 +169,8 @@ class ActivityTracker:
 
                     total_messages += count
                     channel_message_count = count
-
                     if count > 0:
+                        breakdown[channel.id] = count
                         logger.debug(
                             f"User {user.name} has {count} messages in #{channel.name}"
                         )
@@ -198,7 +219,7 @@ class ActivityTracker:
                 except Exception as callback_error:
                     logger.debug(f"Channel progress callback failed: {callback_error}")
 
-        # Store in cache
+        # Store in cache (only if full scan)
         if use_cache and self.cache:
             await self.cache.set(
                 self.guild.id,
@@ -209,6 +230,8 @@ class ActivityTracker:
             )
             logger.debug(f"Cached count for {user.name}: {total_messages}")
 
+        if return_breakdown:
+            return total_messages, breakdown
         return total_messages
 
     async def _count_channel_for_users(

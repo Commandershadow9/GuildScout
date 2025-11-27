@@ -116,7 +116,7 @@ class Config:
     @property
     def excluded_channel_names(self) -> list:
         """Get list of excluded channel name patterns."""
-        return self.get("analytics.excluded_channel_names", ["nsfw", "bot-spam"])
+        return self.get("analytics.excluded_channel_names", [])
 
     @property
     def admin_roles(self) -> list:

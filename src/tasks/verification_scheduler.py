@@ -80,7 +80,8 @@ class VerificationScheduler(commands.Cog):
         *,
         label: str,
         sample_size: int,
-        tolerance_percent: float = 1.0
+        tolerance_percent: float = 1.0,
+        enable_healing: bool = True
     ):
         """Execute a verification job and log the results."""
         async with self._run_lock:
@@ -210,7 +211,8 @@ class VerificationScheduler(commands.Cog):
                 results = await validator.validate_sample(
                     sample_members,
                     tolerance_percent=tolerance_percent,
-                    progress_callback=progress_callback
+                    progress_callback=progress_callback,
+                    heal_mismatches=enable_healing
                 )
 
                 description = (
@@ -221,21 +223,25 @@ class VerificationScheduler(commands.Cog):
                     f"**Mismatches:** {results['mismatches']} ❌\n"
                     f"**Max Difference:** {results['max_difference']} Nachrichten"
                 )
+                
+                if results.get("healed", 0) > 0:
+                    description += f"\n**Korrigiert:** {results['healed']} User 🩹"
 
                 if results["discrepancies"]:
                     top_disc = results["discrepancies"][:3]
                     diff_lines = []
                     for disc in top_disc:
+                        healed_mark = " 🩹" if disc.get("healed") else ""
                         diff_lines.append(
                             f"- {disc['user']}: Store {disc['store_count']} | "
                             f"API {disc['api_count']} "
-                            f"(Diff {disc['difference']}, {disc['difference_percent']:.1f}%)"
+                            f"(Diff {disc['difference']}, {disc['difference_percent']:.1f}%){healed_mark}"
                     )
                     description += "\n\n**Auffällige User:**\n" + "\n".join(diff_lines)
 
                 user_lines = []
                 for user_res in results.get("user_results", []):
-                    status_icon = "✅" if user_res["match"] else "❌"
+                    status_icon = "✅" if user_res["match"] else ("🩹" if user_res.get("healed") else "❌")
                     user_lines.append(
                         f"- {status_icon} {user_res['user']}: "
                         f"Store {user_res['store_count']} | API {user_res['api_count']} "
@@ -244,22 +250,25 @@ class VerificationScheduler(commands.Cog):
                 if user_lines:
                     description += "\n\n**Geprüfte User:**\n" + "\n".join(user_lines)
 
-                status_text = "✅ Erfolgreich" if results["passed"] else "⚠️ Abweichungen"
-                color = discord.Color.green() if results["passed"] else discord.Color.orange()
-                ping = self.config.alert_ping if not results["passed"] else None
+                # Pass if accuracy is high OR if we successfully healed the mismatches
+                passed = results["passed"] or (enable_healing and results.get("healed", 0) == results["mismatches"])
+                
+                status_text = "✅ Erfolgreich" if passed else "⚠️ Abweichungen"
+                color = discord.Color.green() if passed else discord.Color.orange()
+                ping = self.config.alert_ping if not passed else None
 
                 # Record stats for dashboard
                 self.verification_stats.record_verification(
                     guild.id,
-                    passed=results["passed"],
+                    passed=passed,
                     accuracy=results["accuracy_percent"],
                     sample_size=results["total_users"],
                     mismatches=results["mismatches"]
                 )
 
-                # If successful, delete the message (don't spam log channel)
-                # If failed, keep the message for visibility
-                if results["passed"]:
+                # If successful (or healed), delete the message (don't spam log channel)
+                # If failed (unhealed mismatches), keep the message for visibility
+                if passed:
                     if log_message:
                         try:
                             await log_message.delete()

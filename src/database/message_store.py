@@ -242,6 +242,51 @@ class MessageStore:
 
             await db.commit()
 
+    async def update_user_counts(
+        self,
+        guild_id: int,
+        user_id: int,
+        channel_counts: Dict[int, int]
+    ):
+        """
+        Replace all message counts for a user with new data (Self-Healing).
+
+        Args:
+            guild_id: Discord guild ID
+            user_id: Discord user ID
+            channel_counts: Dictionary mapping channel_id to message count
+        """
+        await self.initialize()
+        now_str = datetime.now(timezone.utc).isoformat()
+
+        async with aiosqlite.connect(self.db_path) as db:
+            # 1. Delete all existing counts for this user
+            await db.execute(
+                "DELETE FROM message_counts WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id)
+            )
+
+            # 2. Insert new counts
+            if channel_counts:
+                records = [
+                    (guild_id, user_id, channel_id, count, now_str)
+                    for channel_id, count in channel_counts.items()
+                    if count > 0
+                ]
+                if records:
+                    await db.executemany(
+                        """
+                        INSERT INTO message_counts
+                        (guild_id, user_id, channel_id, message_count, last_message_date)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        records
+                    )
+
+            await db.commit()
+        
+        logger.info(f"Healed message counts for user {user_id} in guild {guild_id}")
+
     async def get_user_total(
         self,
         guild_id: int,
