@@ -1,5 +1,116 @@
 # Changelog - GuildScout Bot
 
+## Version 2.3.0 - Advanced Monitoring & Security (2025-12-01)
+
+> **Major Update:** Umfassende Monitoring-, Performance- und Sicherheits-Features für Produktionsumgebungen.
+
+### 🏥 Health Monitoring System
+- **Automated Health Alerts**: Kontinuierliche Systemüberwachung alle 5 Minuten
+  - Verifikations-Gesundheit: Erkennt ausgefallene oder fehlerhafte Verifikations-Zyklen (> 8h keine Verifikation)
+  - Rate Limit Monitoring: Warnt bei kritischer Discord API Auslastung
+  - Datenbank-Gesundheit: Überwacht schnelles Wachstum (>50MB in kurzer Zeit) und Korruption
+  - ShadowOps Integration: Prüft Erreichbarkeit und Queue-Status
+- **Täglicher Gesundheitsbericht**: Automatische 24h-Zusammenfassung mit allen Metriken
+- **Alert Cooldowns**: Intelligente Spam-Prävention für wiederholte Alerts
+- **Multi-Channel Benachrichtigungen**: Alerts sowohl über Discord Status-Channel als auch ShadowOps
+
+### 📊 Performance Profiling
+- **`/profile` Command**: Umfassendes Performance-Profiling für Administratoren
+  - Langsamste Operationen (sortiert nach Durchschnittszeit)
+  - Meistgenutzte Operationen (Call-Counts und Gesamtzeit)
+  - Bottleneck-Analyse: Identifiziert kritische Engpässe (langsam + häufig)
+  - System-Ressourcen: CPU, RAM, Thread-Count
+- **Performance Decorator**: `@track_performance()` für automatisches Tracking
+  - Async/Sync Unterstützung
+  - Fehler-Tracking
+  - Warnung bei langsamen Operationen (>1s)
+- **PerformanceTracker Singleton**: Zentrales Tracking über alle Cogs hinweg
+  - 100 letzte Ausführungen pro Operation
+  - Statistiken: Min, Max, Average, Total, Error-Count
+
+### 📈 Enhanced Status & Reporting
+- **`/status` Command**: Verbesserte System-Übersicht
+  - Bot-Status: Uptime, Memory, Guild-Count
+  - Datenbank: Größe, Status-Indicator
+  - Rate Limits: Aktuelle req/s, Hit-Count, Status
+  - Letzte Verifikation: Zeitpunkt, Genauigkeit
+  - Message Deduplication: Gesamt gesehen, blockiert, Rate
+  - ShadowOps: Queue-Status, Enabled/Disabled
+- **Message Deduplication Stats**: Echtzeit-Tracking
+  - Gesamt gesehene Messages
+  - Blockierte Duplikate
+  - Deduplizierungs-Rate in %
+- **Weekly Reports**: Automatische Wochenberichte (Montag 09:00 UTC)
+  - Aktivitäts-Zusammenfassung (Messages, User, Durchschnitt/Tag)
+  - Top 5 User und Channels
+  - Verifikations-Statistiken
+  - System Performance Metriken
+  - Versand an Status-Channel und ShadowOps
+
+### 🔐 Webhook Security
+- **HMAC-SHA256 Signature Verification**: Sichere Webhook-Kommunikation mit ShadowOps
+  - Shared Secret: `guildscout_shadowops_secure_key_2024`
+  - Signatur-Header: `X-Webhook-Signature: sha256=<hash>`
+  - Schutz vor gefälschten Alerts und Replay-Attacks
+  - Constant-time Signatur-Vergleich gegen Timing-Attacks
+- **ShadowOps Integration**: Erweiterte Webhook-Features
+  - Health-Check vor Versand
+  - Retry-Queue bei Fehlschlägen
+  - Last-Health-Check Tracking für Monitoring
+
+### 📝 Configuration Management
+- **Git Auto-Commit**: Automatische Versionierung von Config-Änderungen
+  - Überwacht `config.yaml` alle 60 Sekunden (SHA256-Hash)
+  - Intelligente Commit-Messages zeigen geänderte Keys
+  - Einfaches Rollback: `git checkout HEAD~1 config/config.yaml`
+  - Behält letzte 10 Config-Versionen in Git History
+
+### 💾 Database Monitoring
+- **Daily Size Monitoring**: Tägliche Überwachung der Datenbankgröße
+  - Warnung via Discord bei > 100 MB
+  - Status-Indicator im `/status` Command
+  - Integration mit wöchentlichem VACUUM (Montag 04:00 UTC)
+
+### 🔧 Technical Improvements
+- **Performance Tracking**: Verifikations-Jobs werden automatisch getrackt
+- **Enhanced Logging**: Strukturiertes Logging für alle neuen Module
+- **Error Handling**: Robuste Fehlerbehandlung in Health Checks
+- **Async Optimization**: Non-blocking Git-Operationen via Thread-Pool
+
+### 📚 Documentation
+- Neue `MONITORING.md`: Umfassende Monitoring-Dokumentation
+- Neue `WEBHOOK_SECURITY.md`: Webhook-Sicherheit und Setup
+- Aktualisiertes `README.md`: Neue Commands und Features
+- Changelog erweitert mit allen neuen Features
+
+### 🐛 Bug Fixes
+- Fix: `inspect.iscoroutinefunction` statt `functools.iscoroutinefunction` in Performance Decorator
+- Fix: Korrekte Signatur-Generierung mit sortierten JSON-Keys
+
+### ⚙️ Configuration Changes
+**Neue Config-Option in `config.yaml`:**
+```yaml
+shadowops:
+  webhook_secret: guildscout_shadowops_secure_key_2024  # NEU: HMAC Secret
+```
+
+### 📦 New Files
+**Core Features:**
+- `src/tasks/health_monitor.py` - Health Monitoring System
+- `src/tasks/weekly_reporter.py` - Wöchentliche Berichte
+- `src/commands/status.py` - `/status` Command
+- `src/commands/profile.py` - `/profile` Command
+- `src/utils/config_watcher.py` - Git Auto-Commit
+- `src/utils/performance_decorator.py` - Performance Tracking
+
+**Modified Files:**
+- `src/tasks/db_maintenance.py` - Size Monitoring hinzugefügt
+- `src/events/message_tracking.py` - Deduplication Stats
+- `src/utils/shadowops_notifier.py` - Signatur-Generierung
+- `src/tasks/verification_scheduler.py` - Performance Tracking
+
+---
+
 ## Version 2.2.0 - Resilience & Dashboard Update (2025-11-26)
 
 > **Note:** Detaillierte Patch Notes mit verbessertem AI-System verfügbar im Discord Update-Channel.

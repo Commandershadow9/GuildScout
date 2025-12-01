@@ -48,6 +48,53 @@ Perfect for content creators who need to fairly select members for limited guild
 - **📊 Dashboard**: Zentraler Kanal (`/setup-ranking-channel`) für Rankings, Import-Status und Willkommens-Nachricht.
 - **🚨 Status Channel**: Fehlermeldungen und Warnungen landen in einem separaten Kanal (konfigurierbar), inkl. "Acknowledge"-Button für Admins.
 
+### Monitoring & Observability (v2.3.0+)
+- **🏥 Health Monitoring**: Automatische Systemüberwachung alle 5 Minuten
+  - Verifikations-Gesundheit (Ausfälle, Genauigkeit)
+  - Rate Limit Monitoring (Discord API)
+  - Datenbank-Gesundheit (Wachstum, Korruption)
+  - ShadowOps Integration Status
+- **📊 Performance Profiling**: `/profile` Command für Admins
+  - Langsamste Operationen
+  - Meistgenutzte Operationen
+  - Bottleneck-Analyse
+  - System-Ressourcen (CPU, RAM, Threads)
+- **📈 Enhanced Status**: `/status` Command für alle User
+  - Bot Uptime, Memory, Database Size
+  - Rate Limits, Verifikations-Status
+  - Deduplication Stats, ShadowOps Queue
+- **📅 Weekly Reports**: Automatische Wochenberichte (Montag 09:00 UTC)
+  - Top 5 User & Channels
+  - Verifikations-Zusammenfassung
+  - System Performance Metriken
+- **💾 Database Monitoring**: Tägliche Size-Überwachung
+  - Warnung bei > 100 MB
+  - Integration mit wöchentlichem VACUUM
+
+### Security & Configuration (v2.3.0+)
+- **🔐 Webhook Security**: HMAC-SHA256 Signature Verification
+  - Sichere GuildScout → ShadowOps Kommunikation
+  - Schutz vor gefälschten Alerts
+  - Constant-time Signatur-Vergleich
+- **📝 Git Auto-Commit**: Automatische Config-Versionierung
+  - Überwacht `config.yaml` alle 60s
+  - Intelligente Commit-Messages
+  - Einfaches Rollback via Git
+
+## 🎯 Available Commands
+
+### Admin Commands
+- **`/analyze <role>`** - Analyze and rank users with specific role
+- **`/assign-guild-role <users>`** - Mass-assign guild role (with confirmation)
+- **`/set-max-spots <number>`** - Set maximum guild size
+- **`/guild-status`** - View all guild members with scores & export CSV
+- **`/setup-ranking-channel`** - Create persistent ranking/dashboard channel
+- **`/status`** - Comprehensive system status overview
+- **`/profile`** - Performance profiling & bottleneck analysis
+
+### User Commands
+- **`/my-score`** - Check your own ranking and score breakdown
+
 ## 🚀 Quick Start
 
 ### Prerequisites

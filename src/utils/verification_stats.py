@@ -71,6 +71,8 @@ class VerificationStats:
 
     def get_stats(self, guild_id: int) -> Optional[Dict[str, Any]]:
         """Get verification stats for a guild."""
+        # Reload from file to ensure fresh data (multiple instances may exist)
+        self._stats = self._load()
         return self._stats.get(str(guild_id))
 
     def get_summary(self, guild_id: int) -> str:

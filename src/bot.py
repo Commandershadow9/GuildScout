@@ -15,6 +15,7 @@ from src.utils import Config, setup_logger
 from src.utils.log_helper import DiscordLogger
 from src.utils.status_manager import StatusManager
 from src.utils.health_server import HealthCheckServer
+from src.utils.config_watcher import setup_config_watcher
 from src.database import MessageCache
 from src.database.message_store import MessageStore
 from src.commands.analyze import setup as setup_analyze
@@ -24,12 +25,18 @@ from src.commands.ranking_channel import setup as setup_ranking_channel
 from src.commands.assign_guild_role import setup as setup_assign_guild_role
 from src.commands.guild_status import setup as setup_guild_status
 from src.commands.set_max_spots import setup as setup_set_max_spots
+from src.commands.status import setup as setup_status
+from src.commands.profile import setup as setup_profile
 
 from src.commands.message_store_admin import setup as setup_message_store_admin
 from src.events.guild_events import setup as setup_guild_events
 from src.events.message_tracking import setup as setup_message_tracking
+from src.events.rate_limit_tracking import setup as setup_rate_limit_tracking
 from src.tasks.verification_scheduler import setup as setup_verification_scheduler
 from src.tasks.backup_scheduler import setup as setup_backup_scheduler
+from src.tasks.db_maintenance import setup as setup_db_maintenance
+from src.tasks.health_monitor import setup as setup_health_monitor
+from src.tasks.weekly_reporter import setup as setup_weekly_reporter
 
 
 class GuildScoutBot(commands.Bot):
@@ -101,6 +108,8 @@ class GuildScoutBot(commands.Bot):
         await setup_assign_guild_role(self, self.config, self.cache)
         await setup_guild_status(self, self.config)
         await setup_set_max_spots(self, self.config)
+        await setup_status(self, self.config)
+        await setup_profile(self, self.config)
 
         await setup_message_store_admin(self, self.config, self.message_store)
         self.logger.info("Commands loaded")
@@ -108,11 +117,15 @@ class GuildScoutBot(commands.Bot):
         # Load event handlers
         await setup_guild_events(self, self.config, self.message_store)
         await setup_message_tracking(self, self.config, self.message_store)
+        await setup_rate_limit_tracking(self)
         self.logger.info("Event handlers loaded")
 
         # Load background tasks
         await setup_verification_scheduler(self, self.config, self.message_store)
         await setup_backup_scheduler(self, self.config)
+        await setup_db_maintenance(self, self.config)
+        await setup_health_monitor(self, self.config)
+        await setup_weekly_reporter(self, self.config)
         self.logger.info("Background tasks loaded")
 
         # Sync commands to guild
@@ -215,6 +228,12 @@ class GuildScoutBot(commands.Bot):
         await asyncio.sleep(10) # Give some time for dashboard to update, etc.
         self._initial_startup_complete = True
         self.logger.info("Background tasks enabled.")
+
+        # Start config file watcher for automatic git commits
+        try:
+            self.config_watcher = await setup_config_watcher()
+        except Exception as e:
+            self.logger.warning(f"Failed to start config watcher: {e}")
 
     async def _chunk_all_guilds(self):
         """
@@ -723,20 +742,20 @@ class GuildScoutBot(commands.Bot):
             since_time = last_import_time + timedelta(milliseconds=1)
             now = datetime.now(timezone.utc)
 
-            # Calculate time since last message
-            downtime = now - last_import_time
+            # Calculate time since last message was in the server
+            time_since_last_message = now - last_import_time
 
-            # Only import if downtime > 1 minute (avoid unnecessary imports for quick restarts)
-            if downtime.total_seconds() < 60:
-                self.logger.info(f"⏱️ Bot downtime < 1 minute - skipping delta import")
+            # Only import if last message is recent enough (avoid full scan on old servers)
+            if time_since_last_message.total_seconds() > 3600:  # > 1 hour
+                self.logger.info(f"⏱️ Last message too old ({time_since_last_message.total_seconds():.0f}s) - skipping delta import")
                 return
 
             self.logger.info(
-                f"🔄 Checking for missed messages during downtime "
-                f"({downtime.total_seconds():.0f}s offline)"
+                f"🔄 Checking for missed messages since last tracked message "
+                f"({time_since_last_message.total_seconds():.0f}s ago)"
             )
 
-            # Create status message in dashboard
+            # Create status message in dashboard (without misleading "offline" claim)
             dashboard_channel_id = self.config.dashboard_channel_id
             if dashboard_channel_id:
                 dashboard_channel = guild.get_channel(dashboard_channel_id)
@@ -744,8 +763,8 @@ class GuildScoutBot(commands.Bot):
                     embed = discord.Embed(
                         title="🔄 Delta-Import",
                         description=(
-                            f"Prüfe verpasste Nachrichten...\n"
-                            f"Bot war offline: **{downtime.total_seconds():.0f}s**"
+                            f"Prüfe auf neue Nachrichten seit letztem Restart...\n"
+                            f"Letzte Nachricht: **<t:{int(last_import_time.timestamp())}:R>**"
                         ),
                         color=discord.Color.orange()
                     )

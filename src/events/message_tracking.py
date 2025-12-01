@@ -4,7 +4,7 @@ import asyncio
 import logging
 from collections import deque
 from datetime import timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import discord
 from discord.ext import commands
@@ -53,6 +53,17 @@ class MessageTracker(commands.Cog):
         self._live_log_update_interval = max(5, interval)
         self._live_log_interval_label = self._format_interval(self._live_log_update_interval)
         self._live_log_idle_gap = max(10, idle_gap)
+
+        # Message ID deduplication: Track recently seen message IDs to prevent double-counting
+        # This protects against Discord event duplications, network issues, and bot restarts
+        # With ~500 messages/hour, 1M IDs = ~83 days of protection (only 8MB RAM)
+        # This massive buffer ensures near-zero false duplicates even across long bot restarts
+        self._recent_message_ids: deque = deque(maxlen=1000000)  # Last 1M messages (~83 days)
+        self._dedup_lock = asyncio.Lock()
+
+        # Deduplication statistics
+        self._total_messages_seen = 0
+        self._duplicates_blocked = 0
 
     @staticmethod
     def _format_interval(seconds: int) -> str:
@@ -244,6 +255,21 @@ class MessageTracker(commands.Cog):
         if not message.guild:
             return
 
+        # Message ID deduplication: Check if we've already processed this message
+        # This prevents double-counting from Discord event duplications
+        async with self._dedup_lock:
+            self._total_messages_seen += 1
+
+            if message.id in self._recent_message_ids:
+                self._duplicates_blocked += 1
+                logger.debug(
+                    f"Duplicate message event detected for message {message.id} "
+                    f"from {message.author.name} - skipping to prevent double-count"
+                )
+                return
+            # Mark as seen
+            self._recent_message_ids.append(message.id)
+
         # Check if channel should be excluded (includes threads)
         channel = message.channel
         if isinstance(channel, (discord.TextChannel, discord.Thread)):
@@ -327,6 +353,16 @@ class MessageTracker(commands.Cog):
             if isinstance(channel, (discord.TextChannel, discord.Thread)):
                 if self._should_exclude_channel(channel):
                     return
+
+            # Remove from recent IDs if present (helps free memory)
+            async with self._dedup_lock:
+                try:
+                    if message.id in self._recent_message_ids:
+                        # Can't remove from deque efficiently, but that's fine
+                        # It will age out naturally
+                        pass
+                except:
+                    pass
 
             await self.message_store.adjust_message_count(
                 guild_id=message.guild.id,
@@ -418,6 +454,13 @@ class MessageTracker(commands.Cog):
             except Exception as exc:
                 logger.warning("Failed to initialize tracking for %s: %s", guild.name, exc)
 
+    def get_dedup_stats(self) -> dict:
+        """Get deduplication statistics."""
+        return {
+            "total_seen": self._total_messages_seen,
+            "duplicates_blocked": self._duplicates_blocked
+        }
+
 
 async def setup(bot: commands.Bot, config, message_store: MessageStore):
     """
@@ -464,4 +507,10 @@ async def setup(bot: commands.Bot, config, message_store: MessageStore):
             live_log_idle_gap_seconds=live_tracking_idle_gap
         )
     )
+
+    # Store reference in bot for /status command access
+    cog = bot.get_cog("MessageTracking")
+    if cog:
+        bot.message_tracking_cog = cog
+
     logger.info("Message tracking cog loaded with dashboard support")

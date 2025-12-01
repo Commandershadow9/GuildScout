@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import shutil
 from datetime import datetime, time
 from pathlib import Path
 from typing import Optional
@@ -48,14 +47,17 @@ class BackupScheduler(commands.Cog):
         try:
             timestamp = datetime.utcnow().strftime("%Y-%m-%d")
             backup_file = self.backup_dir / f"messages_{timestamp}.db"
-            
-            # Perform copy
-            # Ideally we would use SQLite backup API for hot backup, but shutil is okay for WAL mode
-            shutil.copy2(self.db_path, backup_file)
+
+            # Use SQLite's atomic backup API for hot backup (safer than file copy)
+            import aiosqlite
+            async with aiosqlite.connect(self.db_path) as source:
+                async with aiosqlite.connect(backup_file) as dest:
+                    await source.backup(dest)
+
             logger.info(f"Created backup: {backup_file}")
 
-            # Cleanup old backups (keep last 7 days)
-            await self._cleanup_old_backups(days=7)
+            # Cleanup old backups (keep last 30 days)
+            await self._cleanup_old_backups(days=30)
 
             # Notify status channel
             if hasattr(self.bot, 'status_manager'):

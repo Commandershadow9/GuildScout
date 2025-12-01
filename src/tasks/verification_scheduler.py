@@ -4,7 +4,7 @@ import asyncio
 import logging
 import random
 from datetime import datetime, time
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import discord
 from discord.ext import commands, tasks
@@ -15,6 +15,8 @@ from src.database.message_store import MessageStore
 from src.analytics.activity_tracker import ActivityTracker
 from src.utils.validation import MessageCountValidator
 from src.utils.verification_stats import VerificationStats
+from src.utils.shadowops_notifier import ShadowOpsNotifier
+from src.utils.performance_decorator import track_performance
 
 
 logger = logging.getLogger("guildscout.verification_scheduler")
@@ -40,11 +42,20 @@ class VerificationScheduler(commands.Cog):
         self.message_store = message_store
         self.verification_stats = VerificationStats()
 
+        # ShadowOps integration for alerts
+        self.shadowops_notifier = ShadowOpsNotifier(
+            webhook_url=config.shadowops_webhook_url,
+            enabled=config.shadowops_enabled and config.shadowops_notify_verification,
+            webhook_secret=config.shadowops_webhook_secret
+        )
+
         self.daily_enabled = config.daily_verification_enabled
         self.weekly_enabled = config.weekly_verification_enabled
+        self.sixhour_enabled = config.sixhour_verification_enabled
 
         self._daily_last_run: Optional[datetime.date] = None
         self._weekly_last_run: Optional[datetime.date] = None
+        self._sixhour_last_runs: Dict[int, datetime.date] = {}  # hour -> date
         self._run_lock = asyncio.Lock()
         # No initial_delay_done flag here anymore, delay is handled globally
 
@@ -57,6 +68,17 @@ class VerificationScheduler(commands.Cog):
             )
         else:
             logger.info("Daily verification disabled via config.")
+
+        if self.sixhour_enabled:
+            self.sixhour_verification_task.start()
+            hours_str = ", ".join([f"{h:02d}:00" for h in config.sixhour_verification_hours])
+            logger.info(
+                "6-hourly verification scheduled for %s UTC (sample size: %d)",
+                hours_str,
+                config.sixhour_verification_sample_size
+            )
+        else:
+            logger.info("6-hourly verification disabled via config.")
 
         if self.weekly_enabled:
             self.weekly_verification_task.start()
@@ -72,9 +94,18 @@ class VerificationScheduler(commands.Cog):
     def cog_unload(self):
         if self.daily_verification_task.is_running():
             self.daily_verification_task.cancel()
+        if self.sixhour_verification_task.is_running():
+            self.sixhour_verification_task.cancel()
         if self.weekly_verification_task.is_running():
             self.weekly_verification_task.cancel()
+        # Close ShadowOps notifier session
+        if self.shadowops_notifier:
+            try:
+                asyncio.create_task(self.shadowops_notifier.close())
+            except:
+                pass
 
+    @track_performance("verification_job")
     async def _run_verification_job(
         self,
         *,
@@ -266,6 +297,19 @@ class VerificationScheduler(commands.Cog):
                     mismatches=results["mismatches"]
                 )
 
+                # Send alert to ShadowOps
+                try:
+                    await self.shadowops_notifier.send_verification_result(
+                        passed=passed,
+                        accuracy=results["accuracy_percent"],
+                        total_users=results["total_users"],
+                        mismatches=results["mismatches"],
+                        healed=results.get("healed", 0),
+                        verification_type=label.split()[0].lower()  # "tägliche" -> "tägliche"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to send ShadowOps notification: {e}")
+
                 # If successful (or healed), delete the message (don't spam log channel)
                 # If failed (unhealed mismatches), keep the message for visibility
                 if passed:
@@ -426,7 +470,46 @@ class VerificationScheduler(commands.Cog):
     async def before_weekly(self):
         await self.bot.wait_until_ready()
 
+    @tasks.loop(minutes=10)
+    async def sixhour_verification_task(self):
+        """Run verification at configured hours (e.g., 09:00, 15:00, 21:00 UTC)."""
+        # Wait until the initial startup sequence (cleanup, delta import) is complete
+        await self.bot.wait_until_ready()
+        if not hasattr(self.bot, '_initial_startup_complete') or not self.bot._initial_startup_complete:
+            logger.debug("6-hourly verification task waiting for initial startup to complete.")
+            return
+
+        if not self.sixhour_enabled:
+            return
+
+        now = datetime.utcnow()
+        current_hour = now.hour
+
+        # Check if current hour is one of the scheduled hours
+        if current_hour not in self.config.sixhour_verification_hours:
+            return
+
+        # Check if we already ran this hour today
+        if self._sixhour_last_runs.get(current_hour) == now.date():
+            return
+
+        # Check if we're past the target minute (run only once per hour)
+        if now.minute < 5:  # Run in first 5 minutes of the hour
+            await self._run_verification_job(
+                label=f"6h-Verifikation ({current_hour:02d}:00 UTC)",
+                sample_size=self.config.sixhour_verification_sample_size
+            )
+            self._sixhour_last_runs[current_hour] = now.date()
+
+    @sixhour_verification_task.before_loop
+    async def before_sixhour(self):
+        await self.bot.wait_until_ready()
+
 
 async def setup(bot: commands.Bot, config: Config, message_store: MessageStore):
     """Add the verification scheduler cog to the bot."""
-    await bot.add_cog(VerificationScheduler(bot, config, message_store))
+    cog = VerificationScheduler(bot, config, message_store)
+    await bot.add_cog(cog)
+
+    # Start ShadowOps retry task
+    await cog.shadowops_notifier.start_retry_task()

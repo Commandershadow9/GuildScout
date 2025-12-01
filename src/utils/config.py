@@ -260,6 +260,54 @@ class Config:
             return 30
 
     @property
+    def sixhour_verification_enabled(self) -> bool:
+        """Whether 6-hourly verification runs are enabled."""
+        return bool(self.get("verification.enable_6h", False))
+
+    @property
+    def sixhour_verification_sample_size(self) -> int:
+        """Sample size for 6-hourly verification runs."""
+        size = self.get("verification.sixhour_sample_size", 30)
+        try:
+            return max(1, int(size))
+        except (TypeError, ValueError):
+            return 30
+
+    @property
+    def sixhour_verification_hours(self) -> list:
+        """UTC hours to run the 6-hourly verification."""
+        hours = self.get("verification.sixhour_hours_utc", [9, 15, 21])
+        if not isinstance(hours, list):
+            return [9, 15, 21]
+        # Validate each hour is 0-23
+        return [max(0, min(23, int(h))) for h in hours if isinstance(h, (int, str))]
+
+    @property
+    def shadowops_enabled(self) -> bool:
+        """Whether ShadowOps integration is enabled."""
+        return bool(self.get("shadowops.enabled", False))
+
+    @property
+    def shadowops_webhook_url(self) -> str:
+        """ShadowOps webhook URL for alerts."""
+        return self.get("shadowops.webhook_url", "http://localhost:9091/guildscout-alerts")
+
+    @property
+    def shadowops_webhook_secret(self) -> str:
+        """Shared secret for webhook signature verification."""
+        return self.get("shadowops.webhook_secret", "")
+
+    @property
+    def shadowops_notify_verification(self) -> bool:
+        """Whether to notify ShadowOps on verification results."""
+        return bool(self.get("shadowops.notify_on_verification", True))
+
+    @property
+    def shadowops_notify_errors(self) -> bool:
+        """Whether to notify ShadowOps on critical errors."""
+        return bool(self.get("shadowops.notify_on_errors", True))
+
+    @property
     def discord_service_logs_enabled(self) -> bool:
         """Whether service lifecycle events should be logged to Discord."""
         return bool(self.get("logging.enable_discord_service_logs", True))
