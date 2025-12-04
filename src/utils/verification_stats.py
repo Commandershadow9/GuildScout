@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -36,6 +36,30 @@ class VerificationStats:
         except Exception as e:
             logger.error(f"Could not save verification stats: {e}")
 
+    def mark_running(self, guild_id: int, is_running: bool, label: str = "Verifikation"):
+        """Mark a verification as currently running or finished."""
+        guild_id_str = str(guild_id)
+        if guild_id_str not in self._stats:
+            self._stats[guild_id_str] = {
+                "total_runs": 0,
+                "successful_runs": 0,
+                "total_mismatches": 0,
+                "last_run_timestamp": None,
+                "last_run_passed": None,
+                "last_run_accuracy": None
+            }
+        
+        stats = self._stats[guild_id_str]
+        if is_running:
+            stats["current_run"] = {
+                "start_time": datetime.utcnow().isoformat(),
+                "label": label
+            }
+        else:
+            stats.pop("current_run", None)
+        
+        self._save()
+
     def record_verification(
         self,
         guild_id: int,
@@ -65,6 +89,9 @@ class VerificationStats:
         stats["last_run_timestamp"] = datetime.utcnow().isoformat()
         stats["last_run_passed"] = passed
         stats["last_run_accuracy"] = accuracy
+        
+        # Clear running flag if it exists
+        stats.pop("current_run", None)
 
         self._save()
         logger.info(f"Recorded verification for guild {guild_id}: passed={passed}, accuracy={accuracy:.1f}%")
@@ -78,25 +105,46 @@ class VerificationStats:
     def get_summary(self, guild_id: int) -> str:
         """Get a formatted summary for display."""
         stats = self.get_stats(guild_id)
-        if not stats or stats["total_runs"] == 0:
+        if not stats:
             return "Keine Verifikationen durchgeführt"
-
-        success_rate = (stats["successful_runs"] / stats["total_runs"]) * 100
-
-        last_run = ""
-        if stats["last_run_timestamp"]:
+            
+        # Check if currently running
+        running_text = ""
+        current_run = stats.get("current_run")
+        if current_run:
             try:
-                dt = datetime.fromisoformat(stats["last_run_timestamp"])
-                timestamp_int = int(dt.timestamp())
-                status = "✅" if stats["last_run_passed"] else "⚠️"
-                accuracy = stats["last_run_accuracy"]
-                last_run = f"\n**Letzte Prüfung:** {status} {accuracy:.1f}% Accuracy <t:{timestamp_int}:R>"
-            except:
+                start_time = datetime.fromisoformat(current_run["start_time"])
+                # If older than 30 mins, assume stale/crashed and ignore
+                if datetime.utcnow() - start_time < timedelta(minutes=30):
+                    label = current_run.get("label", "Verifikation")
+                    running_text = f"\n🔄 **{label} läuft...** <t:{int(start_time.timestamp())}:R>"
+            except Exception:
                 pass
 
-        return (
-            f"**Verifikationen:** {stats['total_runs']} durchgeführt\n"
-            f"**Erfolgsrate:** {success_rate:.1f}% ({stats['successful_runs']}/{stats['total_runs']})\n"
-            f"**Gesamt-Abweichungen:** {stats['total_mismatches']}"
-            f"{last_run}"
-        )
+        if stats["total_runs"] == 0 and not running_text:
+            return "Keine Verifikationen durchgeführt"
+
+        total_runs = stats.get("total_runs", 0)
+        if total_runs > 0:
+            success_rate = (stats.get("successful_runs", 0) / total_runs) * 100
+            
+            last_run = ""
+            if stats.get("last_run_timestamp"):
+                try:
+                    dt = datetime.fromisoformat(stats["last_run_timestamp"])
+                    timestamp_int = int(dt.timestamp())
+                    status = "✅" if stats["last_run_passed"] else "⚠️"
+                    accuracy = stats["last_run_accuracy"]
+                    last_run = f"\n**Letzte Prüfung:** {status} {accuracy:.1f}% Accuracy <t:{timestamp_int}:R>"
+                except:
+                    pass
+
+            return (
+                f"**Verifikationen:** {total_runs} durchgeführt\n"
+                f"**Erfolgsrate:** {success_rate:.1f}% ({stats.get('successful_runs', 0)}/{total_runs})\n"
+                f"**Gesamt-Abweichungen:** {stats.get('total_mismatches', 0)}"
+                f"{last_run}"
+                f"{running_text}"
+            )
+        else:
+             return f"Noch keine Ergebnisse vorhanden.{running_text}"

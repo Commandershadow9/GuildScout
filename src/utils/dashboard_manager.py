@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from collections import deque
-from datetime import timedelta
+from datetime import timedelta, datetime
 from typing import Any, Dict, Optional
 
 import discord
@@ -13,6 +13,8 @@ from src.database.message_store import MessageStore
 from src.utils.config import Config
 from src.utils.verification_stats import VerificationStats
 from src.utils.bot_statistics import BotStatistics
+from src.utils.chart_generator import generate_activity_chart
+from src.analytics.scorer import Scorer
 
 logger = logging.getLogger("guildscout.dashboard")
 
@@ -172,20 +174,119 @@ class DashboardManager:
             logger.warning(f"No dashboard channel configured for guild {guild.name}")
             return
 
-        # ... (embed creation logic skipped for brevity, it remains the same) ...
-        # Build comprehensive embed combining dashboard + welcome content
+        # --- FETCH DATA ---
+        # 1. Daily & Hourly Stats (Fetch 60 days for monthly comparison)
+        daily_history = await self.message_store.get_daily_history(guild.id, days=60)
+        hourly_activity = await self.message_store.get_hourly_activity(guild.id)
+
+        # 2. Trend Calculation
+        # A) Daily Trend (Today vs Yesterday)
+        now_str = datetime.utcnow().strftime("%Y-%m-%d")
+        yesterday_str = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+        today_count = daily_history.get(now_str, 0)
+        yesterday_count = daily_history.get(yesterday_str, 0)
+
+        daily_trend_emoji = "➖"
+        daily_trend_pct = 0.0
+        if yesterday_count > 0:
+            daily_trend_pct = ((today_count - yesterday_count) / yesterday_count) * 100
+            if daily_trend_pct > 5: daily_trend_emoji = "📈"
+            elif daily_trend_pct < -5: daily_trend_emoji = "📉"
+        
+        daily_text = f"{daily_trend_emoji} **{today_count}** heute ({daily_trend_pct:+.0f}%)"
+
+        # Sort dates descending for range calculations
+        sorted_dates = sorted(daily_history.keys(), reverse=True)
+
+        # B) Weekly Trend (Last 7 Days vs Previous 7 Days)
+        last_7_days_sum = sum([daily_history[d] for d in sorted_dates[:7]])
+        prev_7_days_sum = sum([daily_history[d] for d in sorted_dates[7:14]])
+
+        weekly_trend_emoji = "➖"
+        weekly_trend_pct = 0.0
+        if prev_7_days_sum > 0:
+            weekly_trend_pct = ((last_7_days_sum - prev_7_days_sum) / prev_7_days_sum) * 100
+            if weekly_trend_pct > 5: weekly_trend_emoji = "⬆️"
+            elif weekly_trend_pct < -5: weekly_trend_emoji = "⬇️"
+        
+        weekly_text = f"{weekly_trend_emoji} **{last_7_days_sum}** / 7 Tage ({weekly_trend_pct:+.0f}%)"
+
+        # C) Monthly Trend (Last 30 Days vs Previous 30 Days)
+        last_30_days_sum = sum([daily_history[d] for d in sorted_dates[:30]])
+        prev_30_days_sum = sum([daily_history[d] for d in sorted_dates[30:60]])
+
+        monthly_trend_emoji = "➖"
+        monthly_trend_pct = 0.0
+        if prev_30_days_sum > 0:
+            monthly_trend_pct = ((last_30_days_sum - prev_30_days_sum) / prev_30_days_sum) * 100
+            if monthly_trend_pct > 5: monthly_trend_emoji = "⬆️"
+            elif monthly_trend_pct < -5: monthly_trend_emoji = "⬇️"
+        
+        monthly_text = f"{monthly_trend_emoji} **{last_30_days_sum}** / 30 Tage ({monthly_trend_pct:+.0f}%)"
+
+        # 3. Prime Time
+        prime_time_text = "—"
+        if hourly_activity:
+            best_hour = max(hourly_activity, key=hourly_activity.get)
+            prime_time_text = f"🕒 Prime Time: **{best_hour:02d}:00 UTC**"
+
+        # 4. Chart Generation (Pass only last 14 days for better readability)
+        chart_data_14_days = {k: v for k, v in daily_history.items() if k in sorted_dates[:14]}
+        chart_file = await self.bot.loop.run_in_executor(
+            None, generate_activity_chart, chart_data_14_days, hourly_activity
+        )
+
+        # 5. At-Risk Users
+        at_risk_text = "Keine Daten."
+        if self.config.guild_role_id:
+            try:
+                from src.analytics.role_scanner import RoleScanner
+                scanner = RoleScanner(
+                    guild, 
+                    exclusion_role_ids=self.config.exclusion_roles,
+                    exclusion_user_ids=self.config.exclusion_users
+                )
+                role_members, _ = await scanner.get_members_by_role_id(self.config.guild_role_id)
+                totals = await self.message_store.get_guild_totals(guild.id)
+                scorer = Scorer(
+                    weight_days=self.config.scoring_weights["days_in_server"],
+                    weight_messages=self.config.scoring_weights["message_count"],
+                    min_messages=0
+                )
+                scores = scorer.calculate_scores(role_members, totals)
+                
+                # FILTER: Ignore users who joined less than 7 days ago
+                # New users have low scores by definition (low days_in_server)
+                scores = [s for s in scores if s.days_in_server >= 7]
+
+                scores.sort(key=lambda x: x.final_score)
+                
+                # Show raw bottom 5
+                bottom_5 = scores[:5]
+                if bottom_5:
+                    lines = []
+                    for s in bottom_5:
+                        lines.append(f"• **{s.display_name}**: {s.final_score:.1f} (Msg: {s.message_count})")
+                    at_risk_text = "\n".join(lines)
+                else:
+                    at_risk_text = "Keine gefährdeten Mitglieder (>7 Tage)."
+            except Exception as e:
+                logger.warning(f"At-risk calc failed: {e}")
+                at_risk_text = "⚠️ Fehler bei Berechnung"
+
+        # --- BUILD EMBED ---
         embed = discord.Embed(
             title="📊 GuildScout Dashboard",
             description=(
-                "Zentrale Übersicht für alle GuildScout-Funktionen und Auswertungen.\n"
+                "Zentrale Übersicht für alle GuildScout-Funktionen.\n"
                 "Die Bewertung kombiniert **40 %** Tage im Server und **60 %** Nachrichtenaktivität."
             ),
             color=discord.Color.blue(),
             timestamp=discord.utils.utcnow()
         )
 
-        # ========== AKTUELLE BELEGUNG ==========
-        from ..analytics import RoleScanner
+        # 1. Belegung
+        from src.analytics.role_scanner import RoleScanner
         role = guild.get_role(self.config.guild_role_id) if self.config.guild_role_id else None
         scanner = RoleScanner(
             guild,
@@ -203,46 +304,47 @@ class DashboardManager:
                 f"Freie Plätze: **{free_spots}**"
             )
         else:
-            belegung_text = "Keine Gildenrolle im Config-File hinterlegt (`guild_role_id`)."
+            belegung_text = "Keine Gildenrolle konfiguriert."
+        embed.add_field(name="👥 Aktuelle Belegung", value=belegung_text, inline=True)
 
-        embed.add_field(name="Aktuelle Belegung", value=belegung_text, inline=False)
-
-        # ========== LIVE ACTIVITY ==========
+        # 2. Aktivitäts-Analyse
+        # Get bot stats summary
         try:
             stats = await self.message_store.get_stats(guild.id)
             db_total = stats.get("total_messages", 0)
-        except Exception as e:
-            logger.warning(f"Could not load stats: {e}")
+        except:
             db_total = 0
-
-        # Get bot statistics (session + lifetime)
-        # Pass db_total to display accurate lifetime count
-        bot_stats_summary = self.bot_statistics.get_dashboard_summary(total_db_messages=db_total)
-
-        activity_text = (
-            f"{bot_stats_summary}\n"
-            f"**🕐 Last Update:** <t:{int(discord.utils.utcnow().timestamp())}:R>"
+        
+        # Combine Trend, Prime Time and Session Stats
+        analysis_text = (
+            f"{daily_text}\n"
+            f"{weekly_text}\n"
+            f"{monthly_text}\n"
+            f"{prime_time_text}\n"
+            f"Gesamt-DB: **{db_total}**"
         )
+        embed.add_field(name="📈 Aktivität", value=analysis_text, inline=True)
 
-        # Recent Messages Section
+        # 3. Wackelkandidaten (Bottom 5)
+        embed.add_field(name="⚠️ Wackelkandidaten (Bottom 5)", value=at_risk_text, inline=False)
+
+        # 4. Live Feed (Recent Messages)
         if state["entries"]:
             entries_text = []
-            for entry in list(state["entries"])[:3]:  # Show only last 3
+            for entry in list(state["entries"])[:3]:
                 timestamp_relative = f"<t:{int(entry['timestamp'].timestamp())}:R>"
-                link = f"[Jump]({entry['jump_url']})" if entry['jump_url'] else "—"
+                link = f"[Link]({entry['jump_url']})" if entry['jump_url'] else "—"
                 entries_text.append(
                     f"• {timestamp_relative} {entry['user_mention']} in {entry['channel_mention']} {link}"
                 )
-            activity_text += "\n\n**Letzte Nachrichten:**\n" + "\n".join(entries_text)
+            embed.add_field(name="💬 Live Feed", value="\n".join(entries_text), inline=False)
 
-        embed.add_field(name="Live Activity", value=activity_text, inline=False)
-
-        # ========== VERIFIKATIONEN ==========
+        # 5. Datenqualität
         verification_summary = self.verification_stats.get_summary(guild.id)
         if verification_summary and verification_summary != "Keine Verifikationen durchgeführt":
             embed.add_field(name="🔍 Datenqualität", value=verification_summary, inline=False)
 
-        # ========== COMMANDS ==========
+        # 6. Footer/Commands
         commands_text = (
             "**Basis-Commands:**\n"
             "• `/analyze role:@Rolle [days] [top_n]` – Auswertung starten\n"
@@ -252,40 +354,43 @@ class DashboardManager:
             "• `/assign-guild-role ranking_role:@Rolle count:10` – Gildenrolle vergeben\n"
             "• `/set-max-spots value:<Zahl>` – Verfügbare Plätze festlegen\n"
             "• `/cache-stats` & `/cache-clear` – Cache verwalten\n"
-            "• `/bot-info` – System- und Laufzeitinfos"
+            "• `/bot-info` – System- und Laufzeitinfos\n"
+            "• `/verify-message-counts` – Stichprobenkontrolle"
         )
-        embed.add_field(name="📖 Commands", value=commands_text, inline=False)
+        embed.add_field(name="📖 Commands & Tools", value=commands_text, inline=False)
 
-        # ========== DATEN & TRACKING ==========
-        daten_text = (
-            "• `/import-status` – Import-Status prüfen\n"
-            "• `/import-messages [force]` – Historische Nachrichten einlesen\n"
-            "• `/message-store-stats` – Datenbankgröße prüfen\n"
-            "• `/verify-message-counts [sample_size]` – Stichprobenkontrolle"
-        )
-        embed.add_field(name="📂 Daten & Tracking", value=daten_text, inline=False)
+        if chart_file:
+            embed.set_image(url="attachment://activity_chart.png")
+            logger.debug("Attached activity chart to dashboard")
 
-        embed.set_footer(text="GuildScout – faire und transparente Auswahl • Updates automatically")
+        embed.set_footer(text=f"GuildScout • Last Update: {datetime.utcnow().strftime('%H:%M')} UTC")
 
         try:
+            # Prepare args
+            kwargs = {"embed": embed}
+            if chart_file:
+                kwargs["file"] = chart_file
+                # Note: If we edit, we replace attachments. This is desired.
+            
             if state["dashboard_message"]:
-                # Update existing message
-                await state["dashboard_message"].edit(embed=embed)
-            else:
-                # Create new message and pin it
-                state["dashboard_message"] = await channel.send(embed=embed)
-                
-                # PERSIST MESSAGE ID
+                try:
+                    await state["dashboard_message"].edit(**kwargs)
+                except discord.NotFound:
+                    state["dashboard_message"] = None # Trigger re-send
+            
+            if not state["dashboard_message"]:
+                # Create new
+                state["dashboard_message"] = await channel.send(**kwargs)
+                # Pin & Persist
                 try:
                     self.config.set_ranking_channel_message_id(state["dashboard_message"].id)
-                    logger.info(f"Persisted dashboard message ID: {state['dashboard_message'].id}")
-                except Exception as e:
-                    logger.warning(f"Failed to persist dashboard message ID: {e}")
-
-                await self._pin_dashboard(channel, state["dashboard_message"])
-                logger.info(f"✅ Created combined dashboard in #{channel.name} for {guild.name}")
+                    await self._pin_dashboard(channel, state["dashboard_message"])
+                except:
+                    pass
 
             state["last_update"] = discord.utils.utcnow()
+            logger.info("✅ Dashboard updated with Trends & Charts")
+
         except Exception as e:
             logger.error(f"Failed to update dashboard: {e}", exc_info=True)
 

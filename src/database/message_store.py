@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional, Dict, List
+from collections import defaultdict
 import discord
 
 
@@ -99,6 +100,26 @@ class MessageStore:
                 )
             """)
 
+            # Create daily activity table for trends and graphs
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS daily_stats (
+                    guild_id INTEGER NOT NULL,
+                    date TEXT NOT NULL,
+                    message_count INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (guild_id, date)
+                )
+            """)
+
+            # Create hourly activity table for "Prime Time" analysis
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS hourly_stats (
+                    guild_id INTEGER NOT NULL,
+                    hour INTEGER NOT NULL,
+                    message_count INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (guild_id, hour)
+                )
+            """)
+
             await db.commit()
 
         self._initialized = True
@@ -128,6 +149,8 @@ class MessageStore:
             message_date = datetime.now(timezone.utc)
 
         message_date_str = message_date.isoformat()
+        date_key = message_date.strftime("%Y-%m-%d")
+        hour_key = message_date.hour
 
         async with aiosqlite.connect(self.db_path) as db:
             # Insert or update the count
@@ -143,41 +166,157 @@ class MessageStore:
                 """,
                 (guild_id, user_id, channel_id, count, message_date_str, count, message_date_str)
             )
+
+            # Update daily stats
+            await db.execute(
+                """
+                INSERT INTO daily_stats (guild_id, date, message_count)
+                VALUES (?, ?, ?)
+                ON CONFLICT(guild_id, date)
+                DO UPDATE SET message_count = message_count + ?
+                """,
+                (guild_id, date_key, count, count)
+            )
+
+            # Update hourly stats
+            await db.execute(
+                """
+                INSERT INTO hourly_stats (guild_id, hour, message_count)
+                VALUES (?, ?, ?)
+                ON CONFLICT(guild_id, hour)
+                DO UPDATE SET message_count = message_count + ?
+                """,
+                (guild_id, hour_key, count, count)
+            )
+
             await db.commit()
 
-    async def bulk_increment_messages(self, message_counts: Dict):
+    async def bulk_increment_messages(
+        self,
+        message_counts: Dict,
+        historical_records: Optional[List[dict]] = None
+    ):
         """
         Increment message counts for multiple users/channels in bulk.
 
         Args:
             message_counts: Dictionary of (guild_id, user_id, channel_id) -> count
+            historical_records: Optional list of dicts with {"guild_id", "date", "hour", "count"}
+                                for populating stats with historical timestamps.
         """
         await self.initialize()
 
-        if not message_counts:
+        if not message_counts and not historical_records:
             return
 
-        now_str = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
+        now_str = now.isoformat()
 
-        records = [
-            (guild_id, user_id, channel_id, count, now_str, count, now_str)
-            for (guild_id, user_id, channel_id), count in message_counts.items()
-        ]
+        # 1. Update Main Message Counts
+        if message_counts:
+            records = [
+                (guild_id, user_id, channel_id, count, now_str, count, now_str)
+                for (guild_id, user_id, channel_id), count in message_counts.items()
+            ]
+
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.executemany(
+                    """
+                    INSERT INTO message_counts
+                    (guild_id, user_id, channel_id, message_count, last_message_date)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(guild_id, user_id, channel_id)
+                    DO UPDATE SET
+                        message_count = message_count + ?,
+                        last_message_date = ?
+                    """,
+                    records
+                )
+                await db.commit()
+
+        # 2. Update Stats (Daily & Hourly)
+        # If historical_records are provided, use them. Otherwise, assume "now" for message_counts.
+        
+        stats_daily = defaultdict(int)  # (guild_id, date_str) -> count
+        stats_hourly = defaultdict(int) # (guild_id, hour_int) -> count
+
+        if historical_records:
+            for rec in historical_records:
+                stats_daily[(rec["guild_id"], rec["date"])] += rec["count"]
+                stats_hourly[(rec["guild_id"], rec["hour"])] += rec["count"]
+        elif message_counts:
+            # Fallback: Attribute everything to "now" (only for non-historical bulk updates)
+            date_key = now.strftime("%Y-%m-%d")
+            hour_key = now.hour
+            for (guild_id, _, _), count in message_counts.items():
+                stats_daily[(guild_id, date_key)] += count
+                stats_hourly[(guild_id, hour_key)] += count
+
+        if not stats_daily and not stats_hourly:
+            return
 
         async with aiosqlite.connect(self.db_path) as db:
+            # Update Daily Stats
+            daily_records = [
+                (guild_id, date, count, count)
+                for (guild_id, date), count in stats_daily.items()
+            ]
             await db.executemany(
                 """
-                INSERT INTO message_counts
-                (guild_id, user_id, channel_id, message_count, last_message_date)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(guild_id, user_id, channel_id)
-                DO UPDATE SET
-                    message_count = message_count + ?,
-                    last_message_date = ?
+                INSERT INTO daily_stats (guild_id, date, message_count)
+                VALUES (?, ?, ?)
+                ON CONFLICT(guild_id, date)
+                DO UPDATE SET message_count = message_count + ?
                 """,
-                records
+                daily_records
+            )
+
+            # Update Hourly Stats
+            hourly_records = [
+                (guild_id, hour, count, count)
+                for (guild_id, hour), count in stats_hourly.items()
+            ]
+            await db.executemany(
+                """
+                INSERT INTO hourly_stats (guild_id, hour, message_count)
+                VALUES (?, ?, ?)
+                ON CONFLICT(guild_id, hour)
+                DO UPDATE SET message_count = message_count + ?
+                """,
+                hourly_records
             )
             await db.commit()
+
+    async def get_daily_history(self, guild_id: int, days: int = 7) -> Dict[str, int]:
+        """Get daily message counts for the last N days."""
+        await self.initialize()
+        # SQLite 'date' function can be used for filtering, but simple text comparison works for ISO YYYY-MM-DD
+        # We'll just fetch all and filter/sort in python or LIMIT in SQL
+        
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """
+                SELECT date, message_count FROM daily_stats
+                WHERE guild_id = ?
+                ORDER BY date DESC
+                LIMIT ?
+                """,
+                (guild_id, days)
+            )
+            rows = await cursor.fetchall()
+            # Return reversed to have chronological order
+            return {row[0]: row[1] for row in reversed(rows)}
+
+    async def get_hourly_activity(self, guild_id: int) -> Dict[int, int]:
+        """Get total message counts per hour of day (0-23)."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT hour, message_count FROM hourly_stats WHERE guild_id = ?",
+                (guild_id,)
+            )
+            rows = await cursor.fetchall()
+            return {row[0]: row[1] for row in rows}
 
     async def adjust_message_count(
         self,

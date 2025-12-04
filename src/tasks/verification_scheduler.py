@@ -105,6 +105,22 @@ class VerificationScheduler(commands.Cog):
             except:
                 pass
 
+    async def _update_dashboard_display(self, guild: discord.Guild):
+        """Trigger a refresh of the dashboard display."""
+        try:
+            from src.events.message_tracking import MessageTracker
+            message_tracker = self.bot.get_cog('MessageTracker')
+            if message_tracker and hasattr(message_tracker, 'dashboard_manager'):
+                dashboard_manager = message_tracker.dashboard_manager
+                if dashboard_manager:
+                    lock = dashboard_manager._dashboard_locks.setdefault(guild.id, asyncio.Lock())
+                    async with lock:
+                        state = dashboard_manager._get_dashboard_state(guild.id)
+                        await dashboard_manager._update_dashboard(guild, state)
+                        logger.debug("Dashboard updated via scheduler")
+        except Exception as dash_err:
+            logger.warning(f"Could not update dashboard: {dash_err}")
+
     @track_performance("verification_job")
     async def _run_verification_job(
         self,
@@ -156,6 +172,10 @@ class VerificationScheduler(commands.Cog):
                     cleanup_exc
                 )
 
+            # Mark as running and update dashboard immediately
+            self.verification_stats.mark_running(guild.id, True, label)
+            await self._update_dashboard_display(guild)
+
             log_message = await self._log_status(
                 guild,
                 title=f"🔍 {label}",
@@ -182,6 +202,9 @@ class VerificationScheduler(commands.Cog):
                             await log_message.delete()
                         except:
                             pass
+                    # Clear running status
+                    self.verification_stats.mark_running(guild.id, False)
+                    await self._update_dashboard_display(guild)
                     return
 
                 actual_sample_size = min(sample_size, len(eligible_ids))
@@ -201,6 +224,8 @@ class VerificationScheduler(commands.Cog):
                         color=discord.Color.red(),
                         message=log_message
                     )
+                    self.verification_stats.mark_running(guild.id, False)
+                    await self._update_dashboard_display(guild)
                     return
 
                 cache = MessageCache(ttl=self.config.cache_ttl)
@@ -289,6 +314,7 @@ class VerificationScheduler(commands.Cog):
                 ping = self.config.alert_ping if not passed else None
 
                 # Record stats for dashboard
+                # Note: This also clears the 'current_run' flag internally in VerificationStats
                 self.verification_stats.record_verification(
                     guild.id,
                     passed=passed,
@@ -331,20 +357,8 @@ class VerificationScheduler(commands.Cog):
                         ping=ping
                     )
 
-                # Update dashboard with new stats
-                try:
-                    from src.events.message_tracking import MessageTracker
-                    message_tracker = self.bot.get_cog('MessageTracker')
-                    if message_tracker and hasattr(message_tracker, 'dashboard_manager'):
-                        dashboard_manager = message_tracker.dashboard_manager
-                        if dashboard_manager:
-                            lock = dashboard_manager._dashboard_locks.setdefault(guild.id, asyncio.Lock())
-                            async with lock:
-                                state = dashboard_manager._get_dashboard_state(guild.id)
-                                await dashboard_manager._update_dashboard(guild, state)
-                                logger.info("✅ Dashboard updated with verification stats")
-                except Exception as dash_err:
-                    logger.warning(f"Could not update dashboard after verification: {dash_err}")
+                # Update dashboard with new stats (now showing 'last run', no longer 'running')
+                await self._update_dashboard_display(guild)
 
                 logger.info(
                     "%s abgeschlossen: %s (Accuracy %.1f%%)",
@@ -355,6 +369,9 @@ class VerificationScheduler(commands.Cog):
 
             except Exception as exc:
                 logger.error("Scheduled verification failed: %s", exc, exc_info=True)
+                self.verification_stats.mark_running(guild.id, False) # Ensure we clear running state on error
+                await self._update_dashboard_display(guild)
+                
                 await self._log_status(
                     guild,
                     title=f"❌ {label}",
@@ -493,13 +510,12 @@ class VerificationScheduler(commands.Cog):
         if self._sixhour_last_runs.get(current_hour) == now.date():
             return
 
-        # Check if we're past the target minute (run only once per hour)
-        if now.minute < 5:  # Run in first 5 minutes of the hour
-            await self._run_verification_job(
-                label=f"6h-Verifikation ({current_hour:02d}:00 UTC)",
-                sample_size=self.config.sixhour_verification_sample_size
-            )
-            self._sixhour_last_runs[current_hour] = now.date()
+        # Run verification for this hour (remove strict minute check to be more robust)
+        await self._run_verification_job(
+            label=f"6h-Verifikation ({current_hour:02d}:00 UTC)",
+            sample_size=self.config.sixhour_verification_sample_size
+        )
+        self._sixhour_last_runs[current_hour] = now.date()
 
     @sixhour_verification_task.before_loop
     async def before_sixhour(self):

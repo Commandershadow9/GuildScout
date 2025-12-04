@@ -132,7 +132,8 @@ class HistoricalImporter:
         Returns:
             Dictionary with channel statistics
         """
-        message_counts = defaultdict(int)
+        # List of tuples: (guild_id, user_id, channel_id, timestamp)
+        message_batch = [] 
         channel_message_count = 0
         retry_count = 0
         max_wait = 300  # Maximum wait time: 5 minutes
@@ -143,16 +144,30 @@ class HistoricalImporter:
                 logger.info(f"📖 Reading #{channel.name}...")
 
                 # Iterate through all messages in the channel
-                # For delta imports, only fetch messages after the specified time
                 async for message in channel.history(limit=None, oldest_first=False, after=after):
                     # Skip bot messages
                     if message.author.bot:
                         continue
 
-                    # Count the message
-                    key = (self.guild.id, message.author.id, channel.id)
-                    message_counts[key] += 1
+                    # Store individual message info
+                    # We track individual timestamps to support daily/hourly stats backfilling
+                    message_batch.append({
+                        "guild_id": self.guild.id,
+                        "user_id": message.author.id,
+                        "channel_id": channel.id,
+                        "timestamp": message.created_at
+                    })
                     channel_message_count += 1
+
+                    # Flush periodically to avoid huge memory usage
+                    if len(message_batch) >= 1000:
+                        await self._flush_batch(message_batch)
+                        message_batch.clear()
+
+                # Flush remaining messages
+                if message_batch:
+                    await self._flush_batch(message_batch)
+                    message_batch.clear()
 
                 # Success - break retry loop
                 logger.info(
@@ -163,7 +178,6 @@ class HistoricalImporter:
             except discord.HTTPException as e:
                 # Handle rate limiting - wait as long as needed
                 if e.status == 429:
-                    # Use Discord's suggested wait time, or exponential backoff
                     retry_after = (
                         e.retry_after if hasattr(e, 'retry_after')
                         else min(2 ** retry_count, max_wait)
@@ -194,9 +208,54 @@ class HistoricalImporter:
                 raise
 
         return {
-            "message_counts": message_counts,
             "channel_message_count": channel_message_count
         }
+
+    async def _flush_batch(self, batch: List[dict]):
+        """
+        Flush a batch of individual messages to the store.
+        Aggregates counts for efficient bulk insertion while preserving historical stats.
+        """
+        import collections  # Force local import to bypass scope issues
+        
+        if not batch:
+            return
+            
+        # 1. Aggregate Main Counts: (guild, user, channel) -> total_count
+        message_counts = collections.defaultdict(int)
+        
+        # 2. Aggregate Historical Stats: List of {guild, date, hour, count}
+        # We group by (guild, date, hour) first to reduce list size
+        stats_agg = collections.defaultdict(int)
+
+        for item in batch:
+            # Main Counts
+            key = (item["guild_id"], item["user_id"], item["channel_id"])
+            message_counts[key] += 1
+            
+            # Stats
+            ts = item["timestamp"]
+            date_str = ts.strftime("%Y-%m-%d")
+            hour = ts.hour
+            stats_key = (item["guild_id"], date_str, hour)
+            stats_agg[stats_key] += 1
+            
+        # Convert stats aggregation to list of dicts
+        historical_records = [
+            {
+                "guild_id": g_id,
+                "date": d_str,
+                "hour": h,
+                "count": c
+            }
+            for (g_id, d_str, h), c in stats_agg.items()
+        ]
+        
+        # Bulk insert everything
+        await self.message_store.bulk_increment_messages(
+            message_counts=message_counts,
+            historical_records=historical_records
+        )
 
     async def import_guild_history(
         self,
@@ -242,8 +301,7 @@ class HistoricalImporter:
         channels_processed = 0
         channels_failed = 0
         failed_channels = []
-        all_message_counts = defaultdict(int)
-
+        
         try:
             # Get all text channels
             channels = await self._gather_text_sources()
@@ -279,21 +337,12 @@ class HistoricalImporter:
                         await progress_callback(channel_label, idx, total_channels)
 
                     # Process channel with robust rate-limit handling
+                    # Note: _process_channel now handles flushing to DB internally
                     result = await self._process_channel(channel, after=after)
-
-                    # Add counts from this channel
-                    for key, count in result["message_counts"].items():
-                        all_message_counts[key] += count
 
                     channel_msg_count = result["channel_message_count"]
                     total_messages += channel_msg_count
                     channels_processed += 1
-
-                    # Flush to database every 5000 messages for safety
-                    if total_messages % 5000 == 0:
-                        logger.info(f"💾 Saving progress... ({total_messages} messages)")
-                        await self._flush_counts(all_message_counts)
-                        all_message_counts.clear()
 
                 except discord.Forbidden:
                     logger.error(f"🔒 Forbidden: Cannot access #{channel_label}")
@@ -314,11 +363,6 @@ class HistoricalImporter:
                         "reason": f"Error: {str(e)}"
                     })
                     # IMPORTANT: Continue with other channels even if one fails
-
-            # Flush remaining counts
-            if all_message_counts:
-                logger.info("💾 Saving final batch...")
-                await self._flush_counts(all_message_counts)
 
             # Refresh member snapshot at the end to capture any late join/leave events
             await self.message_store.sync_guild_members(self.guild)
@@ -375,14 +419,3 @@ class HistoricalImporter:
                 "channels_processed": channels_processed,
                 "channels_failed": channels_failed
             }
-
-    async def _flush_counts(self, message_counts: dict):
-        """
-        Flush batched message counts to database.
-
-        Args:
-            message_counts: Dictionary of (guild_id, user_id, channel_id) -> count
-        """
-        if not message_counts:
-            return
-        await self.message_store.bulk_increment_messages(message_counts)
