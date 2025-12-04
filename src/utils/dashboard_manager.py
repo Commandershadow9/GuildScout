@@ -366,21 +366,35 @@ class DashboardManager:
         embed.set_footer(text=f"GuildScout • Last Update: {datetime.utcnow().strftime('%H:%M')} UTC")
 
         try:
-            # Prepare args
-            kwargs = {"embed": embed}
-            if chart_file:
-                kwargs["file"] = chart_file
-                # Note: If we edit, we replace attachments. This is desired.
-            
             if state["dashboard_message"]:
                 try:
-                    await state["dashboard_message"].edit(**kwargs)
+                    # For edit(), we use 'attachments' to replace/add files
+                    edit_kwargs = {"embed": embed}
+                    if chart_file:
+                        # To upload a new file in edit, we pass it in attachments
+                        # Note: This removes existing attachments not listed here
+                        edit_kwargs["attachments"] = [chart_file]
+                    else:
+                        # Keep existing attachments if we don't have a new chart (or clear them? usually we want to clear old chart if no new one)
+                        # If we want to clear, we pass empty list. If we want to keep, we omit parameter.
+                        # Here we likely want to clear if no chart is generated.
+                        edit_kwargs["attachments"] = []
+                        
+                    await state["dashboard_message"].edit(**edit_kwargs)
                 except discord.NotFound:
                     state["dashboard_message"] = None # Trigger re-send
             
             if not state["dashboard_message"]:
-                # Create new
-                state["dashboard_message"] = await channel.send(**kwargs)
+                # For send(), we use 'file' (singular) or 'files'
+                send_kwargs = {"embed": embed}
+                if chart_file:
+                    # Reset file pointer just in case it was read in the failed edit attempt (though likely not)
+                    chart_file.fp.seek(0) 
+                    send_kwargs["file"] = chart_file
+                
+                # Create new message
+                state["dashboard_message"] = await channel.send(**send_kwargs)
+                
                 # Pin & Persist
                 try:
                     self.config.set_ranking_channel_message_id(state["dashboard_message"].id)

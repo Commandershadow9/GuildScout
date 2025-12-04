@@ -1,5 +1,32 @@
 # Changelog - GuildScout Bot
 
+## Version 2.4.0 - Historical Data & Advanced Analytics (2025-12-04)
+
+> **Major Update:** Umfassende Erweiterung der Analyse-Fähigkeiten mit historischen Trends, visuellen Charts und Dashboard 2.0.
+
+### 📊 Dashboard 2.0 & Visual Analytics
+- **Activity Charts**: Automatisch generierte Grafiken visualisieren die Server-Aktivität der letzten 14 Tage direkt im Dashboard.
+- **Trend-Analyse**: Intelligente Berechnung von Aktivitätstrends mit Indikatoren (📈/📉):
+  - **Daily Trend**: Vergleich Heute vs. Gestern
+  - **Weekly Trend**: Letzte 7 Tage vs. Vorwoche
+  - **Monthly Trend**: Letzte 30 Tage vs. Vormonat
+- **Prime Time Analyse**: Ermittelt automatisch die aktivste Uhrzeit des Servers (Peak Hour).
+- **Real-Time Status**: Verifikations-Jobs zeigen ihren Status ("Läuft...", "Abgeschlossen") nun live im Dashboard an.
+
+### 💾 Advanced Message Tracking
+- **Granulare Statistiken**: `MessageStore` erfasst nun Nachrichten-Counts auf täglicher und stündlicher Basis.
+- **Präziser Historischer Import**: Der `HistoricalImporter` wurde komplett überarbeitet, um exakte Zeitstempel zu erfassen, was eine korrekte Rückrechnung historischer Statistiken ermöglicht.
+- **Performance**: Batch-Processing beim Import optimiert für geringeren Speicherverbrauch und schnellere Datenbank-Writes.
+
+### 🐛 Bug Fixes
+- **Critical Fix**: `NameError: name 'defaultdict' is not defined` im `MessageStore` behoben, der den historischen Import (Bulk-Increment) zum Absturz brachte.
+- **Dashboard Update Fix**: Korrektur eines `TypeError` beim Aktualisieren von Nachrichten mit Anhängen (Charts) unter discord.py 2.0+.
+
+### 📦 New Dependencies
+- `matplotlib` & `seaborn`: Hinzugefügt für die Generierung von serverseitigen Aktivitäts-Charts.
+
+---
+
 ## Version 2.3.0 - Advanced Monitoring & Security (2025-12-01)
 
 > **Major Update:** Umfassende Monitoring-, Performance- und Sicherheits-Features für Produktionsumgebungen.

@@ -48,7 +48,8 @@ Perfect for content creators who need to fairly select members for limited guild
 - **📊 Dashboard**: Zentraler Kanal (`/setup-ranking-channel`) für Rankings, Import-Status und Willkommens-Nachricht.
 - **🚨 Status Channel**: Fehlermeldungen und Warnungen landen in einem separaten Kanal (konfigurierbar), inkl. "Acknowledge"-Button für Admins.
 
-### Monitoring & Observability (v2.3.0+)
+### Monitoring & Analytics (v2.4.0+)
+- **📊 Visual Analytics**: Dashboard 2.0 mit täglichen/wöchentlichen Trends, Prime-Time Analyse und automatisch generierten Aktivitäts-Charts.
 - **🏥 Health Monitoring**: Automatische Systemüberwachung alle 5 Minuten
   - Verifikations-Gesundheit (Ausfälle, Genauigkeit)
   - Rate Limit Monitoring (Discord API)
@@ -640,7 +641,21 @@ cp config/config.example.yaml config/config.yaml
 
 ## 🚀 Version History
 
-### Version 2.2.0 (2025-11-26) - Current ✅
+### Version 2.4.0 (2025-12-04) - Current ✅
+**Historical Data & Visual Analytics**
+
+- **Visual Dashboard**: Activity Charts, Trends & Prime Time Analysis.
+- **Advanced Tracking**: Daily/Hourly statistics in database.
+- **Import Fix**: Fixed critical crash in historical import.
+
+### Version 2.3.0 (2025-12-01)
+**Advanced Monitoring & Security**
+
+- **Health Monitoring**: Automated system health checks.
+- **Security**: HMAC Webhook verification.
+- **Profiling**: Performance analysis tools.
+
+### Version 2.2.0 (2025-11-26)
 **Delta Import & Dashboard System**
 
 - **Delta Import**: Smarter imports, catching missed messages during downtime.
@@ -649,23 +664,6 @@ cp config/config.example.yaml config/config.yaml
 - **Cleanup**: Removed old log channel system.
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
-
-### Version 2.0.1 (2025-11-25)
-**Integration with ShadowOps Bot**
-
-- ✅ **Centralized Monitoring Support**
-- ✅ **Documentation Update**
-
-### Version 2.0.0
-**Major Performance, Guild Management & Features Update**
-
-- ✅ **5x Faster Analysis**
-- ✅ **Smart Caching**
-- ✅ **Guild Management Features**
-
-### Phase 1 (Initial Release)
-- ✅ `/analyze` command
-- ✅ Fair scoring system
 
 ## 🛠️ Service Script
 
