@@ -421,6 +421,7 @@ class AnalyzeCommand(commands.Cog):
             scorer = Scorer(
                 weight_days=self.config.scoring_weights["days_in_server"],
                 weight_messages=self.config.scoring_weights["message_count"],
+                weight_voice=self.config.scoring_weights.get("voice_activity", 0.2),
                 min_messages=self.config.min_messages
             )
             discord_exporter = DiscordExporter(
@@ -493,8 +494,15 @@ class AnalyzeCommand(commands.Cog):
                 progress_callback=progress_callback
             )
 
+            # Step 2.5: Fetch Voice Data
+            logger.info("Fetching voice activity data...")
+            voice_totals = await self.bot.message_store.get_guild_voice_totals(
+                guild.id,
+                days=days
+            )
+
             # Step 3: Calculate scores
-            scores = scorer.calculate_scores(members, message_counts)
+            scores = scorer.calculate_scores(members, message_counts, voice_counts=voice_totals)
 
             if not scores:
                 await progress_msg.delete()

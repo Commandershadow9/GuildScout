@@ -148,6 +148,7 @@ class AssignGuildRoleCommand(commands.Cog):
             scorer = Scorer(
                 weight_days=self.config.scoring_weights["days_in_server"],
                 weight_messages=self.config.scoring_weights["message_count"],
+                weight_voice=self.config.scoring_weights.get("voice_activity", 0.2),
                 min_messages=self.config.min_messages
             )
 
@@ -162,7 +163,14 @@ class AssignGuildRoleCommand(commands.Cog):
                 return
 
             message_counts, _ = await activity_tracker.count_messages_for_users(members)
-            scores = scorer.calculate_scores(members, message_counts)
+            
+            # Get voice stats
+            voice_totals = await self.bot.message_store.get_guild_voice_totals(
+                guild.id,
+                days=self.config.max_days_lookback
+            )
+
+            scores = scorer.calculate_scores(members, message_counts, voice_counts=voice_totals)
             ranked_users = Ranker.rank_users(scores)
 
             # Filter by score cutoff if provided

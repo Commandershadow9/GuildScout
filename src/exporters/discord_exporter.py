@@ -114,7 +114,8 @@ class DiscordExporter:
             f"⏱️ **Duration:** {duration_seconds:.1f} seconds\n"
             f"📐 **Formula:** {scoring_info['formula']}\n"
             f"⚖️ **Weights:** Days {scoring_info['weight_days']:.0%} | "
-            f"Messages {scoring_info['weight_messages']:.0%}"
+            f"Msgs {scoring_info['weight_messages']:.0%} | "
+            f"Voice {scoring_info['weight_voice']:.0%}"
         )
 
     def _create_users_chunk_text(self, users_chunk: List[tuple]) -> str:
@@ -136,7 +137,7 @@ class DiscordExporter:
                 f"{medal} `{score.display_name}`\n"
                 f"   ├ Score: **{score.final_score}** "
                 f"({score.days_score:.1f} days + {score.activity_score:.1f} activity)\n"
-                f"   └ {score.days_in_server} days | {score.message_count:,} messages"
+                f"   └ {score.days_in_server} days | {score.message_count:,} msgs | {score.voice_seconds // 60} min voice"
             )
             lines.append(line)
 

@@ -8,6 +8,7 @@ from typing import Optional
 
 from ..analytics import RoleScanner, ActivityTracker, Scorer, Ranker
 from ..utils import Config
+from ..utils.rank_card_generator import RankCardGenerator
 from ..database import MessageCache
 
 
@@ -100,14 +101,21 @@ class MyScoreCommand(commands.Cog):
                 days_lookback=self.config.max_days_lookback
             )
 
+            # Get voice stats
+            voice_totals = await self.bot.message_store.get_guild_voice_totals(
+                guild.id,
+                days=self.config.max_days_lookback
+            )
+
             # Calculate scores
             scorer = Scorer(
                 weight_days=self.config.scoring_weights["days_in_server"],
                 weight_messages=self.config.scoring_weights["message_count"],
+                weight_voice=self.config.scoring_weights.get("voice_activity", 0.2),
                 min_messages=0  # Don't filter anyone out
             )
 
-            scores = scorer.calculate_scores(members, message_counts)
+            scores = scorer.calculate_scores(members, message_counts, voice_counts=voice_totals)
 
             # Find user's score
             user_score = None
@@ -136,6 +144,29 @@ class MyScoreCommand(commands.Cog):
             # Get scoring info
             scoring_info = scorer.get_scoring_info()
 
+            # Generate visual rank card
+            try:
+                card_gen = RankCardGenerator()
+                # Convert UserScore to dict for generator, but handle properties manually or just pass dict
+                score_data = {
+                    'final_score': user_score.final_score,
+                    'days_score': user_score.days_score,
+                    'message_score': user_score.message_score,
+                    'voice_score': user_score.voice_score
+                }
+                
+                card_buffer = await card_gen.generate_card(
+                    user, 
+                    score_data, 
+                    user_rank, 
+                    len(ranked_users)
+                )
+                
+                file = discord.File(card_buffer, filename="rank_card.png") if card_buffer else None
+            except Exception as img_err:
+                logger.error(f"Failed to generate rank card: {img_err}")
+                file = None
+
             # Create embed
             embed = self._create_score_embed(
                 user_score,
@@ -145,8 +176,13 @@ class MyScoreCommand(commands.Cog):
                 role.name if role else None,
                 cache_stats
             )
-
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+            # Determine if we attach image to embed or just send it
+            if file:
+                embed.set_image(url="attachment://rank_card.png")
+                await interaction.followup.send(embed=embed, file=file, ephemeral=True)
+            else:
+                await interaction.followup.send(embed=embed, ephemeral=True)
 
             logger.info(
                 f"User {user.name} checked their score: "
@@ -219,6 +255,12 @@ class MyScoreCommand(commands.Cog):
             inline=False
         )
 
+        # Format voice time
+        if user_score.voice_seconds < 60:
+            voice_time_str = f"{user_score.voice_seconds} sec"
+        else:
+            voice_time_str = f"{user_score.voice_seconds // 60} min"
+
         # Score breakdown
         breakdown = (
             f"📅 **Membership Duration:**\n"
@@ -226,33 +268,21 @@ class MyScoreCommand(commands.Cog):
             f"   • Score: {user_score.days_score}/100\n"
             f"   • Weight: {scoring_info['weight_days']:.0%}\n"
             f"   • Contribution: {user_score.days_score * scoring_info['weight_days']:.1f}\n\n"
-            f"💬 **Activity Level:**\n"
+            f"💬 **Message Activity:**\n"
             f"   • {user_score.message_count:,} messages sent\n"
-            f"   • Score: {user_score.activity_score}/100\n"
+            f"   • Score: {user_score.message_score}/100\n"
             f"   • Weight: {scoring_info['weight_messages']:.0%}\n"
-            f"   • Contribution: {user_score.activity_score * scoring_info['weight_messages']:.1f}"
+            f"   • Contribution: {user_score.message_score * scoring_info['weight_messages']:.1f}\n\n"
+            f"🎤 **Voice Activity:**\n"
+            f"   • {voice_time_str} in voice\n"
+            f"   • Score: {user_score.voice_score}/100\n"
+            f"   • Weight: {scoring_info['weight_voice']:.0%}\n"
+            f"   • Contribution: {user_score.voice_score * scoring_info['weight_voice']:.1f}"
         )
 
         embed.add_field(
             name="🔍 Score Breakdown",
             value=breakdown,
-            inline=False
-        )
-
-        # Formula
-        formula = (
-            f"```\n"
-            f"Final Score = (Days Score × {scoring_info['weight_days']:.1f}) + "
-            f"(Activity Score × {scoring_info['weight_messages']:.1f})\n"
-            f"            = ({user_score.days_score} × {scoring_info['weight_days']:.1f}) + "
-            f"({user_score.activity_score} × {scoring_info['weight_messages']:.1f})\n"
-            f"            = {user_score.final_score}\n"
-            f"```"
-        )
-
-        embed.add_field(
-            name="📐 Calculation",
-            value=formula,
             inline=False
         )
 

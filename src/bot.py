@@ -32,6 +32,7 @@ from src.commands.message_store_admin import setup as setup_message_store_admin
 from src.events.guild_events import setup as setup_guild_events
 from src.events.message_tracking import setup as setup_message_tracking
 from src.events.rate_limit_tracking import setup as setup_rate_limit_tracking
+from src.events.voice_tracking import setup as setup_voice_tracking
 from src.tasks.verification_scheduler import setup as setup_verification_scheduler
 from src.tasks.backup_scheduler import setup as setup_backup_scheduler
 from src.tasks.db_maintenance import setup as setup_db_maintenance
@@ -118,6 +119,7 @@ class GuildScoutBot(commands.Bot):
         await setup_guild_events(self, self.config, self.message_store)
         await setup_message_tracking(self, self.config, self.message_store)
         await setup_rate_limit_tracking(self)
+        await setup_voice_tracking(self, self.config, self.message_store)
         self.logger.info("Event handlers loaded")
 
         # Load background tasks

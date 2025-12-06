@@ -120,10 +120,131 @@ class MessageStore:
                 )
             """)
 
+            # Create voice sessions table (detailed log)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS voice_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    channel_id INTEGER NOT NULL,
+                    start_time TEXT NOT NULL,
+                    end_time TEXT NOT NULL,
+                    duration_seconds INTEGER NOT NULL
+                )
+            """)
+
+            await db.execute("""
+                CREATE INDEX IF NOT EXISTS idx_voice_user_date
+                ON voice_sessions(guild_id, user_id, start_time)
+            """)
+
+            # Create daily voice stats table (aggregated for ranking)
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS voice_daily_stats (
+                    guild_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    date TEXT NOT NULL,
+                    total_seconds INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (guild_id, user_id, date)
+                )
+            """)
+
             await db.commit()
 
         self._initialized = True
         logger.info(f"Message store initialized at {self.db_path}")
+
+    async def log_voice_session(
+        self,
+        guild_id: int,
+        user_id: int,
+        channel_id: int,
+        start_time: datetime,
+        end_time: datetime
+    ):
+        """
+        Log a completed voice session.
+
+        Args:
+            guild_id: Discord guild ID
+            user_id: Discord user ID
+            channel_id: Discord channel ID
+            start_time: Session start time
+            end_time: Session end time
+        """
+        await self.initialize()
+
+        duration = int((end_time - start_time).total_seconds())
+        if duration <= 0:
+            return
+
+        # Split duration across days if session spans midnight? 
+        # For simplicity, we attribute the entire session to the start date for now.
+        # Or better: attribute to end date. Let's stick to start date.
+        date_key = start_time.strftime("%Y-%m-%d")
+        
+        start_str = start_time.isoformat()
+        end_str = end_time.isoformat()
+
+        async with aiosqlite.connect(self.db_path) as db:
+            # 1. Log detailed session
+            await db.execute(
+                """
+                INSERT INTO voice_sessions
+                (guild_id, user_id, channel_id, start_time, end_time, duration_seconds)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (guild_id, user_id, channel_id, start_str, end_str, duration)
+            )
+
+            # 2. Update daily stats
+            await db.execute(
+                """
+                INSERT INTO voice_daily_stats (guild_id, user_id, date, total_seconds)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(guild_id, user_id, date)
+                DO UPDATE SET total_seconds = total_seconds + ?
+                """,
+                (guild_id, user_id, date_key, duration, duration)
+            )
+            
+            await db.commit()
+
+    async def get_voice_seconds(
+        self,
+        guild_id: int,
+        user_id: int,
+        days: int = 30
+    ) -> int:
+        """
+        Get total voice seconds for a user in the last N days.
+
+        Args:
+            guild_id: Discord guild ID
+            user_id: Discord user ID
+            days: Number of days to look back
+
+        Returns:
+            Total seconds in voice
+        """
+        await self.initialize()
+        
+        # Calculate cutoff date string (simple YYYY-MM-DD comparison works)
+        cutoff_date = (
+            datetime.now(timezone.utc) - discord.utils.timedelta(days=days)
+        ).strftime("%Y-%m-%d")
+
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """
+                SELECT COALESCE(SUM(total_seconds), 0)
+                FROM voice_daily_stats
+                WHERE guild_id = ? AND user_id = ? AND date >= ?
+                """,
+                (guild_id, user_id, cutoff_date)
+            )
+            row = await cursor.fetchone()
+            return row[0] if row else 0
 
     async def increment_message(
         self,
@@ -987,3 +1108,37 @@ class MessageStore:
                 (guild_id, user_id)
             )
             await db.commit()
+
+    async def get_guild_voice_totals(
+        self,
+        guild_id: int,
+        days: Optional[int] = None
+    ) -> Dict[int, int]:
+        """
+        Get total voice seconds for all users in a guild.
+
+        Args:
+            guild_id: Discord guild ID
+            days: Optional number of days to look back
+
+        Returns:
+            Dictionary mapping user_id to total seconds
+        """
+        await self.initialize()
+        
+        query = "SELECT user_id, SUM(total_seconds) FROM voice_daily_stats WHERE guild_id = ?"
+        params = [guild_id]
+        
+        if days:
+            cutoff_date = (
+                datetime.now(timezone.utc) - discord.utils.timedelta(days=days)
+            ).strftime("%Y-%m-%d")
+            query += " AND date >= ?"
+            params.append(cutoff_date)
+            
+        query += " GROUP BY user_id"
+
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(query, params)
+            rows = await cursor.fetchall()
+            return {row[0]: row[1] for row in rows}

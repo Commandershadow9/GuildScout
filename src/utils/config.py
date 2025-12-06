@@ -89,8 +89,9 @@ class Config:
     def scoring_weights(self) -> Dict[str, float]:
         """Get scoring weights."""
         return {
-            "days_in_server": self.get("scoring.weights.days_in_server", 0.4),
-            "message_count": self.get("scoring.weights.message_count", 0.6),
+            "days_in_server": self.get("scoring.weights.days_in_server", 0.1),
+            "message_count": self.get("scoring.weights.message_count", 0.55),
+            "voice_activity": self.get("scoring.weights.voice_activity", 0.35),
         }
 
     @property
@@ -107,6 +108,21 @@ class Config:
     def cache_ttl(self):
         """Get cache TTL in seconds (None = never expires)."""
         return self.get("analytics.cache_ttl")
+
+    @property
+    def voice_tracking_enabled(self) -> bool:
+        """Whether voice activity tracking is enabled."""
+        return bool(self.get("voice_tracking.enabled", True))
+
+    @property
+    def voice_exclude_afk(self) -> bool:
+        """Whether to exclude AFK channels from voice tracking."""
+        return bool(self.get("voice_tracking.exclude_afk", True))
+
+    @property
+    def voice_min_seconds(self) -> int:
+        """Minimum duration in seconds to count a voice session."""
+        return int(self.get("voice_tracking.min_seconds", 10))
 
     @property
     def excluded_channels(self) -> list:

@@ -16,8 +16,9 @@ health_check:
 scoring:
   # Scoring weights (must sum to 1.0)
   weights:
-    days_in_server: 0.4      # 40% - Membership duration weight
-    message_count: 0.6       # 60% - Activity weight
+    days_in_server: 0.1      # 10% - Membership duration (Loyalty)
+    message_count: 0.55      # 55% - Chat Activity
+    voice_activity: 0.35     # 35% - Voice Activity
 
   # Minimum messages required to be included in ranking
   min_messages: 10

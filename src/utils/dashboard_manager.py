@@ -19,6 +19,144 @@ from src.analytics.scorer import Scorer
 logger = logging.getLogger("guildscout.dashboard")
 
 
+class AtRiskSelect(discord.ui.Select):
+    """Select menu to choose a user to remove role from."""
+    
+    def __init__(self, candidates):
+        options = []
+        for rank, score in candidates:
+            label = f"{rank}. {score.username}"
+            description = f"Score: {score.final_score:.1f} | Msg: {score.message_count}"
+            options.append(discord.SelectOption(
+                label=label, 
+                value=str(score.user_id), 
+                description=description,
+                emoji="⚠️"
+            ))
+        
+        super().__init__(
+            placeholder="Wähle einen User zum Entfernen der Rolle...",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        user_id = int(self.values[0])
+        guild = interaction.guild
+        
+        # Get config from view context (passed down)
+        config = self.view.config
+        
+        member = guild.get_member(user_id)
+        if not member:
+            await interaction.response.send_message("❌ User nicht mehr auf dem Server.", ephemeral=True)
+            return
+            
+        role = guild.get_role(config.guild_role_id)
+        if not role:
+            await interaction.response.send_message("❌ Gildenrolle nicht konfiguriert.", ephemeral=True)
+            return
+            
+        if role not in member.roles:
+            await interaction.response.send_message(f"⚠️ {member.display_name} hat die Rolle gar nicht.", ephemeral=True)
+            return
+            
+        try:
+            await member.remove_roles(role, reason="GuildScout: Wackelkandidat entfernt")
+            await interaction.response.send_message(f"✅ Rolle {role.mention} von **{member.display_name}** entfernt!", ephemeral=True)
+            
+            # Log to channel if configured
+            # (Skipping complex logging here for simplicity, sticking to ephemeral feedback)
+            
+        except discord.Forbidden:
+            await interaction.response.send_message("❌ Keine Berechtigung! Bitte Bot-Rolle prüfen.", ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Fehler: {str(e)}", ephemeral=True)
+
+
+class AtRiskManagementView(discord.ui.View):
+    """View containing the select menu for at-risk users."""
+    
+    def __init__(self, candidates, config):
+        super().__init__(timeout=180)
+        self.config = config
+        self.add_item(AtRiskSelect(candidates))
+
+
+class DashboardView(discord.ui.View):
+    """Persistent view attached to the dashboard."""
+    
+    def __init__(self, bot, config, message_store):
+        super().__init__(timeout=None) # Persistent
+        self.bot = bot
+        self.config = config
+        self.message_store = message_store
+
+    @discord.ui.button(label="⚠️ Wackelkandidaten verwalten", style=discord.ButtonStyle.danger, custom_id="guildscout:manage_risk")
+    async def manage_at_risk(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Check Permissions
+        if interaction.user.id not in self.config.admin_users:
+             # Check admin roles
+             has_role = any(r.id in self.config.admin_roles for r in interaction.user.roles)
+             if not has_role:
+                 await interaction.response.send_message("❌ Keine Berechtigung.", ephemeral=True)
+                 return
+
+        await interaction.response.defer(ephemeral=True)
+        
+        # Calculate current candidates fresh
+        try:
+            from src.analytics.role_scanner import RoleScanner
+            
+            guild = interaction.guild
+            # Fix: Don't exclude roles when scanning for at-risk users (who HAVE the role)
+            scanner = RoleScanner(
+                guild, 
+                exclusion_role_ids=[], 
+                exclusion_user_ids=self.config.exclusion_users
+            )
+            
+            role_members, _ = await scanner.get_members_by_role_id(self.config.guild_role_id)
+            if not role_members:
+                await interaction.followup.send("✅ Keine Mitglieder mit der Gildenrolle gefunden.", ephemeral=True)
+                return
+
+            totals = await self.message_store.get_guild_totals(guild.id)
+            voice_totals = await self.message_store.get_guild_voice_totals(guild.id)
+            
+            scorer = Scorer(
+                weight_days=self.config.scoring_weights["days_in_server"],
+                weight_messages=self.config.scoring_weights["message_count"],
+                weight_voice=self.config.scoring_weights.get("voice_activity", 0.2),
+                min_messages=0
+            )
+            scores = scorer.calculate_scores(role_members, totals, voice_totals)
+            
+            # Filter new users
+            valid_scores = [s for s in scores if s.days_in_server >= 7]
+            valid_scores.sort(key=lambda x: x.final_score)
+            
+            bottom_5 = valid_scores[:5]
+            
+            if not bottom_5:
+                await interaction.followup.send("✅ Keine gefährdeten Mitglieder (>7 Tage) gefunden.", ephemeral=True)
+                return
+                
+            # Create view with candidates
+            # Pass candidates as tuples of (rank, score)
+            candidates_with_rank = []
+            for i, s in enumerate(bottom_5, 1):
+                candidates_with_rank.append((i, s))
+                
+            view = AtRiskManagementView(candidates_with_rank, self.config)
+            await interaction.followup.send("Wähle einen Kandidaten zum Entfernen der Rolle:", view=view, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error in manage_at_risk: {e}", exc_info=True)
+            await interaction.followup.send("❌ Fehler beim Laden der Daten.", ephemeral=True)
+
+
 class DashboardManager:
     """Manages the combined Commands + Live Activity dashboard in #guild-rankings."""
 
@@ -241,37 +379,52 @@ class DashboardManager:
         if self.config.guild_role_id:
             try:
                 from src.analytics.role_scanner import RoleScanner
+                # For at-risk check, we want to analyze EVERYONE who has the role,
+                # so we DO NOT pass exclusion_roles here. We only respect manual user exclusions.
                 scanner = RoleScanner(
                     guild, 
-                    exclusion_role_ids=self.config.exclusion_roles,
+                    exclusion_role_ids=[], 
                     exclusion_user_ids=self.config.exclusion_users
                 )
-                role_members, _ = await scanner.get_members_by_role_id(self.config.guild_role_id)
+                role_members, excluded_members = await scanner.get_members_by_role_id(self.config.guild_role_id)
                 totals = await self.message_store.get_guild_totals(guild.id)
+                voice_totals = await self.message_store.get_guild_voice_totals(guild.id)
+                
                 scorer = Scorer(
                     weight_days=self.config.scoring_weights["days_in_server"],
                     weight_messages=self.config.scoring_weights["message_count"],
+                    weight_voice=self.config.scoring_weights.get("voice_activity", 0.2),
                     min_messages=0
                 )
-                scores = scorer.calculate_scores(role_members, totals)
+                scores = scorer.calculate_scores(role_members, totals, voice_totals)
                 
                 # FILTER: Ignore users who joined less than 7 days ago
                 # New users have low scores by definition (low days_in_server)
-                scores = [s for s in scores if s.days_in_server >= 7]
+                valid_scores = [s for s in scores if s.days_in_server >= 7]
 
-                scores.sort(key=lambda x: x.final_score)
+                valid_scores.sort(key=lambda x: x.final_score)
                 
                 # Show raw bottom 5
-                bottom_5 = scores[:5]
+                bottom_5 = valid_scores[:5]
                 if bottom_5:
                     lines = []
                     for s in bottom_5:
-                        lines.append(f"• **{s.display_name}**: {s.final_score:.1f} (Msg: {s.message_count})")
+                        voice_mins = s.voice_seconds // 60
+                        lines.append(f"• **{s.display_name}**: {s.final_score:.1f} (Msg: {s.message_count} | 🎤 {voice_mins}m)")
                     at_risk_text = "\n".join(lines)
                 else:
-                    at_risk_text = "Keine gefährdeten Mitglieder (>7 Tage)."
+                    # Diagnostik: Warum ist die Liste leer?
+                    if not role_members:
+                        if excluded_members:
+                            at_risk_text = f"Alle Mitglieder ausgeschlossen ({len(excluded_members)})."
+                        else:
+                            at_risk_text = "Keine Mitglieder mit Rolle gefunden."
+                    elif not valid_scores:
+                        at_risk_text = "Alle Kandidaten sind noch neu (<7 Tage)."
+                    else:
+                        at_risk_text = "Keine gefährdeten Mitglieder."
             except Exception as e:
-                logger.warning(f"At-risk calc failed: {e}")
+                logger.warning(f"At-risk calc failed: {e}", exc_info=True)
                 at_risk_text = "⚠️ Fehler bei Berechnung"
 
         # --- BUILD EMBED ---
@@ -279,7 +432,10 @@ class DashboardManager:
             title="📊 GuildScout Dashboard",
             description=(
                 "Zentrale Übersicht für alle GuildScout-Funktionen.\n"
-                "Die Bewertung kombiniert **40 %** Tage im Server und **60 %** Nachrichtenaktivität."
+                f"Bewertung: **{self.config.scoring_weights['days_in_server']*100:.0f}%** Tage, "
+                f"**{self.config.scoring_weights['message_count']*100:.0f}%** Msg, "
+                f"**{self.config.scoring_weights.get('voice_activity', 0.2)*100:.0f}%** Voice."
+                f"\n\n_Voice-Tracking aktiv seit 06. Dezember 2025._"
             ),
             color=discord.Color.blue(),
             timestamp=discord.utils.utcnow()
@@ -312,8 +468,14 @@ class DashboardManager:
         try:
             stats = await self.message_store.get_stats(guild.id)
             db_total = stats.get("total_messages", 0)
+            
+            # Get total voice hours
+            all_voice_totals = await self.message_store.get_guild_voice_totals(guild.id)
+            total_voice_seconds = sum(all_voice_totals.values())
+            total_voice_hours = total_voice_seconds / 3600
         except:
             db_total = 0
+            total_voice_hours = 0
         
         # Combine Trend, Prime Time and Session Stats
         analysis_text = (
@@ -321,7 +483,8 @@ class DashboardManager:
             f"{weekly_text}\n"
             f"{monthly_text}\n"
             f"{prime_time_text}\n"
-            f"Gesamt-DB: **{db_total}**"
+            f"Gesamt-DB: **{db_total}**\n"
+            f"Gesamt-Voice: **{total_voice_hours:.1f}h**"
         )
         embed.add_field(name="📈 Aktivität", value=analysis_text, inline=True)
 
@@ -365,11 +528,14 @@ class DashboardManager:
 
         embed.set_footer(text=f"GuildScout • Last Update: {datetime.utcnow().strftime('%H:%M')} UTC")
 
+        # Create View
+        view = DashboardView(self.bot, self.config, self.message_store)
+
         try:
             if state["dashboard_message"]:
                 try:
                     # For edit(), we use 'attachments' to replace/add files
-                    edit_kwargs = {"embed": embed}
+                    edit_kwargs = {"embed": embed, "view": view}
                     if chart_file:
                         # To upload a new file in edit, we pass it in attachments
                         # Note: This removes existing attachments not listed here
@@ -386,7 +552,7 @@ class DashboardManager:
             
             if not state["dashboard_message"]:
                 # For send(), we use 'file' (singular) or 'files'
-                send_kwargs = {"embed": embed}
+                send_kwargs = {"embed": embed, "view": view}
                 if chart_file:
                     # Reset file pointer just in case it was read in the failed edit attempt (though likely not)
                     chart_file.fp.seek(0) 
