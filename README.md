@@ -38,6 +38,8 @@ Perfect for communities who need to fairly select members for limited guild spot
 - **💬 Welcome Messages**: Auto-updating channel info with debouncing
 - **🔧 Set Max Spots**: Configure maximum guild size
 - **⚠️ Interactive Dashboard**: Manage "at-risk" users directly with buttons
+- **🗡️ Raid Planner**: Interaktiver Raid-Flow mit Vorlagen, Rollenlimits, Reserve,
+  Sperren/Schliessen, Export und Erinnerungen
 
 ### User Features
 - **📊 /my-score**: Users receive a generated graphical card with their ranking
@@ -65,11 +67,20 @@ Perfect for communities who need to fairly select members for limited guild spot
 - **`/set-max-spots <number>`** - Set maximum guild size
 - **`/guild-status`** - View all guild members with scores & export CSV
 - **`/setup-ranking-channel`** - Create persistent ranking/dashboard channel
+- **`/raid-create`** - Create a raid with role limits
+- **`/raid-list`** - List upcoming raids
+- **`/raid-setup`** - Create default raid channels and store IDs
+- **`/raid-set-channel`** - Set raid post/manage channels
+- **`/raid-info-setup`** - Create/update the raid info post
+- **`/raid-add-creator-role`** - Allow another role to create raids
+- **`/raid-remove-creator-role`** - Remove a role from raid creators
+- **`/raid-set-participant-role`** - Set the raid participant role
 - **`/status`** - Comprehensive system status overview
 - **`/profile`** - Performance profiling & bottleneck analysis
 
 ### User Commands
 - **`/my-score`** - Generate your personal ranking card
+- **`/raid-list`** - Show upcoming raids
 
 ## 🚀 Quick Start
 
@@ -134,6 +145,10 @@ guild_management:
   exclusion_roles:             # Roles that reserve spots (leaders, etc.)
     - 9876543210
 ```
+
+### Raid Management
+
+See `RAID_GUIDE.md` for the full raid workflow and configuration.
 
 ## 📊 Scoring Algorithm
 

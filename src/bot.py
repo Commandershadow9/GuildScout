@@ -18,6 +18,7 @@ from src.utils.health_server import HealthCheckServer
 from src.utils.config_watcher import setup_config_watcher
 from src.database import MessageCache
 from src.database.message_store import MessageStore
+from src.database.raid_store import RaidStore
 from src.commands.analyze import setup as setup_analyze
 from src.commands.my_score import setup as setup_my_score
 from src.commands.admin import setup as setup_admin
@@ -27,17 +28,20 @@ from src.commands.guild_status import setup as setup_guild_status
 from src.commands.set_max_spots import setup as setup_set_max_spots
 from src.commands.status import setup as setup_status
 from src.commands.profile import setup as setup_profile
+from src.commands.raid import setup as setup_raid
 
 from src.commands.message_store_admin import setup as setup_message_store_admin
 from src.events.guild_events import setup as setup_guild_events
 from src.events.message_tracking import setup as setup_message_tracking
 from src.events.rate_limit_tracking import setup as setup_rate_limit_tracking
 from src.events.voice_tracking import setup as setup_voice_tracking
+from src.events.raid_events import setup as setup_raid_events
 from src.tasks.verification_scheduler import setup as setup_verification_scheduler
 from src.tasks.backup_scheduler import setup as setup_backup_scheduler
 from src.tasks.db_maintenance import setup as setup_db_maintenance
 from src.tasks.health_monitor import setup as setup_health_monitor
 from src.tasks.weekly_reporter import setup as setup_weekly_reporter
+from src.tasks.raid_scheduler import setup as setup_raid_scheduler
 
 
 class GuildScoutBot(commands.Bot):
@@ -62,6 +66,7 @@ class GuildScoutBot(commands.Bot):
         self.config = config
         self.cache = cache
         self.message_store = message_store
+        self.raid_store = RaidStore()
         self.logger = logging.getLogger("guildscout.bot")
         self.discord_logger = DiscordLogger(bot=self, config=config)
         self.status_manager = StatusManager(bot=self, config=config)
@@ -101,6 +106,10 @@ class GuildScoutBot(commands.Bot):
         await self.message_store.initialize()
         self.logger.info("Message store initialized")
 
+        # Initialize raid store
+        await self.raid_store.initialize()
+        self.logger.info("Raid store initialized")
+
         # Load commands
         await setup_analyze(self, self.config, self.cache)
         await setup_my_score(self, self.config, self.cache)
@@ -111,6 +120,7 @@ class GuildScoutBot(commands.Bot):
         await setup_set_max_spots(self, self.config)
         await setup_status(self, self.config)
         await setup_profile(self, self.config)
+        await setup_raid(self, self.config, self.raid_store)
 
         await setup_message_store_admin(self, self.config, self.message_store)
         self.logger.info("Commands loaded")
@@ -120,6 +130,7 @@ class GuildScoutBot(commands.Bot):
         await setup_message_tracking(self, self.config, self.message_store)
         await setup_rate_limit_tracking(self)
         await setup_voice_tracking(self, self.config, self.message_store)
+        await setup_raid_events(self, self.config, self.raid_store)
         self.logger.info("Event handlers loaded")
 
         # Load background tasks
@@ -128,6 +139,7 @@ class GuildScoutBot(commands.Bot):
         await setup_db_maintenance(self, self.config)
         await setup_health_monitor(self, self.config)
         await setup_weekly_reporter(self, self.config)
+        await setup_raid_scheduler(self, self.config, self.raid_store)
         self.logger.info("Background tasks loaded")
 
         # Sync commands to guild
@@ -922,4 +934,3 @@ def main():
     except Exception as e:
         logger.error(f"Fatal error: {e}", exc_info=True)
         sys.exit(1)
-

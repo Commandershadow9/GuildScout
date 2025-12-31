@@ -350,6 +350,106 @@ class Config:
         return self.get("guild_management.exclusion_users", [])
 
     @property
+    def raid_enabled(self) -> bool:
+        """Whether the raid feature is enabled."""
+        return bool(self.get("raid_management.enabled", False))
+
+    @property
+    def raid_post_channel_id(self) -> Optional[int]:
+        """Channel ID where raid announcements are posted."""
+        channel_id = self.get("raid_management.post_channel_id")
+        return int(channel_id) if channel_id else None
+
+    def set_raid_post_channel_id(self, channel_id: Optional[int]) -> None:
+        """Persist the raid announcement channel ID."""
+        self._set_nested_value("raid_management.post_channel_id", channel_id)
+        self.save()
+
+    @property
+    def raid_manage_channel_id(self) -> Optional[int]:
+        """Optional channel ID where raid creation is allowed."""
+        channel_id = self.get("raid_management.manage_channel_id")
+        return int(channel_id) if channel_id else None
+
+    def set_raid_manage_channel_id(self, channel_id: Optional[int]) -> None:
+        """Persist the raid management channel ID."""
+        self._set_nested_value("raid_management.manage_channel_id", channel_id)
+        self.save()
+
+    @property
+    def raid_info_channel_id(self) -> Optional[int]:
+        """Optional channel ID for raid info/start message."""
+        channel_id = self.get("raid_management.info_channel_id")
+        return int(channel_id) if channel_id else None
+
+    def set_raid_info_channel_id(self, channel_id: Optional[int]) -> None:
+        """Persist the raid info channel ID."""
+        self._set_nested_value("raid_management.info_channel_id", channel_id)
+        self.save()
+
+    @property
+    def raid_info_message_id(self) -> Optional[int]:
+        """Stored message ID for the raid info/start embed."""
+        message_id = self.get("raid_management.info_message_id")
+        return int(message_id) if message_id else None
+
+    def set_raid_info_message_id(self, message_id: Optional[int]) -> None:
+        """Persist the raid info message ID."""
+        self._set_nested_value("raid_management.info_message_id", message_id)
+        self.save()
+
+    @property
+    def raid_creator_roles(self) -> list:
+        """Role IDs allowed to create raids."""
+        return self.get("raid_management.creator_roles", [])
+
+    def add_raid_creator_role(self, role_id: int) -> None:
+        """Add a role to the raid creator list."""
+        roles = list(self.raid_creator_roles)
+        if role_id not in roles:
+            roles.append(role_id)
+            self._set_nested_value("raid_management.creator_roles", roles)
+            self.save()
+
+    def remove_raid_creator_role(self, role_id: int) -> None:
+        """Remove a role from the raid creator list."""
+        roles = [rid for rid in self.raid_creator_roles if rid != role_id]
+        self._set_nested_value("raid_management.creator_roles", roles)
+        self.save()
+
+    @property
+    def raid_timezone(self) -> str:
+        """Default timezone for raid scheduling."""
+        return self.get("raid_management.timezone", "UTC")
+
+    @property
+    def raid_participant_role_id(self) -> Optional[int]:
+        """Role ID to assign to raid participants."""
+        role_id = self.get("raid_management.participant_role_id")
+        return int(role_id) if role_id else None
+
+    def set_raid_participant_role_id(self, role_id: Optional[int]) -> None:
+        """Persist raid participant role ID."""
+        self._set_nested_value("raid_management.participant_role_id", role_id)
+        self.save()
+
+    @property
+    def raid_reminder_hours(self) -> list:
+        """List of reminder offsets (hours before start)."""
+        hours = self.get("raid_management.reminder_hours", [24, 1])
+        if isinstance(hours, (int, float)):
+            hours = [int(hours)]
+        if not isinstance(hours, list):
+            return [24, 1]
+        parsed = []
+        for value in hours:
+            try:
+                parsed.append(int(value))
+            except (TypeError, ValueError):
+                continue
+        return sorted({hour for hour in parsed if hour > 0})
+
+    @property
     def dashboard_channel_id(self) -> Optional[int]:
         """Get dashboard channel ID (formerly ranking channel)."""
         # Try new key first, fallback to old key for backward compatibility

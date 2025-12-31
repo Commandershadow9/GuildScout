@@ -79,6 +79,35 @@ guild_management:
   # Individual user IDs to exclude (manual reservations)
   exclusion_users: []        # e.g., [123456789, 987654321]
 
+raid_management:
+  # Enable raid feature
+  enabled: true
+
+  # Channel where raid announcements are posted
+  post_channel_id: null
+
+  # Optional: channel where raid creation is allowed (null = anywhere)
+  manage_channel_id: null
+
+  # Optional: channel where raid info/start message lives
+  info_channel_id: null
+
+  # Optional: stored message ID for the raid info/start message
+  info_message_id: null
+
+  # Optional: role ID assigned to raid participants
+  participant_role_id: null
+
+  # Roles allowed to create raids (admins always allowed)
+  creator_roles:
+    - 1434664835760783531    # Cloudwalker Lead
+
+  # Default timezone for raid scheduling
+  timezone: "Europe/Berlin"
+
+  # Reminder offsets before start time (hours)
+  reminder_hours: [24, 1]
+
 logging:
   # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
   level: "INFO"
