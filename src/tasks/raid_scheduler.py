@@ -52,6 +52,7 @@ class RaidScheduler(commands.Cog):
 
         for raid in raids_to_close.values():
             await self.raid_store.close_raid(raid.id, closed_at=now_ts)
+            await self.raid_store.archive_participation(raid.id, "auto-closed")
 
             guild = self.bot.get_guild(raid.guild_id)
             if not guild:
@@ -423,11 +424,15 @@ class RaidScheduler(commands.Cog):
                 channel = await guild.fetch_channel(channel_id)
             except Exception:
                 return
+        no_shows = await self.raid_store.get_no_show_user_ids(raid.id)
+        leave_reasons = await self.raid_store.list_leave_reasons(raid.id)
         embed = build_raid_log_embed(
             raid,
             signups,
             self.config.raid_timezone,
             confirmed,
+            no_shows,
+            leave_reasons,
             status_label=status_label,
         )
         try:

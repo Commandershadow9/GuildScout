@@ -132,6 +132,7 @@ Buttons:
 Optionales Logging:
 - Wenn `log_channel_id` gesetzt ist, postet der Bot beim Abschluss/Abbruch
   eine kurze Raid-Zusammenfassung in den Log-Channel.
+  Darin steht auch, wer welche Rolle gespielt hat.
 
 ---
 
@@ -157,6 +158,10 @@ Check-in Reminder (Default: 5 Minuten vor Start):
 
 No-Show Markierung:
 - Nach Start werden nicht bestaetigte Teilnehmer als **No-Show** markiert.
+
+Abmeldungsgrund (optional):
+- Wenn jemand ❌ reagiert, kann er per DM einen kurzen Grund schicken.
+- Der Grund landet im Log-Channel (falls gesetzt).
 
 Config:
 ```yaml
@@ -197,6 +202,7 @@ Das hilft bei gemischten Zeitzonen.
 - `/raid-add-creator-role` – Creator-Rolle hinzufuegen
 - `/raid-remove-creator-role` – Creator-Rolle entfernen
 - `/raid-set-participant-role` – Teilnehmerrolle setzen
+- `/raid-user-stats` – Teilnahme-Statistik eines Users
 
 ---
 

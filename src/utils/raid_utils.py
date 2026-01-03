@@ -226,6 +226,8 @@ def build_raid_log_embed(
     signups_by_role: Dict[str, List[int]],
     timezone_name: str = "UTC",
     confirmed_ids: Optional[Iterable[int]] = None,
+    no_show_ids: Optional[Iterable[int]] = None,
+    leave_reasons: Optional[List[Dict[str, str]]] = None,
     status_label: Optional[str] = None,
 ) -> discord.Embed:
     """Build an admin log embed for raid summaries."""
@@ -265,11 +267,41 @@ def build_raid_log_embed(
 
     if all_signups:
         confirmed_set = set(int(uid) for uid in (confirmed_ids or []))
+        no_show_set = set(int(uid) for uid in (no_show_ids or []))
         confirmed_count = sum(1 for uid in all_signups if uid in confirmed_set)
         embed.add_field(
             name="Bestaetigt",
             value=f"{confirmed_count}/{len(all_signups)}",
             inline=False,
         )
+        if no_show_set:
+            no_show_preview = ", ".join(f"<@{uid}>" for uid in list(no_show_set)[:15])
+            if len(no_show_set) > 15:
+                no_show_preview = f"{no_show_preview}, +{len(no_show_set) - 15} weitere"
+            if len(no_show_preview) > 1024:
+                no_show_preview = f"{len(no_show_set)} markiert"
+            embed.add_field(
+                name="No-Show",
+                value=no_show_preview,
+                inline=False,
+            )
+
+    if leave_reasons:
+        lines = []
+        for entry in leave_reasons[:15]:
+            user_id = entry.get("user_id")
+            reason = (entry.get("reason") or "").strip()
+            if not user_id or not reason:
+                continue
+            short_reason = reason[:120]
+            lines.append(f"<@{user_id}>: {short_reason}")
+        if lines:
+            if len(leave_reasons) > 15:
+                lines.append(f"+{len(leave_reasons) - 15} weitere")
+            embed.add_field(
+                name="Abmeldungen (Grund)",
+                value="\n".join(lines)[:1024],
+                inline=False,
+            )
 
     return embed

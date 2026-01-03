@@ -143,6 +143,45 @@ class RaidStore:
                 """
             )
 
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS raid_participation (
+                    raid_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    role TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    confirmed INTEGER NOT NULL,
+                    joined_at INTEGER NOT NULL,
+                    recorded_at INTEGER NOT NULL,
+                    PRIMARY KEY (raid_id, user_id)
+                )
+                """
+            )
+
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS raid_leave_requests (
+                    user_id INTEGER NOT NULL,
+                    raid_id INTEGER NOT NULL,
+                    requested_at INTEGER NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    PRIMARY KEY (user_id, raid_id)
+                )
+                """
+            )
+
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS raid_leave_reasons (
+                    raid_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    reason TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    PRIMARY KEY (raid_id, user_id)
+                )
+                """
+            )
+
             await db.commit()
 
         self._initialized = True
@@ -562,6 +601,137 @@ class RaidStore:
                 )
             await db.commit()
             return user_ids
+
+    async def archive_participation(self, raid_id: int, status: str) -> None:
+        """Archive signups into participation history."""
+        await self.initialize()
+        recorded_at = int(datetime.now(timezone.utc).timestamp())
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """
+                INSERT OR REPLACE INTO raid_participation (
+                    raid_id, user_id, role, status, confirmed, joined_at, recorded_at
+                )
+                SELECT raid_id, user_id, role, ?, confirmed, joined_at, ?
+                FROM raid_signups
+                WHERE raid_id = ?
+                """,
+                (status, recorded_at, raid_id),
+            )
+            await db.commit()
+
+    async def get_user_participation_summary(
+        self,
+        user_id: int,
+        include_cancelled: bool = False,
+    ) -> Dict[str, int]:
+        """Return participation counts by role for a user."""
+        await self.initialize()
+        statuses = ("closed", "auto-closed")
+        if include_cancelled:
+            statuses = ("closed", "auto-closed", "cancelled")
+        placeholders = ",".join("?" for _ in statuses)
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                f"""
+                SELECT role, COUNT(*)
+                FROM raid_participation
+                WHERE user_id = ? AND status IN ({placeholders})
+                GROUP BY role
+                """,
+                (user_id, *statuses),
+            )
+            rows = await cursor.fetchall()
+            summary = {row[0]: int(row[1]) for row in rows}
+            summary["total"] = sum(summary.values())
+            return summary
+
+    async def add_leave_request(
+        self,
+        user_id: int,
+        raid_id: int,
+        expires_at: int,
+    ) -> None:
+        """Store a leave-reason request."""
+        await self.initialize()
+        requested_at = int(datetime.now(timezone.utc).timestamp())
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """
+                INSERT OR REPLACE INTO raid_leave_requests (
+                    user_id, raid_id, requested_at, expires_at
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (user_id, raid_id, requested_at, expires_at),
+            )
+            await db.commit()
+
+    async def get_latest_leave_request(self, user_id: int) -> Optional[Dict[str, int]]:
+        """Return the latest leave request for a user."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """
+                SELECT raid_id, requested_at, expires_at
+                FROM raid_leave_requests
+                WHERE user_id = ?
+                ORDER BY requested_at DESC
+                LIMIT 1
+                """,
+                (user_id,),
+            )
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "raid_id": int(row[0]),
+                "requested_at": int(row[1]),
+                "expires_at": int(row[2]),
+            }
+
+    async def clear_leave_request(self, user_id: int, raid_id: int) -> None:
+        """Remove a leave request."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "DELETE FROM raid_leave_requests WHERE user_id = ? AND raid_id = ?",
+                (user_id, raid_id),
+            )
+            await db.commit()
+
+    async def add_leave_reason(self, raid_id: int, user_id: int, reason: str) -> None:
+        """Store a leave reason."""
+        await self.initialize()
+        created_at = int(datetime.now(timezone.utc).timestamp())
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """
+                INSERT OR REPLACE INTO raid_leave_reasons (
+                    raid_id, user_id, reason, created_at
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (raid_id, user_id, reason, created_at),
+            )
+            await db.commit()
+
+    async def list_leave_reasons(self, raid_id: int) -> List[Dict[str, str]]:
+        """Return leave reasons for a raid."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """
+                SELECT user_id, reason
+                FROM raid_leave_reasons
+                WHERE raid_id = ?
+                ORDER BY created_at ASC
+                """,
+                (raid_id,),
+            )
+            rows = await cursor.fetchall()
+            return [
+                {"user_id": int(row[0]), "reason": row[1]}
+                for row in rows
+            ]
 
     async def get_confirmed_user_ids(self, raid_id: int) -> List[int]:
         """Return confirmed signup user IDs."""

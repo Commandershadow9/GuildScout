@@ -304,6 +304,24 @@ class RaidEvents(commands.Cog):
         except Exception:
             logger.warning("Failed to send open slot ping", exc_info=True)
 
+    async def _prompt_leave_reason(
+        self,
+        member: Optional[discord.Member],
+        raid,
+    ) -> None:
+        if not member:
+            return
+        expires_at = int(datetime.now(timezone.utc).timestamp()) + (10 * 60)
+        await self.raid_store.add_leave_request(member.id, raid.id, expires_at)
+        await self._send_dm(
+            member,
+            (
+                f"📝 Optionaler Grund fuer Abmeldung von **{raid.title}**?\n"
+                "Antworte innerhalb von 10 Minuten auf diese DM.\n"
+                "Oder schreibe 'skip', um zu ueberspringen."
+            ),
+        )
+
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
         if payload.guild_id is None:
@@ -346,6 +364,7 @@ class RaidEvents(commands.Cog):
             await self._fill_open_slots(raid, message, guild)
             await self._maybe_ping_open_slots(raid, message, guild)
             await self._update_raid_message(message, raid.id)
+            await self._prompt_leave_reason(member, raid)
             return
 
         current_role = await self.raid_store.get_user_role(raid.id, payload.user_id)
@@ -463,6 +482,50 @@ class RaidEvents(commands.Cog):
         await self._fill_open_slots(raid, message, guild)
         await self._maybe_ping_open_slots(raid, message, guild)
         await self._update_raid_message(message, raid.id)
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message) -> None:
+        if message.author.bot:
+            return
+        if message.guild is not None:
+            return
+
+        request = await self.raid_store.get_latest_leave_request(message.author.id)
+        if not request:
+            return
+        expires_at = request.get("expires_at", 0)
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        if now_ts > expires_at:
+            await self.raid_store.clear_leave_request(
+                message.author.id, request["raid_id"]
+            )
+            return
+
+        content = (message.content or "").strip()
+        if not content:
+            return
+        normalized = content.lower()
+        if normalized in {"skip", "nein", "no", "n", "x"}:
+            await self.raid_store.clear_leave_request(
+                message.author.id, request["raid_id"]
+            )
+            try:
+                await message.channel.send("✅ Alles klar, danke.")
+            except Exception:
+                pass
+            return
+
+        reason = content[:300]
+        await self.raid_store.add_leave_reason(
+            request["raid_id"], message.author.id, reason
+        )
+        await self.raid_store.clear_leave_request(
+            message.author.id, request["raid_id"]
+        )
+        try:
+            await message.channel.send("✅ Danke fuer dein Feedback.")
+        except Exception:
+            pass
 
 
 async def setup(bot: commands.Bot, config: Config, raid_store: RaidStore) -> None:

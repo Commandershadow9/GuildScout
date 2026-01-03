@@ -104,7 +104,8 @@ def build_raid_info_embed() -> discord.Embed:
             "❌ = Abmelden. Pro Person nur eine Rolle.\n"
             "Wenn Rolle voll ist, wirst du auf Reserve gesetzt (falls frei).\n"
             "Kurz vor Start gibt es einen Check-in per ✅.\n"
-            "5 Minuten vorher werden fehlende Check-ins gepingt."
+            "5 Minuten vorher werden fehlende Check-ins gepingt.\n"
+            "Bei Abmeldung kannst du optional einen Grund per DM senden."
         ),
         inline=False,
     )
@@ -135,7 +136,7 @@ def build_raid_info_embed() -> discord.Embed:
             "/raid-list – kommende Raids anzeigen\n"
             "Admin: /raid-setup, /raid-set-channel, /raid-info-setup,\n"
             "/raid-add-creator-role, /raid-remove-creator-role,\n"
-            "/raid-set-participant-role"
+            "/raid-set-participant-role, /raid-user-stats"
         ),
         inline=False,
     )
@@ -1440,11 +1441,15 @@ class RaidManageView(discord.ui.View):
                 return
         signups = await self.raid_store.get_signups_by_role(raid.id)
         confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
+        no_shows = await self.raid_store.get_no_show_user_ids(raid.id)
+        leave_reasons = await self.raid_store.list_leave_reasons(raid.id)
         embed = build_raid_log_embed(
             raid,
             signups,
             self.config.raid_timezone,
             confirmed,
+            no_shows,
+            leave_reasons,
             status_label=status_label,
         )
         try:
@@ -1646,6 +1651,7 @@ class RaidManageView(discord.ui.View):
             return
 
         await self.raid_store.close_raid(raid.id)
+        await self.raid_store.archive_participation(raid.id, "closed")
         await self._send_raid_log(interaction, raid, "geschlossen")
         channel = interaction.channel
         if interaction.message:
@@ -1707,6 +1713,7 @@ class RaidManageView(discord.ui.View):
             return
 
         await self.raid_store.update_status(raid.id, "cancelled")
+        await self.raid_store.archive_participation(raid.id, "cancelled")
         await self._send_raid_log(interaction, raid, "abgesagt")
         channel = interaction.channel
         if interaction.message:
@@ -2224,6 +2231,49 @@ class RaidCommand(commands.Cog):
             f"✅ Rolle {role.mention} entfernt.",
             ephemeral=True,
         )
+
+    @app_commands.command(
+        name="raid-user-stats",
+        description="[Admin] Raid-Teilnahmen eines Users anzeigen",
+    )
+    async def raid_user_stats(
+        self,
+        interaction: discord.Interaction,
+        user: discord.Member,
+    ) -> None:
+        if not interaction.guild:
+            await interaction.response.send_message(
+                "❌ Dieser Command funktioniert nur im Server.",
+                ephemeral=True,
+            )
+            return
+
+        if not self._has_admin_permission(interaction):
+            await interaction.response.send_message(
+                "❌ Nur Admins koennen diese Statistik sehen.",
+                ephemeral=True,
+            )
+            return
+
+        summary = await self.raid_store.get_user_participation_summary(user.id)
+        total = summary.pop("total", 0)
+        tanks = summary.get(ROLE_TANK, 0)
+        healers = summary.get(ROLE_HEALER, 0)
+        dps = summary.get(ROLE_DPS, 0)
+        bench = summary.get(ROLE_BENCH, 0)
+
+        embed = discord.Embed(
+            title="📊 Raid-Teilnahmen",
+            color=discord.Color.blurple(),
+        )
+        embed.add_field(name="User", value=user.mention, inline=False)
+        embed.add_field(name="Gesamt", value=str(total), inline=True)
+        embed.add_field(name="Tanks", value=str(tanks), inline=True)
+        embed.add_field(name="Healer", value=str(healers), inline=True)
+        embed.add_field(name="DPS", value=str(dps), inline=True)
+        embed.add_field(name="Reserve", value=str(bench), inline=True)
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(
         name="raid-set-participant-role",

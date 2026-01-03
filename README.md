@@ -75,6 +75,7 @@ Perfect for communities who need to fairly select members for limited guild spot
 - **`/raid-add-creator-role`** - Allow another role to create raids
 - **`/raid-remove-creator-role`** - Remove a role from raid creators
 - **`/raid-set-participant-role`** - Set the raid participant role
+- **`/raid-user-stats`** - Show raid participation stats for a user
 - **`/status`** - Comprehensive system status overview
 - **`/profile`** - Performance profiling & bottleneck analysis
 
