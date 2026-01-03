@@ -530,6 +530,32 @@ class RaidStore:
             rows = await cursor.fetchall()
             return [self._row_to_record(row) for row in rows]
 
+    async def list_recent_raids(
+        self,
+        limit: int = 5,
+        statuses: Optional[tuple[str, ...]] = None,
+    ) -> List[RaidRecord]:
+        """Return recently closed raids."""
+        await self.initialize()
+        status_values = statuses or ("closed", "auto-closed")
+        placeholders = ",".join("?" for _ in status_values)
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                f"""
+                SELECT id, guild_id, channel_id, message_id, creator_id, title, description,
+                       start_time, tanks_needed, healers_needed, dps_needed, bench_needed,
+                       status, created_at, closed_at
+                FROM raids
+                WHERE status IN ({placeholders})
+                ORDER BY closed_at DESC, start_time DESC
+                LIMIT ?
+                """,
+                (*status_values, limit),
+            )
+            rows = await cursor.fetchall()
+            return [self._row_to_record(row) for row in rows]
+
     async def list_signups(self, raid_id: int) -> List[Dict[str, Optional[str]]]:
         """Return signups with role details."""
         await self.initialize()
@@ -645,6 +671,44 @@ class RaidStore:
             summary = {row[0]: int(row[1]) for row in rows}
             summary["total"] = sum(summary.values())
             return summary
+
+    async def get_participation_leaderboard(
+        self,
+        limit: int = 10,
+        include_cancelled: bool = False,
+    ) -> List[Dict[str, int]]:
+        """Return top participants with per-role counts."""
+        await self.initialize()
+        statuses = ("closed", "auto-closed")
+        if include_cancelled:
+            statuses = ("closed", "auto-closed", "cancelled")
+        placeholders = ",".join("?" for _ in statuses)
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                f"""
+                SELECT user_id, role, COUNT(*)
+                FROM raid_participation
+                WHERE status IN ({placeholders})
+                GROUP BY user_id, role
+                """,
+                (*statuses,),
+            )
+            rows = await cursor.fetchall()
+
+        totals: Dict[int, Dict[str, int]] = {}
+        for row in rows:
+            user_id = int(row[0])
+            role = str(row[1])
+            count = int(row[2])
+            entry = totals.setdefault(user_id, {"total": 0})
+            entry[role] = entry.get(role, 0) + count
+            entry["total"] += count
+
+        leaderboard = [
+            {"user_id": user_id, **counts} for user_id, counts in totals.items()
+        ]
+        leaderboard.sort(key=lambda item: item.get("total", 0), reverse=True)
+        return leaderboard[: max(0, int(limit))]
 
     async def add_leave_request(
         self,

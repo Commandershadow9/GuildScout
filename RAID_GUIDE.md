@@ -134,6 +134,11 @@ Optionales Logging:
   eine kurze Raid-Zusammenfassung in den Log-Channel.
   Darin steht auch, wer welche Rolle gespielt hat.
 
+Historie-Embed:
+- Im `#raid-info` gibt es ein **Raid-Historie**-Embed.
+- Zeigt **Top-Teilnahmen** (mit Rollen) und die **letzten Raids**.
+- Aktualisiert sich automatisch nach jedem Raid-Ende.
+
 ---
 
 ## ⏰ Erinnerungssystem
@@ -215,6 +220,7 @@ raid_management:
   manage_channel_id: 456
   info_channel_id: 789
   info_message_id: 111
+  history_message_id: 112
   participant_role_id: 222
   log_channel_id: null
   creator_roles:

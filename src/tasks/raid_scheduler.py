@@ -100,6 +100,7 @@ class RaidScheduler(commands.Cog):
             await self._cleanup_confirmation_message(channel, raid.id)
             await self._send_raid_log(guild, updated, signups, confirmed, "auto-closed")
             await self._remove_participant_roles(guild, raid.id)
+            await self._refresh_history_embed(guild)
 
     async def _send_reminders(self, now_ts: int) -> None:
         reminder_hours = self.config.raid_reminder_hours
@@ -535,6 +536,15 @@ class RaidScheduler(commands.Cog):
                     logger.warning(
                         "Failed to remove raid participant role", exc_info=True
                     )
+
+    async def _refresh_history_embed(self, guild: discord.Guild) -> None:
+        cog = self.bot.get_cog("RaidCommand")
+        if not cog or not hasattr(cog, "refresh_raid_history"):
+            return
+        try:
+            await cog.refresh_raid_history(guild)
+        except Exception:
+            logger.warning("Failed to refresh raid history embed", exc_info=True)
 
     @close_task.before_loop
     async def before_close_task(self) -> None:

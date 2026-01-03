@@ -399,6 +399,17 @@ class Config:
         self.save()
 
     @property
+    def raid_history_message_id(self) -> Optional[int]:
+        """Stored message ID for the raid history embed."""
+        message_id = self.get("raid_management.history_message_id")
+        return int(message_id) if message_id else None
+
+    def set_raid_history_message_id(self, message_id: Optional[int]) -> None:
+        """Persist the raid history message ID."""
+        self._set_nested_value("raid_management.history_message_id", message_id)
+        self.save()
+
+    @property
     def raid_creator_roles(self) -> list:
         """Role IDs allowed to create raids."""
         return self.get("raid_management.creator_roles", [])

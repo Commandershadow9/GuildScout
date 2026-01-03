@@ -46,6 +46,8 @@ MAX_SLOT_OPTION = 20
 DATE_RANGE_DAYS = 25
 DATE_PAGE_STEP_DAYS = 7
 MAX_DATE_OFFSET_DAYS = 365
+HISTORY_TOP_LIMIT = 10
+HISTORY_RECENT_LIMIT = 5
 
 
 def get_default_date_time(timezone_name: str) -> tuple[str, str, int]:
@@ -123,8 +125,8 @@ def build_raid_info_embed() -> discord.Embed:
         name="Raid-Archiv & Historie (optional)",
         value=(
             "Log-Channel optional: Zusammenfassung mit Rollen, Check-in,\n"
-            "No-Show und Gruenden. Teilnahmen werden intern gespeichert.\n"
-            "Admin: /raid-user-stats zeigt, wer wie oft teilnahm."
+            "No-Show und Gruenden. Im Raid-Info-Channel gibt es eine\n"
+            "Historie (Top-Teilnahmen + letzte Raids). Admin: /raid-user-stats."
         ),
         inline=False,
     )
@@ -1316,6 +1318,15 @@ class RaidManageView(discord.ui.View):
             or interaction.user.id == raid.creator_id
         )
 
+    async def _refresh_history_embed(self, interaction: discord.Interaction) -> None:
+        cog = interaction.client.get_cog("RaidCommand")
+        if not cog or not hasattr(cog, "refresh_raid_history"):
+            return
+        try:
+            await cog.refresh_raid_history(interaction.guild)
+        except Exception:
+            logger.warning("Failed to refresh raid history embed", exc_info=True)
+
     async def _get_raid_from_interaction(
         self, interaction: discord.Interaction
     ) -> Optional[object]:
@@ -1685,6 +1696,7 @@ class RaidManageView(discord.ui.View):
             await self._cleanup_slot_pings(channel, raid.title)
             await self._cleanup_confirmation_message(channel, raid.id)
         await self._remove_participant_roles(interaction, raid.id)
+        await self._refresh_history_embed(interaction)
 
         await interaction.response.send_message(
             "✅ Raid geschlossen.",
@@ -1747,6 +1759,7 @@ class RaidManageView(discord.ui.View):
             await self._cleanup_slot_pings(channel, raid.title)
             await self._cleanup_confirmation_message(channel, raid.id)
         await self._remove_participant_roles(interaction, raid.id)
+        await self._refresh_history_embed(interaction)
 
         await interaction.response.send_message(
             "🛑 Raid wurde abgesagt.",
@@ -1804,7 +1817,16 @@ class RaidCommand(commands.Cog):
                 return
         if not isinstance(channel, discord.TextChannel):
             return
-        await self._upsert_raid_info_message(channel)
+        info_message = await self._upsert_raid_info_message(channel)
+        history_message = await self._upsert_raid_history_message(channel, guild)
+        await self._cleanup_raid_info_channel(
+            channel,
+            {
+                message.id
+                for message in (info_message, history_message)
+                if message is not None
+            },
+        )
 
     def _has_admin_permission(self, interaction: discord.Interaction) -> bool:
         if interaction.user.guild_permissions.administrator:
@@ -1844,6 +1866,116 @@ class RaidCommand(commands.Cog):
         message = await channel.send(embed=embed, view=view)
         self.config.set_raid_info_message_id(message.id)
         return message
+
+    async def _build_raid_history_embed(
+        self, guild: discord.Guild
+    ) -> discord.Embed:
+        embed = discord.Embed(
+            title="📚 Raid-Historie (Where Winds Meet)",
+            description="Top-Teilnahmen und letzte Raids (auto-aktualisiert).",
+            color=discord.Color.blurple(),
+        )
+        embed.timestamp = datetime.now(timezone.utc)
+
+        leaderboard = await self.raid_store.get_participation_leaderboard(
+            limit=HISTORY_TOP_LIMIT
+        )
+        if leaderboard:
+            lines = []
+            for index, entry in enumerate(leaderboard, start=1):
+                user_id = entry.get("user_id")
+                mention = f"<@{user_id}>"
+                role_parts = []
+                for role_key in (ROLE_TANK, ROLE_HEALER, ROLE_DPS, ROLE_BENCH):
+                    count = entry.get(role_key, 0)
+                    if count:
+                        role_parts.append(f"{ROLE_EMOJIS[role_key]} {count}")
+                roles_text = " ".join(role_parts) if role_parts else "keine Daten"
+                total = entry.get("total", 0)
+                lines.append(f"{index}. {mention} — {total} ({roles_text})")
+            value = "\n".join(lines)
+        else:
+            value = "Noch keine abgeschlossenen Raids."
+
+        embed.add_field(name="Top Teilnahmen", value=value, inline=False)
+
+        recent_raids = await self.raid_store.list_recent_raids(limit=HISTORY_RECENT_LIMIT)
+        if recent_raids:
+            lines = [
+                f"• <t:{raid.start_time}:f> — {raid.title}" for raid in recent_raids
+            ]
+            value = "\n".join(lines)
+        else:
+            value = "Noch keine abgeschlossenen Raids."
+
+        embed.add_field(name="Letzte Raids", value=value, inline=False)
+        embed.set_footer(text="Admin: /raid-user-stats fuer Detailansicht")
+        return embed
+
+    async def _upsert_raid_history_message(
+        self, channel: discord.TextChannel, guild: discord.Guild
+    ) -> Optional[discord.Message]:
+        embed = await self._build_raid_history_embed(guild)
+
+        message_id = self.config.raid_history_message_id
+        if message_id:
+            try:
+                message = await channel.fetch_message(message_id)
+                await message.edit(embed=embed)
+                return message
+            except discord.NotFound:
+                self.config.set_raid_history_message_id(None)
+            except Exception as exc:
+                logger.warning("Failed to update raid history message: %s", exc)
+
+        message = await channel.send(embed=embed)
+        self.config.set_raid_history_message_id(message.id)
+        return message
+
+    async def _cleanup_raid_info_channel(
+        self, channel: discord.TextChannel, keep_ids: set[int]
+    ) -> None:
+        bot_user = getattr(self.bot, "user", None)
+        if not bot_user:
+            return
+        try:
+            async for message in channel.history(limit=50):
+                if message.id in keep_ids:
+                    continue
+                if message.author.id != bot_user.id:
+                    continue
+                if not message.embeds:
+                    continue
+                title = message.embeds[0].title or ""
+                if title.startswith("🗡️ Raid-Guide") or title.startswith("📚 Raid-Historie"):
+                    await message.delete()
+        except Exception:
+            logger.warning("Failed to clean raid info channel", exc_info=True)
+
+    async def refresh_raid_history(self, guild: Optional[discord.Guild] = None) -> None:
+        """Refresh the raid history embed if configured."""
+        if not self.config.raid_info_channel_id:
+            return
+        if guild is None:
+            guild = self.bot.get_guild(self.config.guild_id)
+        if not guild:
+            return
+        channel = guild.get_channel(self.config.raid_info_channel_id)
+        if not isinstance(channel, discord.TextChannel):
+            try:
+                channel = await guild.fetch_channel(self.config.raid_info_channel_id)
+            except Exception:
+                return
+        if not isinstance(channel, discord.TextChannel):
+            return
+        history_message = await self._upsert_raid_history_message(channel, guild)
+        keep_ids = set()
+        info_message_id = self.config.raid_info_message_id
+        if info_message_id:
+            keep_ids.add(info_message_id)
+        if history_message:
+            keep_ids.add(history_message.id)
+        await self._cleanup_raid_info_channel(channel, keep_ids)
 
     @app_commands.command(name="raid-create", description="[Raid] Raid erstellen")
     async def raid_create(self, interaction: discord.Interaction) -> None:
@@ -2040,7 +2172,16 @@ class RaidCommand(commands.Cog):
         if participant_role:
             self.config.set_raid_participant_role_id(participant_role.id)
 
-        await self._upsert_raid_info_message(info_channel)
+        info_message = await self._upsert_raid_info_message(info_channel)
+        history_message = await self._upsert_raid_history_message(info_channel, guild)
+        await self._cleanup_raid_info_channel(
+            info_channel,
+            {
+                message.id
+                for message in (info_message, history_message)
+                if message is not None
+            },
+        )
 
         embed = discord.Embed(
             title="✅ Raid-Setup abgeschlossen",
@@ -2083,6 +2224,7 @@ class RaidCommand(commands.Cog):
                 ephemeral=True,
             )
             return
+        guild = interaction.guild
 
         if not self._has_admin_permission(interaction):
             await interaction.response.send_message(
@@ -2104,7 +2246,16 @@ class RaidCommand(commands.Cog):
             self.config.set_raid_manage_channel_id(manage_channel.id)
         if info_channel:
             self.config.set_raid_info_channel_id(info_channel.id)
-            await self._upsert_raid_info_message(info_channel)
+            info_message = await self._upsert_raid_info_message(info_channel)
+            history_message = await self._upsert_raid_history_message(info_channel, guild)
+            await self._cleanup_raid_info_channel(
+                info_channel,
+                {
+                    message.id
+                    for message in (info_message, history_message)
+                    if message is not None
+                },
+            )
         if log_channel:
             self.config.set_raid_log_channel_id(log_channel.id)
 
@@ -2173,7 +2324,16 @@ class RaidCommand(commands.Cog):
             )
 
         self.config.set_raid_info_channel_id(info_channel.id)
-        await self._upsert_raid_info_message(info_channel)
+        info_message = await self._upsert_raid_info_message(info_channel)
+        history_message = await self._upsert_raid_history_message(info_channel, guild)
+        await self._cleanup_raid_info_channel(
+            info_channel,
+            {
+                message.id
+                for message in (info_message, history_message)
+                if message is not None
+            },
+        )
 
         embed = discord.Embed(
             title="✅ Raid-Info aktualisiert",

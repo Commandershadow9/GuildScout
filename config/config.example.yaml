@@ -95,6 +95,9 @@ raid_management:
   # Optional: stored message ID for the raid info/start message
   info_message_id: null
 
+  # Optional: stored message ID for the raid history embed
+  history_message_id: null
+
   # Optional: role ID assigned to raid participants
   participant_role_id: null
 
