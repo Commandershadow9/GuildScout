@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Dict, List
+from typing import Dict, List, Optional, Iterable
 from zoneinfo import ZoneInfo
 
 import discord
@@ -33,6 +33,8 @@ ROLE_EMOJIS = {
     ROLE_BENCH: "🪑",
     ROLE_CANCEL: "❌",
 }
+
+CONFIRM_EMOJI = "✅"
 
 
 def parse_raid_datetime(date_str: str, time_str: str, timezone_name: str) -> datetime:
@@ -81,6 +83,7 @@ def build_raid_embed(
     raid: RaidRecord,
     signups_by_role: Dict[str, List[int]],
     timezone_name: str = "UTC",
+    confirmed_ids: Optional[Iterable[int]] = None,
 ) -> discord.Embed:
     """Build the public raid embed with roster details."""
     status_labels = {
@@ -173,11 +176,83 @@ def build_raid_embed(
             inline=False,
         )
 
+    all_signups: List[int] = []
+    for role in ROLE_ORDER:
+        all_signups.extend(signups_by_role.get(role, []))
+
+    if confirmed_ids is not None and all_signups:
+        confirmed_set = set(int(uid) for uid in (confirmed_ids or []))
+        confirmed_list = [uid for uid in all_signups if uid in confirmed_set]
+        unconfirmed = [uid for uid in all_signups if uid not in confirmed_set]
+        confirmed_value = f"{len(confirmed_list)}/{len(all_signups)}"
+        if unconfirmed:
+            preview = ", ".join(f"<@{uid}>" for uid in unconfirmed[:15])
+            if len(unconfirmed) > 15:
+                preview = f"{preview}, +{len(unconfirmed) - 15} weitere"
+            if len(preview) > 1024:
+                preview = f"{len(unconfirmed)} offen"
+            confirmed_value = f"{confirmed_value}\nOffen: {preview}"
+        embed.add_field(name="Bestaetigt", value=confirmed_value, inline=False)
+
     if raid.status == "locked":
         embed.set_footer(text="Anmeldung gesperrt: nur Reserve moeglich.")
     elif raid.status == "closed":
         embed.set_footer(text="Raid gestartet/geschlossen.")
     elif raid.status == "cancelled":
         embed.set_footer(text="Raid wurde abgesagt.")
+
+    return embed
+
+
+def build_raid_log_embed(
+    raid: RaidRecord,
+    signups_by_role: Dict[str, List[int]],
+    timezone_name: str = "UTC",
+    confirmed_ids: Optional[Iterable[int]] = None,
+    status_label: Optional[str] = None,
+) -> discord.Embed:
+    """Build an admin log embed for raid summaries."""
+    status = status_label or raid.status
+    embed = discord.Embed(
+        title=f"🧾 Raid Log: {raid.title}",
+        description=raid.description or None,
+        color=discord.Color.blurple(),
+    )
+
+    embed.add_field(
+        name="Status",
+        value=status,
+        inline=True,
+    )
+    embed.add_field(
+        name="Startzeit",
+        value=f"<t:{raid.start_time}:F>",
+        inline=True,
+    )
+    embed.add_field(
+        name="Erstellt von",
+        value=f"<@{raid.creator_id}>",
+        inline=True,
+    )
+
+    all_signups: List[int] = []
+    for role in ROLE_ORDER:
+        users = signups_by_role.get(role, [])
+        all_signups.extend(users)
+        label = ROLE_LABELS.get(role, role.title())
+        embed.add_field(
+            name=f"{ROLE_EMOJIS.get(role, '')} {label} ({len(users)})",
+            value=_format_user_list(users),
+            inline=False,
+        )
+
+    if all_signups:
+        confirmed_set = set(int(uid) for uid in (confirmed_ids or []))
+        confirmed_count = sum(1 for uid in all_signups if uid in confirmed_set)
+        embed.add_field(
+            name="Bestaetigt",
+            value=f"{confirmed_count}/{len(all_signups)}",
+            inline=False,
+        )
 
     return embed

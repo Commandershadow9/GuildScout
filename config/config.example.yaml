@@ -98,6 +98,9 @@ raid_management:
   # Optional: role ID assigned to raid participants
   participant_role_id: null
 
+  # Optional: log channel for raid summaries
+  log_channel_id: null
+
   # Roles allowed to create raids (admins always allowed)
   creator_roles:
     - 1434664835760783531    # Cloudwalker Lead
@@ -113,6 +116,15 @@ raid_management:
 
   # Auto-close raids at start time
   auto_close_at_start: true
+
+  # Safety auto-close after start time (hours)
+  auto_close_after_hours: 12
+
+  # Minutes before start to request confirmations
+  confirmation_minutes: 30
+
+  # Cooldown before sending another "slots frei" ping
+  open_slot_ping_minutes: 30
 
 logging:
   # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL

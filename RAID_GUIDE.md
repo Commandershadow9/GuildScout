@@ -107,11 +107,13 @@ Signups-Status im Titel:
 Auto-Close:
 Standard: Der Raid wird automatisch zur Startzeit geschlossen.
 Optional: Auto-Close kann deaktiviert werden (siehe Config).
+Sicherung: Optional nach X Stunden automatisch schliessen.
 
 ## 🧹 Aufraeumen
 
 Wenn ein Raid **geschlossen oder abgesagt** wird, loescht der Bot den Post
 automatisch aus dem Channel, damit nur offene Raids sichtbar sind.
+Zusatz: Erinnerungsposts zum Raid werden ebenfalls entfernt.
 
 ---
 
@@ -124,7 +126,11 @@ Buttons:
 - **🔒 Sperren/Oeffnen**: Anmeldung sperren oder wieder oeffnen
 - **✅ Abschliessen**: Raid manuell schliessen
 - **🛑 Absagen**: Raid absagen
-- **📄 Export**: CSV der Teilnehmer (Rolle, Joinzeit)
+- **⏭️ Folge-Raid**: Neuen Raid mit gleichem Titel/Slots erstellen (nur Zeit waehlen)
+
+Optionales Logging:
+- Wenn `log_channel_id` gesetzt ist, postet der Bot beim Abschluss/Abbruch
+  eine kurze Raid-Zusammenfassung in den Log-Channel.
 
 ---
 
@@ -137,12 +143,24 @@ Erinnerungen vor Start (Default: 24h und 1h):
 DM-Erinnerung (Default: 15 Minuten vor Start):
 - Der Bot schickt eine DM an alle angemeldeten Teilnehmer.
 
+Check-in (Default: 30 Minuten vor Start):
+- Der Bot postet eine Nachricht mit ✅.
+- Teilnehmer bestaetigen ihre Teilnahme per Reaktion.
+- Im Raid-Embed siehst du, wer noch offen ist.
+
+Slots frei Ping (Cooldown: 30 Minuten):
+- Wenn Slots frei werden, pingt der Bot @Raid Teilnehmer.
+
 Config:
 ```yaml
 raid_management:
   reminder_hours: [24, 1]
   dm_reminder_minutes: [15]
   auto_close_at_start: true
+  auto_close_after_hours: 12
+  confirmation_minutes: 30
+  open_slot_ping_minutes: 30
+  log_channel_id: null
 ```
 
 ---

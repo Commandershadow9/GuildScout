@@ -39,7 +39,7 @@ Perfect for communities who need to fairly select members for limited guild spot
 - **🔧 Set Max Spots**: Configure maximum guild size
 - **⚠️ Interactive Dashboard**: Manage "at-risk" users directly with buttons
 - **🗡️ Raid Planner**: Interaktiver Raid-Flow mit Vorlagen, Rollenlimits, Reserve,
-  Sperren/Schliessen, Export, Erinnerungen und Auto-Cleanup
+  Sperren/Schliessen, Erinnerungen und Auto-Cleanup
 
 ### User Features
 - **📊 /my-score**: Users receive a generated graphical card with their ranking

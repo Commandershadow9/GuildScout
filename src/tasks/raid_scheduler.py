@@ -10,7 +10,7 @@ from discord.ext import commands, tasks
 
 from src.database.raid_store import RaidStore
 from src.utils.config import Config
-from src.utils.raid_utils import build_raid_embed
+from src.utils.raid_utils import CONFIRM_EMOJI, build_raid_embed, build_raid_log_embed
 
 
 logger = logging.getLogger("guildscout.tasks.raid_scheduler")
@@ -35,11 +35,20 @@ class RaidScheduler(commands.Cog):
         now_ts = int(datetime.now(timezone.utc).timestamp())
         await self._send_reminders(now_ts)
         await self._send_dm_reminders(now_ts)
-        if not self.config.raid_auto_close_at_start:
-            return
-        raids = await self.raid_store.list_raids_to_close(now_ts)
+        await self._send_confirmation_checks(now_ts)
 
-        for raid in raids:
+        raids_to_close = {}
+        if self.config.raid_auto_close_at_start:
+            for raid in await self.raid_store.list_raids_to_close(now_ts):
+                raids_to_close[raid.id] = raid
+
+        grace_hours = self.config.raid_auto_close_after_hours
+        if grace_hours > 0:
+            grace_seconds = grace_hours * 3600
+            for raid in await self.raid_store.list_raids_past_grace(now_ts, grace_seconds):
+                raids_to_close[raid.id] = raid
+
+        for raid in raids_to_close.values():
             await self.raid_store.close_raid(raid.id, closed_at=now_ts)
 
             guild = self.bot.get_guild(raid.guild_id)
@@ -66,7 +75,8 @@ class RaidScheduler(commands.Cog):
                 continue
 
             signups = await self.raid_store.get_signups_by_role(raid.id)
-            embed = build_raid_embed(updated, signups, self.config.raid_timezone)
+            confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
+            embed = build_raid_embed(updated, signups, self.config.raid_timezone, confirmed)
 
             try:
                 await message.delete()
@@ -79,6 +89,10 @@ class RaidScheduler(commands.Cog):
                         "Failed to update raid message %s", raid.id, exc_info=True
                     )
 
+            await self._cleanup_reminder_messages(channel, raid.title)
+            await self._cleanup_slot_pings(channel, raid.title)
+            await self._cleanup_confirmation_message(channel, raid.id)
+            await self._send_raid_log(guild, updated, signups, confirmed, "auto-closed")
             await self._remove_participant_roles(guild, raid.id)
 
     async def _send_reminders(self, now_ts: int) -> None:
@@ -91,8 +105,13 @@ class RaidScheduler(commands.Cog):
             return
 
         sent = await self.raid_store.get_sent_reminders([raid.id for raid in raids])
+        window_seconds = 120
 
         for raid in raids:
+            remaining = raid.start_time - now_ts
+            if remaining <= 0:
+                continue
+
             guild = self.bot.get_guild(raid.guild_id)
             if not guild:
                 continue
@@ -116,7 +135,7 @@ class RaidScheduler(commands.Cog):
                 if hours in sent_hours:
                     continue
                 trigger_ts = raid.start_time - (hours * 3600)
-                if now_ts < trigger_ts:
+                if now_ts < trigger_ts or (now_ts - trigger_ts) > window_seconds:
                     continue
 
                 jump_url = None
@@ -151,15 +170,20 @@ class RaidScheduler(commands.Cog):
             return
 
         sent = await self.raid_store.get_sent_reminders([raid.id for raid in raids])
+        window_seconds = 120
 
         for raid in raids:
+            remaining = raid.start_time - now_ts
+            if remaining <= 0:
+                continue
+
             minutes_sent = set(sent.get(raid.id, []))
             for minutes in reminder_minutes:
                 marker = -int(minutes)
                 if marker in minutes_sent:
                     continue
                 trigger_ts = raid.start_time - (minutes * 60)
-                if now_ts < trigger_ts:
+                if now_ts < trigger_ts or (now_ts - trigger_ts) > window_seconds:
                     continue
 
                 signups = await self.raid_store.list_signups(raid.id)
@@ -201,6 +225,150 @@ class RaidScheduler(commands.Cog):
                         pass
 
                 await self.raid_store.mark_reminder_sent(raid.id, marker)
+
+    async def _send_confirmation_checks(self, now_ts: int) -> None:
+        minutes = self.config.raid_confirmation_minutes
+        if minutes <= 0:
+            return
+
+        raids = await self.raid_store.list_active_raids(now_ts)
+        if not raids:
+            return
+
+        window_seconds = 120
+
+        for raid in raids:
+            trigger_ts = raid.start_time - (minutes * 60)
+            if now_ts < trigger_ts or (now_ts - trigger_ts) > window_seconds:
+                continue
+
+            existing = await self.raid_store.get_confirmation_message_id(raid.id)
+            if existing:
+                continue
+
+            signups = await self.raid_store.get_signups_by_role(raid.id)
+            if not any(signups.values()):
+                continue
+
+            guild = self.bot.get_guild(raid.guild_id)
+            if not guild:
+                continue
+
+            channel = guild.get_channel(raid.channel_id)
+            if not isinstance(channel, discord.TextChannel):
+                try:
+                    channel = await guild.fetch_channel(raid.channel_id)
+                except Exception:
+                    continue
+
+            role_mention = ""
+            role_id = self.config.raid_participant_role_id
+            if role_id:
+                role = guild.get_role(role_id)
+                if role:
+                    role_mention = f"{role.mention} "
+
+            content = (
+                f"{role_mention}Bitte bestaetigt eure Teilnahme fuer "
+                f"**{raid.title}** mit {CONFIRM_EMOJI}."
+            )
+            try:
+                message = await channel.send(content)
+                await message.add_reaction(CONFIRM_EMOJI)
+                await self.raid_store.reset_confirmations(raid.id)
+                await self.raid_store.set_confirmation_message(raid.id, message.id)
+            except Exception:
+                logger.warning(
+                    "Failed to send confirmation check for raid %s", raid.id, exc_info=True
+                )
+
+    async def _send_raid_log(
+        self,
+        guild: discord.Guild,
+        raid,
+        signups,
+        confirmed,
+        status_label: str,
+    ) -> None:
+        channel_id = self.config.raid_log_channel_id
+        if not channel_id:
+            return
+        channel = guild.get_channel(channel_id)
+        if not isinstance(channel, discord.TextChannel):
+            try:
+                channel = await guild.fetch_channel(channel_id)
+            except Exception:
+                return
+        embed = build_raid_log_embed(
+            raid,
+            signups,
+            self.config.raid_timezone,
+            confirmed,
+            status_label=status_label,
+        )
+        try:
+            await channel.send(embed=embed)
+        except Exception:
+            logger.warning("Failed to send raid log", exc_info=True)
+
+    async def _cleanup_reminder_messages(
+        self,
+        channel: discord.TextChannel,
+        raid_title: str,
+        limit: int = 50,
+    ) -> None:
+        title_key = (raid_title or "").lower()
+        async for message in channel.history(limit=limit):
+            if not message.author or not message.author.bot:
+                continue
+            content = (message.content or "").lower()
+            if "erinnerung" not in content:
+                continue
+            if title_key and title_key not in content:
+                continue
+            try:
+                await message.delete()
+            except Exception:
+                pass
+
+    async def _cleanup_slot_pings(
+        self,
+        channel: discord.TextChannel,
+        raid_title: str,
+        limit: int = 50,
+    ) -> None:
+        title_key = (raid_title or "").lower()
+        async for message in channel.history(limit=limit):
+            if not message.author or not message.author.bot:
+                continue
+            content = (message.content or "").lower()
+            if "slots frei" not in content:
+                continue
+            if title_key and title_key not in content:
+                continue
+            try:
+                await message.delete()
+            except Exception:
+                pass
+
+    async def _cleanup_confirmation_message(
+        self,
+        channel: discord.TextChannel,
+        raid_id: int,
+    ) -> None:
+        message_id = await self.raid_store.get_confirmation_message_id(raid_id)
+        if not message_id:
+            return
+        try:
+            message = await channel.fetch_message(message_id)
+        except Exception:
+            await self.raid_store.clear_confirmation_message(raid_id)
+            return
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        await self.raid_store.clear_confirmation_message(raid_id)
 
     async def _remove_participant_roles(self, guild: discord.Guild, raid_id: int) -> None:
         role_id = self.config.raid_participant_role_id

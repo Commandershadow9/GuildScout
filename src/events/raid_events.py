@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 import discord
@@ -11,6 +12,7 @@ from discord.ext import commands
 from src.database.raid_store import RaidStore
 from src.utils.config import Config
 from src.utils.raid_utils import (
+    CONFIRM_EMOJI,
     ROLE_BENCH,
     ROLE_CANCEL,
     ROLE_DPS,
@@ -125,11 +127,75 @@ class RaidEvents(commands.Cog):
         if not raid:
             return
         signups = await self.raid_store.get_signups_by_role(raid_id)
-        embed = build_raid_embed(raid, signups, self.config.raid_timezone)
+        confirmation_message_id = await self.raid_store.get_confirmation_message_id(raid_id)
+        confirmed = None
+        if confirmation_message_id:
+            confirmed = await self.raid_store.get_confirmed_user_ids(raid_id)
+        embed = build_raid_embed(raid, signups, self.config.raid_timezone, confirmed)
         try:
             await message.edit(embed=embed)
         except Exception:
             logger.warning("Failed to update raid message %s", raid_id, exc_info=True)
+
+    async def _handle_confirmation_reaction(
+        self,
+        payload: discord.RawReactionActionEvent,
+    ) -> bool:
+        raid_id = await self.raid_store.get_confirmation_raid_id(payload.message_id)
+        if not raid_id:
+            return False
+        if str(payload.emoji) != CONFIRM_EMOJI:
+            return True
+
+        raid = await self.raid_store.get_raid(raid_id)
+        if not raid:
+            return True
+
+        role = await self.raid_store.get_user_role(raid_id, payload.user_id)
+        if not role:
+            guild = self.bot.get_guild(payload.guild_id)
+            if guild:
+                message = await self._get_message(
+                    guild, payload.channel_id, payload.message_id
+                )
+                member = await self._get_member(guild, payload.user_id)
+                if message:
+                    await self._remove_reaction(message, CONFIRM_EMOJI, member)
+            return True
+
+        await self.raid_store.set_signup_confirmed(raid_id, payload.user_id, True)
+
+        guild = self.bot.get_guild(payload.guild_id)
+        if not guild or not raid.message_id:
+            return True
+
+        raid_message = await self._get_message(guild, raid.channel_id, raid.message_id)
+        if raid_message:
+            await self._update_raid_message(raid_message, raid_id)
+        return True
+
+    async def _handle_confirmation_remove(
+        self,
+        payload: discord.RawReactionActionEvent,
+    ) -> bool:
+        raid_id = await self.raid_store.get_confirmation_raid_id(payload.message_id)
+        if not raid_id:
+            return False
+        if str(payload.emoji) != CONFIRM_EMOJI:
+            return True
+
+        await self.raid_store.set_signup_confirmed(raid_id, payload.user_id, False)
+
+        guild = self.bot.get_guild(payload.guild_id)
+        if not guild:
+            return True
+        raid = await self.raid_store.get_raid(raid_id)
+        if not raid or not raid.message_id:
+            return True
+        raid_message = await self._get_message(guild, raid.channel_id, raid.message_id)
+        if raid_message:
+            await self._update_raid_message(raid_message, raid_id)
+        return True
 
     async def _remove_reaction(
         self,
@@ -193,6 +259,47 @@ class RaidEvents(commands.Cog):
                 updated = True
         return updated
 
+    async def _maybe_ping_open_slots(
+        self,
+        raid,
+        message: discord.Message,
+        guild: discord.Guild,
+    ) -> None:
+        if raid.status != "open":
+            return
+        role = self._get_participant_role(guild)
+        if not role:
+            return
+
+        signups = await self.raid_store.get_signups_by_role(raid.id)
+        open_tanks = max(raid.tanks_needed - len(signups.get(ROLE_TANK, [])), 0)
+        open_healers = max(raid.healers_needed - len(signups.get(ROLE_HEALER, [])), 0)
+        open_dps = max(raid.dps_needed - len(signups.get(ROLE_DPS, [])), 0)
+        total_open = open_tanks + open_healers + open_dps
+        if total_open <= 0:
+            return
+
+        cooldown = self.config.raid_open_slot_ping_minutes * 60
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        last_sent = await self.raid_store.get_alert_sent_at(raid.id, "open_slots")
+        if last_sent and now_ts - last_sent < cooldown:
+            return
+
+        parts = []
+        if open_tanks:
+            parts.append(f"Tanks: {open_tanks}")
+        if open_healers:
+            parts.append(f"Healer: {open_healers}")
+        if open_dps:
+            parts.append(f"DPS: {open_dps}")
+        slot_text = " | ".join(parts)
+        content = f"{role.mention} Slots frei fuer **{raid.title}**: {slot_text}"
+        try:
+            await message.channel.send(content)
+            await self.raid_store.mark_alert_sent(raid.id, "open_slots")
+        except Exception:
+            logger.warning("Failed to send open slot ping", exc_info=True)
+
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
         if payload.guild_id is None:
@@ -200,6 +307,8 @@ class RaidEvents(commands.Cog):
         if not self.config.raid_enabled:
             return
         if self.bot.user and payload.user_id == self.bot.user.id:
+            return
+        if await self._handle_confirmation_reaction(payload):
             return
 
         role = ROLE_EMOJI_TO_ROLE.get(str(payload.emoji))
@@ -231,6 +340,7 @@ class RaidEvents(commands.Cog):
             await self._clear_user_reactions(message, member)
             await self._remove_participant_role_if_unused(member)
             await self._fill_open_slots(raid, message, guild)
+            await self._maybe_ping_open_slots(raid, message, guild)
             await self._update_raid_message(message, raid.id)
             return
 
@@ -308,6 +418,7 @@ class RaidEvents(commands.Cog):
 
         if current_role and current_role != effective_role and current_role != ROLE_BENCH:
             await self._fill_open_slots(raid, message, guild)
+            await self._maybe_ping_open_slots(raid, message, guild)
 
         await self._update_raid_message(message, raid.id)
 
@@ -318,6 +429,8 @@ class RaidEvents(commands.Cog):
         if not self.config.raid_enabled:
             return
         if self.bot.user and payload.user_id == self.bot.user.id:
+            return
+        if await self._handle_confirmation_remove(payload):
             return
 
         role = ROLE_EMOJI_TO_ROLE.get(str(payload.emoji))
@@ -344,6 +457,7 @@ class RaidEvents(commands.Cog):
         member = await self._get_member(guild, payload.user_id)
         await self._remove_participant_role_if_unused(member)
         await self._fill_open_slots(raid, message, guild)
+        await self._maybe_ping_open_slots(raid, message, guild)
         await self._update_raid_message(message, raid.id)
 
 

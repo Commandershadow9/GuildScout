@@ -88,6 +88,7 @@ class RaidStore:
                     role TEXT NOT NULL,
                     joined_at INTEGER NOT NULL,
                     preferred_role TEXT,
+                    confirmed INTEGER NOT NULL DEFAULT 0,
                     PRIMARY KEY (raid_id, user_id)
                 )
                 """
@@ -105,6 +106,10 @@ class RaidStore:
             columns = [row[1] for row in await cursor.fetchall()]
             if "preferred_role" not in columns:
                 await db.execute("ALTER TABLE raid_signups ADD COLUMN preferred_role TEXT")
+            if "confirmed" not in columns:
+                await db.execute(
+                    "ALTER TABLE raid_signups ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 0"
+                )
 
             await db.execute(
                 """
@@ -113,6 +118,27 @@ class RaidStore:
                     reminder_hours INTEGER NOT NULL,
                     sent_at INTEGER NOT NULL,
                     PRIMARY KEY (raid_id, reminder_hours)
+                )
+                """
+            )
+
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS raid_confirmations (
+                    raid_id INTEGER PRIMARY KEY,
+                    message_id INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL
+                )
+                """
+            )
+
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS raid_alerts (
+                    raid_id INTEGER NOT NULL,
+                    alert_type TEXT NOT NULL,
+                    sent_at INTEGER NOT NULL,
+                    PRIMARY KEY (raid_id, alert_type)
                 )
                 """
             )
@@ -277,7 +303,8 @@ class RaidStore:
                 ON CONFLICT(raid_id, user_id)
                 DO UPDATE SET role = excluded.role,
                               joined_at = excluded.joined_at,
-                              preferred_role = excluded.preferred_role
+                              preferred_role = excluded.preferred_role,
+                              confirmed = 0
                 """,
                 (raid_id, user_id, role, joined_at, None),
             )
@@ -301,7 +328,8 @@ class RaidStore:
                 ON CONFLICT(raid_id, user_id)
                 DO UPDATE SET role = excluded.role,
                               joined_at = excluded.joined_at,
-                              preferred_role = excluded.preferred_role
+                              preferred_role = excluded.preferred_role,
+                              confirmed = 0
                 """,
                 (raid_id, user_id, role, joined_at, preferred_role),
             )
@@ -399,6 +427,29 @@ class RaidStore:
             rows = await cursor.fetchall()
             return [self._row_to_record(row) for row in rows]
 
+    async def list_raids_past_grace(
+        self,
+        now_ts: int,
+        grace_seconds: int,
+    ) -> List[RaidRecord]:
+        """Return open/locked raids that passed start_time + grace."""
+        await self.initialize()
+        cutoff = now_ts - grace_seconds
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                """
+                SELECT id, guild_id, channel_id, message_id, creator_id, title, description,
+                       start_time, tanks_needed, healers_needed, dps_needed, bench_needed,
+                       status, created_at, closed_at
+                FROM raids
+                WHERE status IN ('open', 'locked') AND start_time <= ?
+                """,
+                (cutoff,),
+            )
+            rows = await cursor.fetchall()
+            return [self._row_to_record(row) for row in rows]
+
     async def list_upcoming_raids(self, now_ts: int, limit: int = 10) -> List[RaidRecord]:
         """Return upcoming raids for listing."""
         await self.initialize()
@@ -425,7 +476,7 @@ class RaidStore:
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
                 """
-                SELECT user_id, role, preferred_role, joined_at
+                SELECT user_id, role, preferred_role, joined_at, confirmed
                 FROM raid_signups
                 WHERE raid_id = ?
                 ORDER BY joined_at ASC
@@ -439,9 +490,121 @@ class RaidStore:
                     "role": row[1],
                     "preferred_role": row[2],
                     "joined_at": int(row[3]),
+                    "confirmed": bool(row[4]),
                 }
                 for row in rows
             ]
+
+    async def reset_confirmations(self, raid_id: int) -> None:
+        """Reset confirmations for a raid."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE raid_signups SET confirmed = 0 WHERE raid_id = ?",
+                (raid_id,),
+            )
+            await db.commit()
+
+    async def set_signup_confirmed(
+        self,
+        raid_id: int,
+        user_id: int,
+        confirmed: bool,
+    ) -> None:
+        """Set confirmation state for a signup."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE raid_signups SET confirmed = ? WHERE raid_id = ? AND user_id = ?",
+                (1 if confirmed else 0, raid_id, user_id),
+            )
+            await db.commit()
+
+    async def get_confirmed_user_ids(self, raid_id: int) -> List[int]:
+        """Return confirmed signup user IDs."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """
+                SELECT user_id
+                FROM raid_signups
+                WHERE raid_id = ? AND confirmed = 1
+                """,
+                (raid_id,),
+            )
+            rows = await cursor.fetchall()
+            return [int(row[0]) for row in rows]
+
+    async def set_confirmation_message(self, raid_id: int, message_id: int) -> None:
+        """Store confirmation message for a raid."""
+        await self.initialize()
+        created_at = int(datetime.now(timezone.utc).timestamp())
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """
+                INSERT OR REPLACE INTO raid_confirmations (raid_id, message_id, created_at)
+                VALUES (?, ?, ?)
+                """,
+                (raid_id, message_id, created_at),
+            )
+            await db.commit()
+
+    async def get_confirmation_message_id(self, raid_id: int) -> Optional[int]:
+        """Return confirmation message ID for a raid."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT message_id FROM raid_confirmations WHERE raid_id = ?",
+                (raid_id,),
+            )
+            row = await cursor.fetchone()
+            return int(row[0]) if row else None
+
+    async def clear_confirmation_message(self, raid_id: int) -> None:
+        """Remove stored confirmation message for a raid."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "DELETE FROM raid_confirmations WHERE raid_id = ?",
+                (raid_id,),
+            )
+            await db.commit()
+
+    async def get_confirmation_raid_id(self, message_id: int) -> Optional[int]:
+        """Return raid ID for a confirmation message."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT raid_id FROM raid_confirmations WHERE message_id = ?",
+                (message_id,),
+            )
+            row = await cursor.fetchone()
+            return int(row[0]) if row else None
+
+    async def mark_alert_sent(self, raid_id: int, alert_type: str) -> None:
+        """Mark a raid alert as sent."""
+        await self.initialize()
+        sent_at = int(datetime.now(timezone.utc).timestamp())
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """
+                INSERT OR REPLACE INTO raid_alerts (raid_id, alert_type, sent_at)
+                VALUES (?, ?, ?)
+                """,
+                (raid_id, alert_type, sent_at),
+            )
+            await db.commit()
+
+    async def get_alert_sent_at(self, raid_id: int, alert_type: str) -> Optional[int]:
+        """Return timestamp of last alert."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT sent_at FROM raid_alerts WHERE raid_id = ? AND alert_type = ?",
+                (raid_id, alert_type),
+            )
+            row = await cursor.fetchone()
+            return int(row[0]) if row else None
 
     async def get_bench_queue(
         self,

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone, timedelta
-import csv
-import io
 from typing import Dict, Optional
 from zoneinfo import ZoneInfo
 
@@ -23,6 +21,7 @@ from src.utils.raid_utils import (
     ROLE_TANK,
     ROLE_EMOJIS,
     build_raid_embed,
+    build_raid_log_embed,
     parse_raid_datetime,
 )
 
@@ -46,6 +45,34 @@ MAX_SLOT_OPTION = 20
 DATE_RANGE_DAYS = 25
 DATE_PAGE_STEP_DAYS = 7
 MAX_DATE_OFFSET_DAYS = 365
+
+
+def get_default_date_time(timezone_name: str) -> tuple[str, str, int]:
+    """Return default date/time values rounded to next half hour."""
+    try:
+        tz = ZoneInfo(timezone_name)
+    except Exception:
+        tz = timezone.utc
+
+    now_local = datetime.now(tz)
+    if now_local.minute < 30:
+        hour = now_local.hour
+        minute_bucket = 30
+        date_base = now_local
+    else:
+        hour = now_local.hour + 1
+        minute_bucket = 0
+        date_base = now_local
+
+    if hour >= 24:
+        hour = 0
+        date_base = date_base + timedelta(days=1)
+
+    date_value = date_base.strftime("%d.%m.%Y")
+    time_value = f"{hour:02d}:{minute_bucket:02d}"
+    dt = parse_raid_datetime(date_value, time_value, timezone_name)
+    start_ts = int(dt.timestamp())
+    return date_value, time_value, start_ts
 
 
 def build_raid_info_embed() -> discord.Embed:
@@ -74,7 +101,8 @@ def build_raid_info_embed() -> discord.Embed:
         value=(
             "Reagiere mit: 🛡️ Tank, 💉 Healer, ⚔️ DPS, 🪑 Reserve\n"
             "❌ = Abmelden. Pro Person nur eine Rolle.\n"
-            "Wenn Rolle voll ist, wirst du auf Reserve gesetzt (falls frei)."
+            "Wenn Rolle voll ist, wirst du auf Reserve gesetzt (falls frei).\n"
+            "Kurz vor Start gibt es einen Check-in per ✅."
         ),
         inline=False,
     )
@@ -82,8 +110,9 @@ def build_raid_info_embed() -> discord.Embed:
         name="Verwalten (Ersteller/Admin/Lead)",
         value=(
             "Buttons im Raid-Post: ✏️ Bearbeiten, 🔒 Sperren/Oeffnen,\n"
-            "✅ Abschliessen, 🛑 Absagen, 📄 Export.\n"
-            "Sperren = nur Reserve. Auto-Close zur Startzeit."
+            "✅ Abschliessen, 🛑 Absagen, ⏭️ Folge-Raid.\n"
+            "Sperren = nur Reserve. Auto-Close kann deaktiviert werden\n"
+            "oder als Sicherung nach X Stunden greifen."
         ),
         inline=False,
     )
@@ -92,7 +121,8 @@ def build_raid_info_embed() -> discord.Embed:
         value=(
             "Beim Anmelden bekommst du die Teilnehmerrolle (falls gesetzt).\n"
             "Sie wird beim Verlassen oder nach Raid-Ende entfernt.\n"
-            "Erinnerungen kommen z.B. 24h/1h vor Start."
+            "Erinnerungen kommen z.B. 24h/1h vor Start + DM 15 Minuten vorher.\n"
+            "Wenn Slots frei werden, kann der Bot @Raid Teilnehmer pingen."
         ),
         inline=False,
     )
@@ -715,7 +745,7 @@ class RaidSlotsView(discord.ui.View):
             )
             return
 
-        embed = build_raid_embed(raid, {}, self.config.raid_timezone)
+        embed = build_raid_embed(raid, {}, self.config.raid_timezone, None)
         manage_view = RaidManageView(self.config, self.raid_store)
         raid_message = await post_channel.send(embed=embed, view=manage_view)
         await self.raid_store.set_message_id(raid_id, raid_message.id)
@@ -788,37 +818,15 @@ class RaidCreateModal(discord.ui.Modal):
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         try:
-            tz = ZoneInfo(self.cog.config.raid_timezone)
-        except Exception:
-            tz = timezone.utc
-
-        now_local = datetime.now(tz)
-        if now_local.minute < 30:
-            hour = now_local.hour
-            minute_bucket = 30
-            date_base = now_local
-        else:
-            hour = now_local.hour + 1
-            minute_bucket = 0
-            date_base = now_local
-
-        if hour >= 24:
-            hour = 0
-            date_base = date_base + timedelta(days=1)
-
-        date_value = date_base.strftime("%d.%m.%Y")
-        time_value = f"{hour:02d}:{minute_bucket:02d}"
-
-        try:
-            dt = parse_raid_datetime(date_value, time_value, self.cog.config.raid_timezone)
+            date_value, time_value, start_ts = get_default_date_time(
+                self.cog.config.raid_timezone
+            )
         except ValueError as exc:
             await interaction.response.send_message(
                 f"❌ {exc}",
                 ephemeral=True,
             )
             return
-
-        start_ts = int(dt.timestamp())
 
         view = RaidScheduleView(
             bot=self.cog.bot,
@@ -976,7 +984,10 @@ class RaidPostEditModal(discord.ui.Modal):
             return
 
         signups = await self.view_ref.raid_store.get_signups_by_role(self.raid.id)
-        embed = build_raid_embed(updated, signups, self.view_ref.config.raid_timezone)
+        confirmed = await self.view_ref.raid_store.get_confirmed_user_ids(self.raid.id)
+        embed = build_raid_embed(
+            updated, signups, self.view_ref.config.raid_timezone, confirmed
+        )
         await interaction.message.edit(embed=embed, view=self.view_ref)
 
         await interaction.response.send_message(
@@ -1117,6 +1128,97 @@ class RaidManageView(discord.ui.View):
                 except Exception:
                     logger.warning("Failed to remove raid participant role", exc_info=True)
 
+    async def _cleanup_reminder_messages(
+        self,
+        channel: discord.TextChannel,
+        raid_title: str,
+        limit: int = 50,
+    ) -> None:
+        title_key = (raid_title or "").lower()
+        async for message in channel.history(limit=limit):
+            if not message.author or not message.author.bot:
+                continue
+            content = (message.content or "").lower()
+            if "erinnerung" not in content:
+                continue
+            if title_key and title_key not in content:
+                continue
+            try:
+                await message.delete()
+            except Exception:
+                pass
+
+    async def _cleanup_slot_pings(
+        self,
+        channel: discord.TextChannel,
+        raid_title: str,
+        limit: int = 50,
+    ) -> None:
+        title_key = (raid_title or "").lower()
+        async for message in channel.history(limit=limit):
+            if not message.author or not message.author.bot:
+                continue
+            content = (message.content or "").lower()
+            if "slots frei" not in content:
+                continue
+            if title_key and title_key not in content:
+                continue
+            try:
+                await message.delete()
+            except Exception:
+                pass
+
+    async def _cleanup_confirmation_message(
+        self,
+        channel: discord.TextChannel,
+        raid_id: int,
+    ) -> None:
+        message_id = await self.raid_store.get_confirmation_message_id(raid_id)
+        if not message_id:
+            return
+        try:
+            message = await channel.fetch_message(message_id)
+        except Exception:
+            await self.raid_store.clear_confirmation_message(raid_id)
+            return
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        await self.raid_store.clear_confirmation_message(raid_id)
+
+    async def _send_raid_log(
+        self,
+        interaction: discord.Interaction,
+        raid,
+        status_label: str,
+    ) -> None:
+        channel_id = self.config.raid_log_channel_id
+        if not channel_id:
+            return
+        guild = interaction.guild
+        if not guild:
+            return
+        channel = guild.get_channel(channel_id)
+        if not isinstance(channel, discord.TextChannel):
+            try:
+                channel = await guild.fetch_channel(channel_id)
+            except Exception:
+                return
+        signups = await self.raid_store.get_signups_by_role(raid.id)
+        confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
+        embed = build_raid_log_embed(
+            raid,
+            signups,
+            self.config.raid_timezone,
+            confirmed,
+            status_label=status_label,
+        )
+        try:
+            await channel.send(embed=embed)
+        except Exception:
+            logger.warning("Failed to send raid log", exc_info=True)
+
     @discord.ui.button(
         label="✏️ Bearbeiten",
         style=discord.ButtonStyle.secondary,
@@ -1174,13 +1276,73 @@ class RaidManageView(discord.ui.View):
         updated = await self.raid_store.get_raid(raid.id)
         if updated and interaction.message:
             signups = await self.raid_store.get_signups_by_role(raid.id)
-            embed = build_raid_embed(updated, signups, self.config.raid_timezone)
+            confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
+            embed = build_raid_embed(updated, signups, self.config.raid_timezone, confirmed)
             await interaction.message.edit(embed=embed, view=self)
 
         await interaction.response.send_message(
             "✅ Raid wurde gesperrt." if new_status == "locked" else "✅ Raid ist wieder offen.",
             ephemeral=True,
         )
+
+    @discord.ui.button(
+        label="⏭️ Folge-Raid",
+        style=discord.ButtonStyle.secondary,
+        custom_id="guildscout_raid_followup_v1",
+        row=1,
+    )
+    async def followup(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ) -> None:
+        raid = await self._get_raid_from_interaction(interaction)
+        if not raid:
+            return
+
+        if not self._can_manage(interaction, raid):
+            await interaction.response.send_message(
+                "❌ Keine Berechtigung fuer Folge-Raid.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            date_value, time_value, start_ts = get_default_date_time(
+                self.config.raid_timezone
+            )
+        except ValueError as exc:
+            await interaction.response.send_message(
+                f"❌ {exc}",
+                ephemeral=True,
+            )
+            return
+
+        counts = {
+            ROLE_TANK: raid.tanks_needed,
+            ROLE_HEALER: raid.healers_needed,
+            ROLE_DPS: raid.dps_needed,
+            ROLE_BENCH: raid.bench_needed,
+        }
+
+        view = RaidScheduleView(
+            bot=interaction.client,
+            config=self.config,
+            raid_store=self.raid_store,
+            requester_id=interaction.user.id,
+            title=raid.title,
+            description=raid.description,
+            start_ts=start_ts,
+            timezone_name=self.config.raid_timezone,
+            date_value=date_value,
+            time_value=time_value,
+            counts=counts,
+        )
+
+        await interaction.response.send_message(
+            embed=view.build_embed(),
+            view=view,
+            ephemeral=True,
+        )
+        view.message = await interaction.original_response()
 
     @discord.ui.button(
         label="✅ Abschliessen",
@@ -1207,6 +1369,8 @@ class RaidManageView(discord.ui.View):
             return
 
         await self.raid_store.close_raid(raid.id)
+        await self._send_raid_log(interaction, raid, "geschlossen")
+        channel = interaction.channel
         if interaction.message:
             try:
                 await interaction.message.delete()
@@ -1214,61 +1378,23 @@ class RaidManageView(discord.ui.View):
                 updated = await self.raid_store.get_raid(raid.id)
                 if updated:
                     signups = await self.raid_store.get_signups_by_role(raid.id)
-                    embed = build_raid_embed(updated, signups, self.config.raid_timezone)
+                    confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
+                    embed = build_raid_embed(
+                        updated, signups, self.config.raid_timezone, confirmed
+                    )
                     await interaction.message.edit(embed=embed, view=self)
                     try:
                         await interaction.message.clear_reactions()
                     except Exception:
                         pass
+        if isinstance(channel, discord.TextChannel):
+            await self._cleanup_reminder_messages(channel, raid.title)
+            await self._cleanup_slot_pings(channel, raid.title)
+            await self._cleanup_confirmation_message(channel, raid.id)
         await self._remove_participant_roles(interaction, raid.id)
 
         await interaction.response.send_message(
             "✅ Raid geschlossen.",
-            ephemeral=True,
-        )
-
-    @discord.ui.button(
-        label="📄 Export",
-        style=discord.ButtonStyle.secondary,
-        custom_id="guildscout_raid_export_v1",
-        row=1,
-    )
-    async def export(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
-        raid = await self._get_raid_from_interaction(interaction)
-        if not raid:
-            return
-
-        if not self._can_manage(interaction, raid):
-            await interaction.response.send_message(
-                "❌ Keine Berechtigung fuer Export.",
-                ephemeral=True,
-            )
-            return
-
-        signups = await self.raid_store.list_signups(raid.id)
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow(["user_id", "display_name", "role", "preferred_role", "joined_at"])
-
-        guild = interaction.guild
-        for entry in signups:
-            user_id = int(entry["user_id"])
-            role = entry["role"]
-            preferred_role = entry.get("preferred_role") or ""
-            joined_at = entry.get("joined_at") or 0
-            display_name = str(user_id)
-            if guild:
-                member = guild.get_member(user_id)
-                if member:
-                    display_name = member.display_name
-            joined_iso = datetime.fromtimestamp(joined_at, timezone.utc).isoformat()
-            writer.writerow([user_id, display_name, role, preferred_role, joined_iso])
-
-        filename = f"raid_{raid.id}_signups.csv"
-        data = io.BytesIO(output.getvalue().encode("utf-8"))
-        await interaction.response.send_message(
-            content="✅ Export erstellt.",
-            file=discord.File(data, filename=filename),
             ephemeral=True,
         )
 
@@ -1303,6 +1429,8 @@ class RaidManageView(discord.ui.View):
             return
 
         await self.raid_store.update_status(raid.id, "cancelled")
+        await self._send_raid_log(interaction, raid, "abgesagt")
+        channel = interaction.channel
         if interaction.message:
             try:
                 await interaction.message.delete()
@@ -1310,12 +1438,19 @@ class RaidManageView(discord.ui.View):
                 updated = await self.raid_store.get_raid(raid.id)
                 if updated:
                     signups = await self.raid_store.get_signups_by_role(raid.id)
-                    embed = build_raid_embed(updated, signups, self.config.raid_timezone)
+                    confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
+                    embed = build_raid_embed(
+                        updated, signups, self.config.raid_timezone, confirmed
+                    )
                     await interaction.message.edit(embed=embed, view=self)
                     try:
                         await interaction.message.clear_reactions()
                     except Exception:
                         pass
+        if isinstance(channel, discord.TextChannel):
+            await self._cleanup_reminder_messages(channel, raid.title)
+            await self._cleanup_slot_pings(channel, raid.title)
+            await self._cleanup_confirmation_message(channel, raid.id)
         await self._remove_participant_roles(interaction, raid.id)
 
         await interaction.response.send_message(
@@ -1637,6 +1772,7 @@ class RaidCommand(commands.Cog):
         post_channel="Channel für Raid-Ankündigungen",
         manage_channel="Optionaler Channel für Raid-Erstellung",
         info_channel="Optionaler Channel für Raid-Info",
+        log_channel="Optionaler Channel für Raid-Logs",
     )
     async def raid_set_channel(
         self,
@@ -1644,6 +1780,7 @@ class RaidCommand(commands.Cog):
         post_channel: Optional[discord.TextChannel] = None,
         manage_channel: Optional[discord.TextChannel] = None,
         info_channel: Optional[discord.TextChannel] = None,
+        log_channel: Optional[discord.TextChannel] = None,
     ) -> None:
         if not interaction.guild:
             await interaction.response.send_message(
@@ -1659,7 +1796,7 @@ class RaidCommand(commands.Cog):
             )
             return
 
-        if not post_channel and not manage_channel and not info_channel:
+        if not post_channel and not manage_channel and not info_channel and not log_channel:
             await interaction.response.send_message(
                 "❌ Bitte mindestens einen Channel angeben.",
                 ephemeral=True,
@@ -1673,6 +1810,8 @@ class RaidCommand(commands.Cog):
         if info_channel:
             self.config.set_raid_info_channel_id(info_channel.id)
             await self._upsert_raid_info_message(info_channel)
+        if log_channel:
+            self.config.set_raid_log_channel_id(log_channel.id)
 
         embed = discord.Embed(
             title="✅ Raid-Channels aktualisiert",
@@ -1684,6 +1823,8 @@ class RaidCommand(commands.Cog):
             embed.add_field(name="Raid-Planung", value=manage_channel.mention, inline=False)
         if info_channel:
             embed.add_field(name="Raid-Info", value=info_channel.mention, inline=False)
+        if log_channel:
+            embed.add_field(name="Raid-Logs", value=log_channel.mention, inline=False)
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 

@@ -466,9 +466,50 @@ class Config:
         return sorted({minute for minute in parsed if minute > 0})
 
     @property
+    def raid_confirmation_minutes(self) -> int:
+        """Minutes before start to request attendance confirmations."""
+        value = self.get("raid_management.confirmation_minutes", 30)
+        try:
+            minutes = int(value)
+        except (TypeError, ValueError):
+            minutes = 30
+        return max(0, minutes)
+
+    @property
+    def raid_open_slot_ping_minutes(self) -> int:
+        """Cooldown for open slot pings."""
+        value = self.get("raid_management.open_slot_ping_minutes", 30)
+        try:
+            minutes = int(value)
+        except (TypeError, ValueError):
+            minutes = 30
+        return max(0, minutes)
+
+    @property
+    def raid_log_channel_id(self) -> Optional[int]:
+        """Channel ID for raid logs."""
+        channel_id = self.get("raid_management.log_channel_id")
+        return int(channel_id) if channel_id else None
+
+    def set_raid_log_channel_id(self, channel_id: Optional[int]) -> None:
+        """Persist raid log channel ID."""
+        self._set_nested_value("raid_management.log_channel_id", channel_id)
+        self.save()
+
+    @property
     def raid_auto_close_at_start(self) -> bool:
         """Whether raids auto-close at start time."""
         return bool(self.get("raid_management.auto_close_at_start", True))
+
+    @property
+    def raid_auto_close_after_hours(self) -> int:
+        """Safety auto-close after start time (hours)."""
+        value = self.get("raid_management.auto_close_after_hours", 12)
+        try:
+            hours = int(value)
+        except (TypeError, ValueError):
+            hours = 12
+        return max(0, hours)
 
     @property
     def dashboard_channel_id(self) -> Optional[int]:
