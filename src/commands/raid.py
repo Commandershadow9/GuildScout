@@ -1207,16 +1207,20 @@ class RaidManageView(discord.ui.View):
             return
 
         await self.raid_store.close_raid(raid.id)
-        updated = await self.raid_store.get_raid(raid.id)
-        if updated:
-            signups = await self.raid_store.get_signups_by_role(raid.id)
-            embed = build_raid_embed(updated, signups, self.config.raid_timezone)
-            await interaction.message.edit(embed=embed, view=self)
+        if interaction.message:
             try:
-                await interaction.message.clear_reactions()
+                await interaction.message.delete()
             except Exception:
-                pass
-            await self._remove_participant_roles(interaction, raid.id)
+                updated = await self.raid_store.get_raid(raid.id)
+                if updated:
+                    signups = await self.raid_store.get_signups_by_role(raid.id)
+                    embed = build_raid_embed(updated, signups, self.config.raid_timezone)
+                    await interaction.message.edit(embed=embed, view=self)
+                    try:
+                        await interaction.message.clear_reactions()
+                    except Exception:
+                        pass
+        await self._remove_participant_roles(interaction, raid.id)
 
         await interaction.response.send_message(
             "✅ Raid geschlossen.",
@@ -1299,16 +1303,20 @@ class RaidManageView(discord.ui.View):
             return
 
         await self.raid_store.update_status(raid.id, "cancelled")
-        updated = await self.raid_store.get_raid(raid.id)
-        if updated and interaction.message:
-            signups = await self.raid_store.get_signups_by_role(raid.id)
-            embed = build_raid_embed(updated, signups, self.config.raid_timezone)
-            await interaction.message.edit(embed=embed, view=self)
+        if interaction.message:
             try:
-                await interaction.message.clear_reactions()
+                await interaction.message.delete()
             except Exception:
-                pass
-            await self._remove_participant_roles(interaction, raid.id)
+                updated = await self.raid_store.get_raid(raid.id)
+                if updated:
+                    signups = await self.raid_store.get_signups_by_role(raid.id)
+                    embed = build_raid_embed(updated, signups, self.config.raid_timezone)
+                    await interaction.message.edit(embed=embed, view=self)
+                    try:
+                        await interaction.message.clear_reactions()
+                    except Exception:
+                        pass
+        await self._remove_participant_roles(interaction, raid.id)
 
         await interaction.response.send_message(
             "🛑 Raid wurde abgesagt.",

@@ -99,8 +99,19 @@ Status im Embed:
 - **Geschlossen**: Raid ist gestartet/abgeschlossen
 - **Abgesagt**: Raid wurde abgesagt
 
+Signups-Status im Titel:
+- **SIGNUPS OPEN** (gruen): Anmeldung moeglich
+- **ALMOST FULL** (gelb): wenige Slots frei
+- **SIGNUPS CLOSED** (rot): geschlossen oder voll
+
 Auto-Close:
-Der Raid wird automatisch zur Startzeit geschlossen.
+Standard: Der Raid wird automatisch zur Startzeit geschlossen.
+Optional: Auto-Close kann deaktiviert werden (siehe Config).
+
+## 🧹 Aufraeumen
+
+Wenn ein Raid **geschlossen oder abgesagt** wird, loescht der Bot den Post
+automatisch aus dem Channel, damit nur offene Raids sichtbar sind.
 
 ---
 
@@ -123,10 +134,15 @@ Erinnerungen vor Start (Default: 24h und 1h):
 - Wird im Raid-Channel gepostet
 - Optional mit Teilnehmerrolle erwaehnen
 
+DM-Erinnerung (Default: 15 Minuten vor Start):
+- Der Bot schickt eine DM an alle angemeldeten Teilnehmer.
+
 Config:
 ```yaml
 raid_management:
   reminder_hours: [24, 1]
+  dm_reminder_minutes: [15]
+  auto_close_at_start: true
 ```
 
 ---

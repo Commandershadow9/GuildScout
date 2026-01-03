@@ -108,6 +108,12 @@ raid_management:
   # Reminder offsets before start time (hours)
   reminder_hours: [24, 1]
 
+  # DM reminder offsets before start time (minutes)
+  dm_reminder_minutes: [15]
+
+  # Auto-close raids at start time
+  auto_close_at_start: true
+
 logging:
   # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
   level: "INFO"

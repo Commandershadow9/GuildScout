@@ -450,6 +450,27 @@ class Config:
         return sorted({hour for hour in parsed if hour > 0})
 
     @property
+    def raid_dm_reminder_minutes(self) -> list:
+        """List of DM reminder offsets (minutes before start)."""
+        minutes = self.get("raid_management.dm_reminder_minutes", [15])
+        if isinstance(minutes, (int, float)):
+            minutes = [int(minutes)]
+        if not isinstance(minutes, list):
+            return [15]
+        parsed = []
+        for value in minutes:
+            try:
+                parsed.append(int(value))
+            except (TypeError, ValueError):
+                continue
+        return sorted({minute for minute in parsed if minute > 0})
+
+    @property
+    def raid_auto_close_at_start(self) -> bool:
+        """Whether raids auto-close at start time."""
+        return bool(self.get("raid_management.auto_close_at_start", True))
+
+    @property
     def dashboard_channel_id(self) -> Optional[int]:
         """Get dashboard channel ID (formerly ranking channel)."""
         # Try new key first, fallback to old key for backward compatibility

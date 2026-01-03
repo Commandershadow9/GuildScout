@@ -89,14 +89,7 @@ def build_raid_embed(
         "closed": "Geschlossen",
         "cancelled": "Abgesagt",
     }
-    status_colors = {
-        "open": discord.Color.green(),
-        "locked": discord.Color.gold(),
-        "closed": discord.Color.dark_gray(),
-        "cancelled": discord.Color.red(),
-    }
     status_label = status_labels.get(raid.status, "Unbekannt")
-    color = status_colors.get(raid.status, discord.Color.dark_gray())
 
     try:
         tz = ZoneInfo(timezone_name)
@@ -108,10 +101,35 @@ def build_raid_embed(
     en_line = local_dt.strftime("%a, %b %d %Y %I:%M %p")
     tz_label = timezone_name
 
+    main_needed = raid.tanks_needed + raid.healers_needed + raid.dps_needed
+    bench_needed = raid.bench_needed
+    main_filled = (
+        len(signups_by_role.get(ROLE_TANK, []))
+        + len(signups_by_role.get(ROLE_HEALER, []))
+        + len(signups_by_role.get(ROLE_DPS, []))
+    )
+    bench_filled = len(signups_by_role.get(ROLE_BENCH, []))
+    total_needed = main_needed + bench_needed
+    total_filled = main_filled + bench_filled
+    total_open = max(total_needed - total_filled, 0) if total_needed > 0 else 0
+
+    signup_label = "SIGNUPS OPEN"
+    if raid.status in ("locked", "closed", "cancelled") or total_open == 0:
+        signup_label = "SIGNUPS CLOSED"
+    elif total_open <= 2 or (total_needed > 0 and total_open <= max(1, total_needed // 5)):
+        signup_label = "ALMOST FULL"
+
+    if signup_label == "SIGNUPS OPEN":
+        status_color = discord.Color.green()
+    elif signup_label == "ALMOST FULL":
+        status_color = discord.Color.gold()
+    else:
+        status_color = discord.Color.red()
+
     embed = discord.Embed(
-        title=f"🗡️ Raid: {raid.title}",
+        title=f"🗡️ Raid: {raid.title} · {signup_label}",
         description=raid.description or None,
-        color=color,
+        color=status_color,
     )
 
     embed.add_field(
@@ -128,17 +146,6 @@ def build_raid_embed(
     embed.add_field(name="Erstellt von", value=f"<@{raid.creator_id}>", inline=True)
     embed.add_field(name="Status", value=status_label, inline=True)
 
-    main_needed = raid.tanks_needed + raid.healers_needed + raid.dps_needed
-    bench_needed = raid.bench_needed
-    main_filled = (
-        len(signups_by_role.get(ROLE_TANK, []))
-        + len(signups_by_role.get(ROLE_HEALER, []))
-        + len(signups_by_role.get(ROLE_DPS, []))
-    )
-    bench_filled = len(signups_by_role.get(ROLE_BENCH, []))
-    total_needed = main_needed + bench_needed
-    total_filled = main_filled + bench_filled
-    total_open = max(total_needed - total_filled, 0) if total_needed > 0 else 0
     if bench_needed > 0:
         slots_value = (
             f"Gesamt: {total_filled}/{total_needed} · Frei: {total_open}\n"
