@@ -258,7 +258,7 @@ class RaidEvents(commands.Cog):
                 await self._remove_reaction(message, ROLE_EMOJIS[ROLE_BENCH], member)
                 await self._send_dm(
                     member,
-                    f"✅ Du wurdest von Reserve auf {role.upper()} verschoben.",
+                    f"✅ You were moved from bench to {role.upper()}.",
                 )
                 updated = True
         return updated
@@ -297,7 +297,7 @@ class RaidEvents(commands.Cog):
         if open_dps:
             parts.append(f"DPS: {open_dps}")
         slot_text = " | ".join(parts)
-        content = f"{role.mention} Slots frei fuer **{raid.title}**: {slot_text}"
+        content = f"{role.mention} Open slots for **{raid.title}**: {slot_text}"
         try:
             await message.channel.send(content)
             await self.raid_store.mark_alert_sent(raid.id, "open_slots")
@@ -316,9 +316,9 @@ class RaidEvents(commands.Cog):
         await self._send_dm(
             member,
             (
-                f"📝 Optionaler Grund fuer Abmeldung von **{raid.title}**?\n"
-                "Antworte innerhalb von 10 Minuten auf diese DM.\n"
-                "Oder schreibe 'skip', um zu ueberspringen."
+                f"📝 Optional reason for leaving **{raid.title}**?\n"
+                "Reply to this DM within 10 minutes.\n"
+                "Or type 'skip' to skip."
             ),
         )
 
@@ -354,7 +354,7 @@ class RaidEvents(commands.Cog):
 
         if raid.status in ("closed", "cancelled"):
             await self._remove_reaction(message, str(payload.emoji), member)
-            await self._send_dm(member, "❌ Dieser Raid ist bereits geschlossen.")
+            await self._send_dm(member, "❌ This raid is already closed.")
             return
 
         if role == ROLE_CANCEL:
@@ -382,7 +382,7 @@ class RaidEvents(commands.Cog):
                 await self._remove_reaction(message, str(payload.emoji), member)
                 await self._send_dm(
                     member,
-                    "❌ Anmeldung gesperrt und Reserve ist voll.",
+                    "❌ Signups are locked and bench is full.",
                 )
                 return
             effective_role = ROLE_BENCH
@@ -390,14 +390,14 @@ class RaidEvents(commands.Cog):
             await self._remove_reaction(message, str(payload.emoji), member)
             await self._send_dm(
                 member,
-                "ℹ️ Anmeldung gesperrt: du wurdest auf Reserve gesetzt.",
+                "ℹ️ Signups locked: you were moved to bench.",
             )
         elif role == ROLE_BENCH:
             if not bench_available:
                 await self._remove_reaction(message, str(payload.emoji), member)
                 await self._send_dm(
                     member,
-                    "❌ Reserve ist bereits voll.",
+                    "❌ Bench is already full.",
                 )
                 return
             effective_role = ROLE_BENCH
@@ -409,7 +409,7 @@ class RaidEvents(commands.Cog):
                     await self._remove_reaction(message, str(payload.emoji), member)
                     await self._send_dm(
                         member,
-                        "❌ Diese Rolle ist voll und Reserve ist ebenfalls voll.",
+                        "❌ That role is full and the bench is also full.",
                     )
                     return
                 effective_role = ROLE_BENCH
@@ -417,7 +417,7 @@ class RaidEvents(commands.Cog):
                 await self._remove_reaction(message, str(payload.emoji), member)
                 await self._send_dm(
                     member,
-                    "ℹ️ Rolle voll: du wurdest auf Reserve gesetzt.",
+                    "ℹ️ Role full: you were moved to bench.",
                 )
 
         if current_role == effective_role and effective_role != ROLE_BENCH:
@@ -510,7 +510,7 @@ class RaidEvents(commands.Cog):
                 message.author.id, request["raid_id"]
             )
             try:
-                await message.channel.send("✅ Alles klar, danke.")
+                await message.channel.send("✅ Got it, thanks.")
             except Exception:
                 pass
             return
@@ -523,7 +523,7 @@ class RaidEvents(commands.Cog):
             message.author.id, request["raid_id"]
         )
         try:
-            await message.channel.send("✅ Danke fuer dein Feedback.")
+            await message.channel.send("✅ Thanks for your feedback.")
         except Exception:
             pass
 

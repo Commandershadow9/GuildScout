@@ -1,172 +1,169 @@
 # 🗡️ Raid Guide (Where Winds Meet)
 
-Dieses Dokument erklaert das komplette Raid-System in GuildScout:
-Erstellung, Teilnahme, Verwaltung, Konfiguration und Troubleshooting.
+This document explains the full raid system in GuildScout:
+creation, participation, management, configuration, and troubleshooting.
 
 ---
 
-## ✅ Voraussetzungen
+## ✅ Requirements
 
-- Raid-Funktion ist aktiviert (`raid_management.enabled: true`).
-- Ein Info-Post existiert (per `/raid-info-setup` oder `/raid-setup`).
-- Ersteller haben eine passende Rolle (Admin oder `creator_roles`).
+- Raid feature is enabled (`raid_management.enabled: true`).
+- An info post exists (via `/raid-info-setup` or `/raid-setup`).
+- Creators have a proper role (Admin or `creator_roles`).
 
 ---
 
-## 📌 Rollen und Reaktionen
+## 📌 Roles and Reactions
 
-Rollen im Raid:
+Raid roles:
 - **Tank** (🛡️)
 - **Healer** (💉)
 - **DPS** (⚔️)
-- **Reserve** (🪑)
+- **Bench** (🪑)
 
-Reaktionen:
-- **🛡️ / 💉 / ⚔️ / 🪑** = Anmeldung
-- **❌** = Abmelden
+Reactions:
+- **🛡️ / 💉 / ⚔️ / 🪑** = sign up
+- **❌** = leave
 
-Regeln:
-- **Nur eine Rolle pro Person**.
-- Wenn eine Rolle voll ist, wirst du automatisch auf **Reserve** gesetzt (sofern frei).
-- In **Gesperrt**-Status ist nur Reserve moeglich.
+Rules:
+- **One role per person**.
+- If a role is full, you are moved to **Bench** (if available).
+- If **Locked**, only bench is possible.
 
 ---
 
-## 🧭 Raid erstellen (Ersteller/Admin/Lead)
+## 🧭 Create a Raid (Creator/Admin/Lead)
 
-### Methode A: Button
-1) Im `#raid-info` auf **"Raid erstellen"** klicken.  
-2) Titel + Beschreibung eingeben.  
-3) Datum und Uhrzeit ueber Dropdowns waehlen (Wochen blättern).  
-4) Slots waehlen oder Vorlage nutzen.  
-5) **"Raid posten"** klicken.  
+### Method A: Button
+1) In `#raid-info`, click **"Create raid"**.
+2) Enter title + description.
+3) Pick date and time via dropdowns (page weeks).
+4) Choose slots or a template.
+5) Click **"Post raid"**.
 
-### Methode B: Command
+### Method B: Command
 `/raid-create`
 
 ---
 
-## 🧩 Slot-Vorlagen (Templates)
+## 🧩 Slot Templates
 
-Im Slot-Schritt kannst du **"Vorlage wechseln"** nutzen.  
-Die Vorlagen sind aktuell im Code definiert:
+In the slot step you can use **"Switch template"**.
+Templates are currently defined in code:
 
-Datei: `src/commands/raid.py`
+File: `src/commands/raid.py`
 
 ```py
 SLOT_TEMPLATES = [
     ("Standard", {ROLE_TANK: 2, ROLE_HEALER: 2, ROLE_DPS: 6, ROLE_BENCH: 0}),
-    ("Klein", {ROLE_TANK: 1, ROLE_HEALER: 1, ROLE_DPS: 3, ROLE_BENCH: 0}),
-    ("Gross", {ROLE_TANK: 3, ROLE_HEALER: 3, ROLE_DPS: 9, ROLE_BENCH: 2}),
+    ("Small", {ROLE_TANK: 1, ROLE_HEALER: 1, ROLE_DPS: 3, ROLE_BENCH: 0}),
+    ("Large", {ROLE_TANK: 3, ROLE_HEALER: 3, ROLE_DPS: 9, ROLE_BENCH: 2}),
 ]
 ```
 
-Sag Bescheid, wenn du andere Vorlagen willst, dann passe ich sie an.
+Tell me if you want different templates.
 
 ---
 
-## 👥 Teilnahme / Anmeldung
+## 👥 Participation / Signups
 
-Im Raid-Post kannst du dich per Reaktion anmelden.  
-Du erscheinst in der Teilnehmerliste mit deiner Rolle.
+In the raid post you can sign up via reactions.
+You will appear in the participant list with your role.
 
-Wenn **Reserve** frei ist:
-- Voller Slot -> automatisch Reserve + Hinweis per DM.
+If **Bench** is available:
+- Full role -> automatically bench + DM note.
 
-Wenn **Reserve** ebenfalls voll ist:
-- Anmeldung wird abgelehnt.
-
----
-
-## 🧾 Teilnehmerrolle
-
-Optional kann eine Teilnehmerrolle genutzt werden:
-- Standardname: **"Raid Teilnehmer"**
-- Wird automatisch erstellt, falls sie fehlt.
-- **Beim Anmelden vergeben**.
-- **Beim Abmelden oder Raid-Ende entfernt**.
-
-Rolle konfigurieren:
-`/raid-set-participant-role @Rolle`
+If **Bench** is full:
+- Signup is rejected.
 
 ---
 
-## 🔐 Raid-Status
+## 🧾 Participant Role
 
-Status im Embed:
-- **Offen**: normale Anmeldung moeglich
-- **Gesperrt**: nur Reserve moeglich
-- **Geschlossen**: Raid ist gestartet/abgeschlossen
-- **Abgesagt**: Raid wurde abgesagt
+Optional participant role:
+- Default name: **"Raid Teilnehmer"**
+- Created automatically if missing.
+- **Granted on signup**.
+- **Removed on leave or after raid end**.
 
-Signups-Status im Titel:
-- **SIGNUPS OPEN** (gruen): Anmeldung moeglich
-- **ALMOST FULL** (gelb): wenige Slots frei
-- **SIGNUPS CLOSED** (rot): geschlossen oder voll
-
-Auto-Close:
-Standard: Der Raid wird automatisch zur Startzeit geschlossen.
-Optional: Auto-Close kann deaktiviert werden (siehe Config).
-Sicherung: Optional nach X Stunden automatisch schliessen.
-
-## 🧹 Aufraeumen
-
-Wenn ein Raid **geschlossen oder abgesagt** wird, loescht der Bot den Post
-automatisch aus dem Channel, damit nur offene Raids sichtbar sind.
-Zusatz: Erinnerungsposts zum Raid werden ebenfalls entfernt.
+Configure role:
+`/raid-set-participant-role @Role`
 
 ---
 
-## 🧰 Verwaltung (Buttons im Raid-Post)
+## 🔐 Raid Status
 
-Nur Ersteller, Admins oder Creator-Rollen koennen verwalten.
+Status in embed:
+- **Open**: normal signup
+- **Locked**: bench only
+- **Closed**: raid started/finished
+- **Cancelled**: raid was cancelled
+
+Signup status in title:
+- **SIGNUPS OPEN** (green): signup possible
+- **ALMOST FULL** (yellow): few slots left
+- **SIGNUPS CLOSED** (red): closed or full
+
+Auto-close:
+Default: raid auto-closes at start time.
+Optional: auto-close can be disabled (see config).
+Safety: optional close after X hours.
+
+## 🧹 Cleanup
+
+If a raid is **closed or cancelled**, the bot deletes the post
+so only open raids remain in the channel. Related reminder posts
+are also removed.
+
+---
+
+## 🧰 Management (Buttons in the Raid Post)
+
+Only the creator, admins, or creator roles can manage.
 
 Buttons:
-- **✏️ Bearbeiten**: Titel/Beschreibung/Startzeit anpassen
-- **🔒 Sperren/Oeffnen**: Anmeldung sperren oder wieder oeffnen
-- **✅ Abschliessen**: Raid manuell schliessen
-- **🛑 Absagen**: Raid absagen
-- **⏭️ Folge-Raid**: Neuen Raid mit gleichem Titel/Slots erstellen (nur Zeit waehlen)
-- **⚙️ Slots**: Slotzahlen anpassen (Reserve wird automatisch hochgezogen)
+- **✏️ Edit**: update title/description/start time
+- **🔒 Lock/Unlock**: lock or reopen signups
+- **✅ Close**: close raid manually
+- **🛑 Cancel**: cancel raid
+- **⏭️ Follow-up**: create a new raid with same title/slots (only time needed)
+- **⚙️ Slots**: adjust slot counts (bench auto-promotes)
 
-Optionales Logging:
-- Wenn `log_channel_id` gesetzt ist, postet der Bot beim Abschluss/Abbruch
-  eine kurze Raid-Zusammenfassung in den Log-Channel.
-  Darin steht auch, wer welche Rolle gespielt hat.
+Optional logging:
+- If `log_channel_id` is set, the bot posts a raid summary
+  on close/cancel to the log channel.
+  It includes role lists and check-in/no-show info.
 
-Teilnahme-Statistik:
-- Im `#raid-ankuendigungen` gibt es ein **Raid-Teilnahme**-Embed.
-- Zeigt **Top-Teilnahmen (All-Time)** mit Rollen-Counts.
-- Die Liste ist begrenzt (Top 10), wird automatisch aktualisiert.
+Participation stats:
+- In `#raid-ankuendigungen` there is a **Raid Participation** embed.
+- Shows **all-time** top participants with role counts.
+- The list is capped (Top 10) and updates automatically.
 
 ---
 
-## ⏰ Erinnerungssystem
+## ⏰ Reminder System
 
-Erinnerungen vor Start (Default: 24h und 1h):
-- Wird im Raid-Channel gepostet
-- Optional mit Teilnehmerrolle erwaehnen
+Reminders before start (default: 24h and 1h):
+- Posted in the raid channel
+- Optional mention of participant role
 
-DM-Erinnerung (Default: 15 Minuten vor Start):
-- Der Bot schickt eine DM an alle angemeldeten Teilnehmer.
+DM reminder (default: 15 minutes before start):
+- Bot sends a DM to all signed-up participants.
 
-Check-in (Default: 15 Minuten vor Start):
-- Der Bot postet eine Nachricht mit ✅.
-- Teilnehmer bestaetigen ihre Teilnahme per Reaktion.
-- Im Raid-Embed siehst du, wer noch offen ist.
+Check-in (default: 15 minutes before start):
+- Bot posts a message with ✅
+- Participants confirm with reaction
+- Embed shows who is still missing
 
-Slots frei Ping (Cooldown: 30 Minuten):
-- Wenn Slots frei werden, pingt der Bot @Raid Teilnehmer.
+Check-in reminder (default: 5 minutes before start):
+- Only **unconfirmed** participants are pinged
 
-Check-in Reminder (Default: 5 Minuten vor Start):
-- Nur die **unbestaetigten** Teilnehmer werden nochmal gepingt.
+No-show marking:
+- After start, unconfirmed participants are marked as **No-Show**
 
-No-Show Markierung:
-- Nach Start werden nicht bestaetigte Teilnehmer als **No-Show** markiert.
-
-Abmeldungsgrund (optional):
-- Wenn jemand ❌ reagiert, kann er per DM einen kurzen Grund schicken.
-- Der Grund landet im Log-Channel (falls gesetzt).
+Leave reason (optional):
+- When someone reacts ❌, they can DM a short reason
+- Reason is logged in the log channel (if set)
 
 Config:
 ```yaml
@@ -183,35 +180,35 @@ raid_management:
 
 ---
 
-## 🧭 Zeit-Anzeige (DE + EN)
+## 🧭 Time Display
 
-Im Raid-Embed steht:
-- Discord Timestamp (lokal fuer jeden User)
-- Deutsche Zeile
-- Englische Zeile
+In the raid embed:
+- Discord timestamp (localized for each user)
+- German format line
+- English format line
 
-Das hilft bei gemischten Zeitzonen.
+This helps mixed time zones.
 
 ---
 
-## 📜 Commands (Uebersicht)
+## 📜 Commands (Overview)
 
 **User / Creator**
-- `/raid-create` – Raid erstellen (Button-Alternative)
-- `/raid-list` – kommende Raids anzeigen
+- `/raid-create` – create a raid (button alternative)
+- `/raid-list` – show upcoming raids
 
 **Admin**
-- `/raid-setup` – Raid-Channels + Teilnehmerrolle erstellen
-- `/raid-set-channel` – Raid-Channel setzen
-- `/raid-info-setup` – Info-Post neu erstellen
-- `/raid-add-creator-role` – Creator-Rolle hinzufuegen
-- `/raid-remove-creator-role` – Creator-Rolle entfernen
-- `/raid-set-participant-role` – Teilnehmerrolle setzen
-- `/raid-user-stats` – Teilnahme-Statistik eines Users
+- `/raid-setup` – create raid channels + store IDs
+- `/raid-set-channel` – set raid channels
+- `/raid-info-setup` – create/update info post
+- `/raid-add-creator-role` – add creator role
+- `/raid-remove-creator-role` – remove creator role
+- `/raid-set-participant-role` – set participant role
+- `/raid-user-stats` – participation stats for a user
 
 ---
 
-## ⚙️ Konfiguration (config.yaml)
+## ⚙️ Configuration (config.yaml)
 
 ```yaml
 raid_management:
@@ -239,20 +236,20 @@ raid_management:
 
 ## 🩹 Troubleshooting
 
-**"Diese Interaktion ist fehlgeschlagen"**
-- Ein Update/Antwort kam zu spaet.
-- Bitte den Button nochmal nutzen.
+**"This interaction failed"**
+- An update/response was too slow.
+- Click the button again.
 
-**Kein Post / kein Reaction**
-- Bot fehlt die Rechte im Channel (Posten, Reactions, Manage Messages).
-- In `raid-setup` den Channel neu erstellen oder Rechte pruefen.
+**No post / no reactions**
+- Bot is missing permissions in the channel (send, reactions, manage messages).
+- Run `raid-setup` or fix permissions.
 
-**Zeit in der Vergangenheit**
-- Datum/Uhrzeit muessen in der Zukunft liegen.
+**Time in the past**
+- Date/time must be in the future.
 
-**Reserve oder Rollen voll**
-- Siehe Slot-Limits im Embed.
+**Role/Bench full**
+- Check slot limits in the embed.
 
 ---
 
-Wenn du neue Features oder Anpassungen willst, sag Bescheid.
+If you want more features or changes, let me know.

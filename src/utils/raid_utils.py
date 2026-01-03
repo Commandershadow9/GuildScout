@@ -23,7 +23,7 @@ ROLE_LABELS = {
     ROLE_TANK: "Tank",
     ROLE_HEALER: "Healer",
     ROLE_DPS: "DPS",
-    ROLE_BENCH: "Reserve",
+    ROLE_BENCH: "Bench",
 }
 
 ROLE_EMOJIS = {
@@ -49,7 +49,7 @@ def parse_raid_datetime(date_str: str, time_str: str, timezone_name: str) -> dat
 
     if base is None:
         raise ValueError(
-            "Bitte Datum (DD.MM.YYYY oder YYYY-MM-DD) und Uhrzeit (HH:MM) angeben."
+            "Please provide date (DD.MM.YYYY or YYYY-MM-DD) and time (HH:MM)."
         )
 
     try:
@@ -88,12 +88,12 @@ def build_raid_embed(
 ) -> discord.Embed:
     """Build the public raid embed with roster details."""
     status_labels = {
-        "open": "Offen",
-        "locked": "Gesperrt",
-        "closed": "Geschlossen",
-        "cancelled": "Abgesagt",
+        "open": "Open",
+        "locked": "Locked",
+        "closed": "Closed",
+        "cancelled": "Cancelled",
     }
-    status_label = status_labels.get(raid.status, "Unbekannt")
+    status_label = status_labels.get(raid.status, "Unknown")
 
     try:
         tz = ZoneInfo(timezone_name)
@@ -137,26 +137,28 @@ def build_raid_embed(
     )
 
     embed.add_field(
-        name="Startzeit",
+        name="Start Time",
         value=(
             f"<t:{raid.start_time}:F>\n"
             f"<t:{raid.start_time}:R>\n"
-            f"DE: {de_line} ({tz_label})\n"
-            f"EN: {en_line} ({tz_label})"
+            f"German format: {de_line} ({tz_label})\n"
+            f"English format: {en_line} ({tz_label})"
         ),
         inline=False,
     )
 
-    embed.add_field(name="Erstellt von", value=f"<@{raid.creator_id}>", inline=True)
+    embed.add_field(name="Created by", value=f"<@{raid.creator_id}>", inline=True)
     embed.add_field(name="Status", value=status_label, inline=True)
 
     if bench_needed > 0:
         slots_value = (
-            f"Gesamt: {total_filled}/{total_needed} · Frei: {total_open}\n"
-            f"Kern: {main_filled}/{main_needed} · Reserve: {bench_filled}/{bench_needed}"
+            f"Total: {total_filled}/{total_needed} · Open: {total_open}\n"
+            f"Main: {main_filled}/{main_needed} · Bench: {bench_filled}/{bench_needed}"
         )
     else:
-        slots_value = f"Kern: {main_filled}/{main_needed} · Frei: {max(main_needed - main_filled, 0)}"
+        slots_value = (
+            f"Main: {main_filled}/{main_needed} · Open: {max(main_needed - main_filled, 0)}"
+        )
     embed.add_field(name="Slots", value=slots_value, inline=True)
 
     for role in ROLE_ORDER:
@@ -170,7 +172,7 @@ def build_raid_embed(
         open_slots = max(limit - len(users), 0) if limit > 0 else 0
         count_text = f"{len(users)}/{limit}" if limit > 0 else f"{len(users)}"
         if limit > 0:
-            count_text = f"{count_text} · Frei: {open_slots}"
+            count_text = f"{count_text} · Open: {open_slots}"
         embed.add_field(
             name=f"{emoji} {label} ({count_text})",
             value=_format_user_list(users),
@@ -194,17 +196,17 @@ def build_raid_embed(
         if unconfirmed:
             preview = ", ".join(f"<@{uid}>" for uid in unconfirmed[:15])
             if len(unconfirmed) > 15:
-                preview = f"{preview}, +{len(unconfirmed) - 15} weitere"
+                preview = f"{preview}, +{len(unconfirmed) - 15} more"
             if len(preview) > 1024:
-                preview = f"{len(unconfirmed)} offen"
-            confirmed_value = f"{confirmed_value}\nOffen: {preview}"
-        embed.add_field(name="Bestaetigt", value=confirmed_value, inline=False)
+                preview = f"{len(unconfirmed)} pending"
+            confirmed_value = f"{confirmed_value}\nPending: {preview}"
+        embed.add_field(name="Confirmed", value=confirmed_value, inline=False)
         if no_show_set:
             no_show_preview = ", ".join(f"<@{uid}>" for uid in list(no_show_set)[:15])
             if len(no_show_set) > 15:
-                no_show_preview = f"{no_show_preview}, +{len(no_show_set) - 15} weitere"
+                no_show_preview = f"{no_show_preview}, +{len(no_show_set) - 15} more"
             if len(no_show_preview) > 1024:
-                no_show_preview = f"{len(no_show_set)} markiert"
+                no_show_preview = f"{len(no_show_set)} marked"
             embed.add_field(
                 name="No-Show",
                 value=no_show_preview,
@@ -212,11 +214,11 @@ def build_raid_embed(
             )
 
     if raid.status == "locked":
-        embed.set_footer(text="Anmeldung gesperrt: nur Reserve moeglich.")
+        embed.set_footer(text="Signups locked: bench only.")
     elif raid.status == "closed":
-        embed.set_footer(text="Raid gestartet/geschlossen.")
+        embed.set_footer(text="Raid started/closed.")
     elif raid.status == "cancelled":
-        embed.set_footer(text="Raid wurde abgesagt.")
+        embed.set_footer(text="Raid cancelled.")
 
     return embed
 
@@ -244,12 +246,12 @@ def build_raid_log_embed(
         inline=True,
     )
     embed.add_field(
-        name="Startzeit",
+        name="Start Time",
         value=f"<t:{raid.start_time}:F>",
         inline=True,
     )
     embed.add_field(
-        name="Erstellt von",
+        name="Created by",
         value=f"<@{raid.creator_id}>",
         inline=True,
     )
@@ -270,16 +272,16 @@ def build_raid_log_embed(
         no_show_set = set(int(uid) for uid in (no_show_ids or []))
         confirmed_count = sum(1 for uid in all_signups if uid in confirmed_set)
         embed.add_field(
-            name="Bestaetigt",
+            name="Confirmed",
             value=f"{confirmed_count}/{len(all_signups)}",
             inline=False,
         )
         if no_show_set:
             no_show_preview = ", ".join(f"<@{uid}>" for uid in list(no_show_set)[:15])
             if len(no_show_set) > 15:
-                no_show_preview = f"{no_show_preview}, +{len(no_show_set) - 15} weitere"
+                no_show_preview = f"{no_show_preview}, +{len(no_show_set) - 15} more"
             if len(no_show_preview) > 1024:
-                no_show_preview = f"{len(no_show_set)} markiert"
+                no_show_preview = f"{len(no_show_set)} marked"
             embed.add_field(
                 name="No-Show",
                 value=no_show_preview,
@@ -297,9 +299,9 @@ def build_raid_log_embed(
             lines.append(f"<@{user_id}>: {short_reason}")
         if lines:
             if len(leave_reasons) > 15:
-                lines.append(f"+{len(leave_reasons) - 15} weitere")
+                lines.append(f"+{len(leave_reasons) - 15} more")
             embed.add_field(
-                name="Abmeldungen (Grund)",
+                name="Leaves (Reason)",
                 value="\n".join(lines)[:1024],
                 inline=False,
             )

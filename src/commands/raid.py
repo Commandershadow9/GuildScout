@@ -38,8 +38,8 @@ DEFAULT_COUNTS = {
 
 SLOT_TEMPLATES = [
     ("Standard", {ROLE_TANK: 2, ROLE_HEALER: 2, ROLE_DPS: 6, ROLE_BENCH: 0}),
-    ("Klein", {ROLE_TANK: 1, ROLE_HEALER: 1, ROLE_DPS: 3, ROLE_BENCH: 0}),
-    ("Gross", {ROLE_TANK: 3, ROLE_HEALER: 3, ROLE_DPS: 9, ROLE_BENCH: 2}),
+    ("Small", {ROLE_TANK: 1, ROLE_HEALER: 1, ROLE_DPS: 3, ROLE_BENCH: 0}),
+    ("Large", {ROLE_TANK: 3, ROLE_HEALER: 3, ROLE_DPS: 9, ROLE_BENCH: 2}),
 ]
 
 MAX_SLOT_OPTION = 20
@@ -80,70 +80,70 @@ def get_default_date_time(timezone_name: str) -> tuple[str, str, int]:
 def build_raid_info_embed() -> discord.Embed:
     """Return the raid info/start embed."""
     embed = discord.Embed(
-        title="🗡️ Raid-Guide (Where Winds Meet)",
+        title="🗡️ Raid Guide (Where Winds Meet)",
         description=(
-            "Hier findest du die komplette Anleitung fuer Raids.\n"
-            "Rollen: Tank, Healer, DPS + Reserve."
+            "Everything you need to know about raids.\n"
+            "Roles: Tank, Healer, DPS + Bench."
         ),
         color=discord.Color.green(),
     )
     embed.add_field(
-        name="Raid erstellen (Ersteller/Admin)",
+        name="Create a raid (Creator/Admin)",
         value=(
-            "1) Button 'Raid erstellen' klicken\n"
-            "2) Titel + Beschreibung eingeben\n"
-            "3) Datum/Uhrzeit ueber Dropdowns waehlen (Woche blaettern)\n"
-            "4) Slots setzen oder Vorlage nutzen\n"
-            "5) 'Raid posten' klicken"
+            "1) Click 'Create raid'\n"
+            "2) Enter title + description\n"
+            "3) Pick date/time via dropdowns (page weeks)\n"
+            "4) Set slots or use a template\n"
+            "5) Click 'Post raid'"
         ),
         inline=False,
     )
     embed.add_field(
-        name="Anmelden im Raid-Post",
+        name="Sign up in the raid post",
         value=(
-            "Reagiere mit: 🛡️ Tank, 💉 Healer, ⚔️ DPS, 🪑 Reserve\n"
-            "❌ = Abmelden. Pro Person nur eine Rolle.\n"
-            "Wenn Rolle voll ist, wirst du auf Reserve gesetzt (falls frei).\n"
-            "Kurz vor Start gibt es einen Check-in per ✅.\n"
-            "5 Minuten vorher werden fehlende Check-ins gepingt.\n"
-            "Bei Abmeldung kannst du optional einen Grund per DM senden."
+            "React with: 🛡️ Tank, 💉 Healer, ⚔️ DPS, 🪑 Bench\n"
+            "❌ = leave. One role per person.\n"
+            "If a role is full, you are moved to bench (if available).\n"
+            "Shortly before start there is a ✅ check-in.\n"
+            "5 minutes before start, missing check-ins are pinged.\n"
+            "On leave you can optionally send a DM reason."
         ),
         inline=False,
     )
     embed.add_field(
-        name="Verwalten (Ersteller/Admin/Lead)",
+        name="Manage (Creator/Admin/Lead)",
         value=(
-            "Buttons im Raid-Post: ✏️ Bearbeiten, 🔒 Sperren/Oeffnen,\n"
-            "✅ Abschliessen, 🛑 Absagen, ⏭️ Folge-Raid, ⚙️ Slots.\n"
-            "Sperren = nur Reserve. Auto-Close kann deaktiviert werden\n"
-            "oder als Sicherung nach X Stunden greifen."
+            "Buttons in the raid post: ✏️ Edit, 🔒 Lock/Unlock,\n"
+            "✅ Close, 🛑 Cancel, ⏭️ Follow-up, ⚙️ Slots.\n"
+            "Lock = bench only. Auto-close can be disabled\n"
+            "or used as a safety close after X hours."
         ),
         inline=False,
     )
     embed.add_field(
-        name="Raid-Archiv & Statistik (optional)",
+        name="Raid archive & stats (optional)",
         value=(
-            "Log-Channel optional: Zusammenfassung mit Rollen, Check-in,\n"
-            "No-Show und Gruenden. Im Raid-Channel gibt es eine\n"
-            "Teilnahme-Statistik (All-Time, Top-Liste). Admin: /raid-user-stats."
+            "Optional log channel: summary with roles, check-in,\n"
+            "no-show and reasons. In the raid channel there is a\n"
+            "participation leaderboard (all-time, top list). Admin: /raid-user-stats."
         ),
         inline=False,
     )
     embed.add_field(
-        name="Teilnehmerrolle & Reminder",
+        name="Participant role & reminders",
         value=(
-            "Beim Anmelden bekommst du die Teilnehmerrolle (falls gesetzt).\n"
-            "Sie wird beim Verlassen oder nach Raid-Ende entfernt.\n"
-            "Erinnerungen kommen z.B. 24h/1h vor Start + DM 15 Minuten vorher.\n"
-            "Wenn Slots frei werden, kann der Bot @Raid Teilnehmer pingen."
+            "On signup you get the participant role (if configured).\n"
+            "It is removed on leave or after raid end.\n"
+            "Reminders go out e.g. 24h/1h before start + DM 15 minutes before.\n"
+            "If slots open up, the bot can ping the participant role."
         ),
         inline=False,
     )
     embed.add_field(
-        name="Befehle",
+        name="Commands",
         value=(
-            "/raid-create – Raid erstellen (Alternative zum Button)\n"
-            "/raid-list – kommende Raids anzeigen\n"
+            "/raid-create – create raid (button alternative)\n"
+            "/raid-list – show upcoming raids\n"
             "Admin: /raid-setup, /raid-set-channel, /raid-info-setup,\n"
             "/raid-add-creator-role, /raid-remove-creator-role,\n"
             "/raid-set-participant-role, /raid-user-stats"
@@ -187,7 +187,7 @@ class RaidDateSelect(discord.ui.Select):
     def __init__(self, view: "RaidScheduleView"):
         options = view.build_date_options()
         super().__init__(
-            placeholder=f"Datum: {view.date_value}",
+            placeholder=f"Date: {view.date_value}",
             min_values=1,
             max_values=1,
             options=options,
@@ -206,7 +206,7 @@ class RaidDateSelect(discord.ui.Select):
             view.update_select_defaults()
             await interaction.response.edit_message(embed=view.build_embed(), view=view)
             await interaction.followup.send(
-                "❌ Startzeit liegt in der Vergangenheit.",
+                "❌ Start time is in the past.",
                 ephemeral=True,
             )
             return
@@ -229,7 +229,7 @@ class RaidHourSelect(discord.ui.Select):
         ]
 
         super().__init__(
-            placeholder=f"Stunde: {view.hour_value:02d}",
+            placeholder=f"Hour: {view.hour_value:02d}",
             min_values=1,
             max_values=1,
             options=options,
@@ -250,7 +250,7 @@ class RaidHourSelect(discord.ui.Select):
             view.update_select_defaults()
             await interaction.response.edit_message(embed=view.build_embed(), view=view)
             await interaction.followup.send(
-                "❌ Startzeit liegt in der Vergangenheit.",
+                "❌ Start time is in the past.",
                 ephemeral=True,
             )
             return
@@ -294,7 +294,7 @@ class RaidMinuteSelect(discord.ui.Select):
             view.update_select_defaults()
             await interaction.response.edit_message(embed=view.build_embed(), view=view)
             await interaction.followup.send(
-                "❌ Startzeit liegt in der Vergangenheit.",
+                "❌ Start time is in the past.",
                 ephemeral=True,
             )
             return
@@ -406,7 +406,7 @@ class RaidScheduleView(discord.ui.View):
     def build_date_options(self) -> list:
         today = self._get_today()
         start_date = today + timedelta(days=self.date_offset_days)
-        weekday_labels = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+        weekday_labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         options = []
         selected_in_range = False
 
@@ -436,17 +436,17 @@ class RaidScheduleView(discord.ui.View):
         for item in self.children:
             if isinstance(item, RaidDateSelect):
                 item.options = self.build_date_options()
-                item.placeholder = f"Datum: {self.date_value}"
+                item.placeholder = f"Date: {self.date_value}"
 
     def update_select_defaults(self) -> None:
         """Update select placeholders/defaults after changes."""
         for item in self.children:
             if isinstance(item, RaidDateSelect):
-                item.placeholder = f"Datum: {self.date_value}"
+                item.placeholder = f"Date: {self.date_value}"
                 for option in item.options:
                     option.default = option.value == self.date_value
             elif isinstance(item, RaidHourSelect):
-                item.placeholder = f"Stunde: {self.hour_value:02d}"
+                item.placeholder = f"Hour: {self.hour_value:02d}"
                 for option in item.options:
                     option.default = option.value == str(self.hour_value)
             elif isinstance(item, RaidMinuteSelect):
@@ -457,7 +457,7 @@ class RaidScheduleView(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.requester_id:
             await interaction.response.send_message(
-                "❌ Nur der Ersteller kann diesen Entwurf bearbeiten.",
+                "❌ Only the creator can edit this draft.",
                 ephemeral=True,
             )
             return False
@@ -465,21 +465,21 @@ class RaidScheduleView(discord.ui.View):
 
     def build_embed(self) -> discord.Embed:
         embed = discord.Embed(
-            title=f"📝 Raid Entwurf: {self.title}",
+            title=f"📝 Raid Draft: {self.title}",
             description=self.description or None,
             color=discord.Color.blurple(),
         )
         embed.add_field(
-            name="Startzeit",
+            name="Start Time",
             value=f"<t:{self.start_ts}:F>\n<t:{self.start_ts}:R>",
             inline=False,
         )
         embed.add_field(
             name="Slots",
-            value="Im nächsten Schritt auswählen.",
+            value="Select in the next step.",
             inline=False,
         )
-        embed.set_footer(text="Datum/Uhrzeit wählen, dann 'Weiter' klicken.")
+        embed.set_footer(text="Select date/time, then click 'Next'.")
         return embed
 
     async def on_timeout(self) -> None:
@@ -491,13 +491,13 @@ class RaidScheduleView(discord.ui.View):
             except Exception:
                 pass
 
-    @discord.ui.button(label="➡️ Weiter", style=discord.ButtonStyle.green, row=4)
+    @discord.ui.button(label="➡️ Next", style=discord.ButtonStyle.green, row=4)
     async def continue_to_slots(
         self, interaction: discord.Interaction, _: discord.ui.Button
     ) -> None:
         if self.start_ts <= int(datetime.now(timezone.utc).timestamp()):
             await interaction.response.send_message(
-                "❌ Startzeit liegt in der Vergangenheit.",
+                "❌ Start time is in the past.",
                 ephemeral=True,
             )
             return
@@ -523,11 +523,11 @@ class RaidScheduleView(discord.ui.View):
         next_view.message = interaction.message
         self.stop()
 
-    @discord.ui.button(label="◀️ Woche zurück", style=discord.ButtonStyle.secondary, row=3)
+    @discord.ui.button(label="◀️ Previous week", style=discord.ButtonStyle.secondary, row=3)
     async def prev_week(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         if self.date_offset_days <= 0:
             await interaction.response.send_message(
-                "ℹ️ Du bist bereits am Anfang.",
+                "ℹ️ You are already at the first page.",
                 ephemeral=True,
             )
             return
@@ -537,11 +537,11 @@ class RaidScheduleView(discord.ui.View):
         self.update_select_defaults()
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
-    @discord.ui.button(label="▶️ Woche weiter", style=discord.ButtonStyle.secondary, row=3)
+    @discord.ui.button(label="▶️ Next week", style=discord.ButtonStyle.secondary, row=3)
     async def next_week(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         if self.date_offset_days >= self.max_date_offset_days:
             await interaction.response.send_message(
-                "ℹ️ Weiter geht aktuell nicht.",
+                "ℹ️ Can't go further right now.",
                 ephemeral=True,
             )
             return
@@ -553,17 +553,17 @@ class RaidScheduleView(discord.ui.View):
         self.update_select_defaults()
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
-    @discord.ui.button(label="✏️ Titel/Beschreibung", style=discord.ButtonStyle.secondary, row=3)
+    @discord.ui.button(label="✏️ Title/Description", style=discord.ButtonStyle.secondary, row=3)
     async def edit_details(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         await interaction.response.send_modal(RaidEditModal(self))
 
-    @discord.ui.button(label="❌ Abbrechen", style=discord.ButtonStyle.red, row=4)
+    @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.red, row=4)
     async def cancel(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         for item in self.children:
             item.disabled = True
         self.stop()
         await interaction.response.edit_message(
-            content="❌ Raid-Erstellung abgebrochen.",
+            content="❌ Raid creation cancelled.",
             embed=None,
             view=self,
         )
@@ -605,7 +605,7 @@ class RaidSlotsView(discord.ui.View):
         self.add_item(RoleCountSelect("Tanks", ROLE_TANK, self.counts[ROLE_TANK], row=0))
         self.add_item(RoleCountSelect("Healer", ROLE_HEALER, self.counts[ROLE_HEALER], row=1))
         self.add_item(RoleCountSelect("DPS", ROLE_DPS, self.counts[ROLE_DPS], row=2))
-        self.add_item(RoleCountSelect("Reserve", ROLE_BENCH, self.counts[ROLE_BENCH], row=3))
+        self.add_item(RoleCountSelect("Bench", ROLE_BENCH, self.counts[ROLE_BENCH], row=3))
 
     def _get_template_label(self) -> str:
         for idx, (name, template) in enumerate(SLOT_TEMPLATES):
@@ -629,7 +629,7 @@ class RaidSlotsView(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.requester_id:
             await interaction.response.send_message(
-                "❌ Nur der Ersteller kann diesen Entwurf bearbeiten.",
+                "❌ Only the creator can edit this draft.",
                 ephemeral=True,
             )
             return False
@@ -637,22 +637,22 @@ class RaidSlotsView(discord.ui.View):
 
     def build_embed(self) -> discord.Embed:
         embed = discord.Embed(
-            title=f"📝 Raid Entwurf: {self.title}",
+            title=f"📝 Raid Draft: {self.title}",
             description=self.description or None,
             color=discord.Color.blurple(),
         )
         embed.add_field(
-            name="Startzeit",
+            name="Start Time",
             value=f"<t:{self.start_ts}:F>\n<t:{self.start_ts}:R>",
             inline=False,
         )
         embed.add_field(name="Tanks", value=str(self.counts[ROLE_TANK]), inline=True)
         embed.add_field(name="Healer", value=str(self.counts[ROLE_HEALER]), inline=True)
         embed.add_field(name="DPS", value=str(self.counts[ROLE_DPS]), inline=True)
-        embed.add_field(name="Reserve", value=str(self.counts[ROLE_BENCH]), inline=True)
+        embed.add_field(name="Bench", value=str(self.counts[ROLE_BENCH]), inline=True)
         template_label = self._get_template_label()
         embed.set_footer(
-            text=f"Vorlage: {template_label} · Slots einstellen, dann 'Raid posten' klicken."
+            text=f"Template: {template_label} · Set slots, then click 'Post raid'."
         )
         return embed
 
@@ -665,7 +665,7 @@ class RaidSlotsView(discord.ui.View):
             except Exception:
                 pass
 
-    @discord.ui.button(label="⬅️ Zurück", style=discord.ButtonStyle.secondary, row=4)
+    @discord.ui.button(label="⬅️ Back", style=discord.ButtonStyle.secondary, row=4)
     async def back(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         back_view = RaidScheduleView(
             bot=self.bot,
@@ -688,49 +688,49 @@ class RaidSlotsView(discord.ui.View):
         back_view.message = interaction.message
         self.stop()
 
-    @discord.ui.button(label="✏️ Titel/Beschreibung", style=discord.ButtonStyle.secondary, row=4)
+    @discord.ui.button(label="✏️ Title/Description", style=discord.ButtonStyle.secondary, row=4)
     async def edit_details(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         await interaction.response.send_modal(RaidEditModal(self))
 
-    @discord.ui.button(label="🧩 Vorlage wechseln", style=discord.ButtonStyle.secondary, row=4)
+    @discord.ui.button(label="🧩 Switch template", style=discord.ButtonStyle.secondary, row=4)
     async def cycle_template(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         self.template_index = (self.template_index + 1) % len(SLOT_TEMPLATES)
         self._apply_template()
         self._sync_select_placeholders()
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
-    @discord.ui.button(label="✅ Raid posten", style=discord.ButtonStyle.green, row=4)
+    @discord.ui.button(label="✅ Post raid", style=discord.ButtonStyle.green, row=4)
     async def post_raid(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         if not self.config.raid_post_channel_id:
             await interaction.response.send_message(
-                "❌ Kein Raid-Channel gesetzt. Nutze `/raid-setup` oder `/raid-set-channel`.",
+                "❌ No raid channel configured. Use `/raid-setup` or `/raid-set-channel`.",
                 ephemeral=True,
             )
             return
 
         if self.start_ts <= int(datetime.now(timezone.utc).timestamp()):
             await interaction.response.send_message(
-                "❌ Startzeit liegt in der Vergangenheit.",
+                "❌ Start time is in the past.",
                 ephemeral=True,
             )
             return
 
         if self.counts[ROLE_TANK] + self.counts[ROLE_HEALER] + self.counts[ROLE_DPS] == 0:
             await interaction.response.send_message(
-                "❌ Bitte mindestens einen Slot für Tank/Healer/DPS setzen.",
+                "❌ Please set at least one slot for Tank/Healer/DPS.",
                 ephemeral=True,
             )
             return
 
         guild = interaction.guild
         if not guild:
-            await interaction.response.send_message("❌ Guild nicht gefunden.", ephemeral=True)
+            await interaction.response.send_message("❌ Server not found.", ephemeral=True)
             return
 
         post_channel = guild.get_channel(self.config.raid_post_channel_id)
         if not isinstance(post_channel, discord.TextChannel):
             await interaction.response.send_message(
-                "❌ Raid-Channel nicht gefunden. Bitte neu konfigurieren.",
+                "❌ Raid channel not found. Please reconfigure.",
                 ephemeral=True,
             )
             return
@@ -753,7 +753,7 @@ class RaidSlotsView(discord.ui.View):
         raid = await self.raid_store.get_raid(raid_id)
         if not raid:
             await interaction.response.send_message(
-                "❌ Raid konnte nicht gespeichert werden.",
+                "❌ Raid could not be saved.",
                 ephemeral=True,
             )
             return
@@ -785,8 +785,8 @@ class RaidSlotsView(discord.ui.View):
         self.stop()
 
         success_embed = discord.Embed(
-            title="✅ Raid erstellt",
-            description=f"Raid wurde gepostet: {raid_message.jump_url}",
+            title="✅ Raid created",
+            description=f"Raid posted: {raid_message.jump_url}",
             color=discord.Color.green(),
         )
         try:
@@ -794,13 +794,13 @@ class RaidSlotsView(discord.ui.View):
         except Exception:
             await interaction.followup.send(embed=success_embed, ephemeral=True)
 
-    @discord.ui.button(label="❌ Abbrechen", style=discord.ButtonStyle.red, row=4)
+    @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.red, row=4)
     async def cancel(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         for item in self.children:
             item.disabled = True
         self.stop()
         await interaction.response.edit_message(
-            content="❌ Raid-Erstellung abgebrochen.",
+            content="❌ Raid creation cancelled.",
             embed=None,
             view=self,
         )
@@ -830,12 +830,12 @@ class RaidSlotEditView(discord.ui.View):
         self.add_item(RoleCountSelect("Tanks", ROLE_TANK, self.counts[ROLE_TANK], row=0))
         self.add_item(RoleCountSelect("Healer", ROLE_HEALER, self.counts[ROLE_HEALER], row=1))
         self.add_item(RoleCountSelect("DPS", ROLE_DPS, self.counts[ROLE_DPS], row=2))
-        self.add_item(RoleCountSelect("Reserve", ROLE_BENCH, self.counts[ROLE_BENCH], row=3))
+        self.add_item(RoleCountSelect("Bench", ROLE_BENCH, self.counts[ROLE_BENCH], row=3))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.requester_id:
             await interaction.response.send_message(
-                "❌ Nur der Ersteller kann das bearbeiten.",
+                "❌ Only the creator can edit this.",
                 ephemeral=True,
             )
             return False
@@ -843,14 +843,14 @@ class RaidSlotEditView(discord.ui.View):
 
     def build_embed(self) -> discord.Embed:
         embed = discord.Embed(
-            title=f"⚙️ Slots bearbeiten: {self.title}",
+            title=f"⚙️ Edit slots: {self.title}",
             color=discord.Color.blurple(),
         )
         embed.add_field(name="Tanks", value=str(self.counts[ROLE_TANK]), inline=True)
         embed.add_field(name="Healer", value=str(self.counts[ROLE_HEALER]), inline=True)
         embed.add_field(name="DPS", value=str(self.counts[ROLE_DPS]), inline=True)
-        embed.add_field(name="Reserve", value=str(self.counts[ROLE_BENCH]), inline=True)
-        embed.set_footer(text="Aendern und speichern.")
+        embed.add_field(name="Bench", value=str(self.counts[ROLE_BENCH]), inline=True)
+        embed.set_footer(text="Adjust and save.")
         return embed
 
     async def _get_raid_message(self, guild: discord.Guild):
@@ -920,7 +920,7 @@ class RaidSlotEditView(discord.ui.View):
                         pass
                 await self._send_dm(
                     member,
-                    f"✅ Du wurdest von Reserve auf {role.upper()} verschoben.",
+                    f"✅ You were moved from bench to {role.upper()}.",
                 )
 
     async def _maybe_ping_open_slots(
@@ -960,7 +960,7 @@ class RaidSlotEditView(discord.ui.View):
         if open_dps:
             parts.append(f"DPS: {open_dps}")
         slot_text = " | ".join(parts)
-        content = f"{role.mention} Slots frei fuer **{raid.title}**: {slot_text}"
+        content = f"{role.mention} Open slots for **{raid.title}**: {slot_text}"
         try:
             if message:
                 await message.channel.send(content)
@@ -972,7 +972,7 @@ class RaidSlotEditView(discord.ui.View):
     async def save(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         if self.counts[ROLE_TANK] + self.counts[ROLE_HEALER] + self.counts[ROLE_DPS] == 0:
             await interaction.response.send_message(
-                "❌ Bitte mindestens einen Slot fuer Tank/Healer/DPS setzen.",
+                "❌ Please set at least one slot for Tank/Healer/DPS.",
                 ephemeral=True,
             )
             return
@@ -980,7 +980,7 @@ class RaidSlotEditView(discord.ui.View):
         guild = interaction.guild
         if not guild:
             await interaction.response.send_message(
-                "❌ Guild nicht gefunden.",
+                "❌ Server not found.",
                 ephemeral=True,
             )
             return
@@ -1014,19 +1014,19 @@ class RaidSlotEditView(discord.ui.View):
 
         await interaction.response.edit_message(
             embed=discord.Embed(
-                title="✅ Slots aktualisiert",
+                title="✅ Slots updated",
                 color=discord.Color.green(),
             ),
             view=self,
         )
 
-    @discord.ui.button(label="❌ Abbrechen", style=discord.ButtonStyle.red, row=4)
+    @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.red, row=4)
     async def cancel(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         for item in self.children:
             item.disabled = True
         self.stop()
         await interaction.response.edit_message(
-            content="❌ Slot-Bearbeitung abgebrochen.",
+            content="❌ Slot editing cancelled.",
             embed=None,
             view=self,
         )
@@ -1036,17 +1036,17 @@ class RaidCreateModal(discord.ui.Modal):
     """Modal for raid basics."""
 
     def __init__(self, cog: "RaidCommand"):
-        super().__init__(title="Raid erstellen")
+        super().__init__(title="Create raid")
         self.cog = cog
 
         self.title_input = discord.ui.TextInput(
-            label="Titel",
-            placeholder="z.B. WWM Gildenraid",
+            label="Title",
+            placeholder="e.g. WWM guild raid",
             max_length=80,
         )
         self.desc_input = discord.ui.TextInput(
-            label="Beschreibung (optional)",
-            placeholder="Kurzbeschreibung oder Hinweis",
+            label="Description (optional)",
+            placeholder="Short description or note",
             required=False,
             style=discord.TextStyle.paragraph,
             max_length=400,
@@ -1092,18 +1092,18 @@ class RaidEditModal(discord.ui.Modal):
     """Modal to edit raid title and description."""
 
     def __init__(self, view_ref):
-        super().__init__(title="Raid bearbeiten")
+        super().__init__(title="Edit raid")
         self.view_ref = view_ref
 
         self.title_input = discord.ui.TextInput(
-            label="Titel",
-            placeholder="z.B. WWM Gildenraid",
+            label="Title",
+            placeholder="e.g. WWM guild raid",
             default=view_ref.title,
             max_length=80,
         )
         self.desc_input = discord.ui.TextInput(
-            label="Beschreibung (optional)",
-            placeholder="Kurzbeschreibung oder Hinweis",
+            label="Description (optional)",
+            placeholder="Short description or note",
             required=False,
             default=view_ref.description or "",
             style=discord.TextStyle.paragraph,
@@ -1128,7 +1128,7 @@ class RaidEditModal(discord.ui.Modal):
                 logger.warning("Failed to update raid draft message: %s", exc)
 
         await interaction.response.send_message(
-            "✅ Raid-Entwurf aktualisiert.",
+            "✅ Raid draft updated.",
             ephemeral=True,
         )
 
@@ -1137,7 +1137,7 @@ class RaidPostEditModal(discord.ui.Modal):
     """Modal to edit a posted raid."""
 
     def __init__(self, view_ref, raid):
-        super().__init__(title="Raid bearbeiten")
+        super().__init__(title="Edit raid")
         self.view_ref = view_ref
         self.raid = raid
 
@@ -1151,27 +1151,27 @@ class RaidPostEditModal(discord.ui.Modal):
         time_value = local_dt.strftime("%H:%M")
 
         self.title_input = discord.ui.TextInput(
-            label="Titel",
-            placeholder="z.B. WWM Gildenraid",
+            label="Title",
+            placeholder="e.g. WWM guild raid",
             default=raid.title,
             max_length=80,
         )
         self.desc_input = discord.ui.TextInput(
-            label="Beschreibung (optional)",
-            placeholder="Kurzbeschreibung oder Hinweis",
+            label="Description (optional)",
+            placeholder="Short description or note",
             required=False,
             default=raid.description or "",
             style=discord.TextStyle.paragraph,
             max_length=400,
         )
         self.date_input = discord.ui.TextInput(
-            label="Datum (DD.MM.YYYY)",
+            label="Date (DD.MM.YYYY)",
             placeholder="10.02.2025",
             default=date_value,
             max_length=10,
         )
         self.time_input = discord.ui.TextInput(
-            label="Uhrzeit (HH:MM)",
+            label="Time (HH:MM)",
             placeholder="20:00",
             default=time_value,
             max_length=5,
@@ -1202,7 +1202,7 @@ class RaidPostEditModal(discord.ui.Modal):
         start_ts = int(dt.timestamp())
         if start_ts <= int(datetime.now(timezone.utc).timestamp()):
             await interaction.response.send_message(
-                "❌ Startzeit liegt in der Vergangenheit.",
+                "❌ Start time is in the past.",
                 ephemeral=True,
             )
             return
@@ -1217,7 +1217,7 @@ class RaidPostEditModal(discord.ui.Modal):
         updated = await self.view_ref.raid_store.get_raid(self.raid.id)
         if not updated or not interaction.message:
             await interaction.response.send_message(
-                "✅ Raid aktualisiert.",
+                "✅ Raid updated.",
                 ephemeral=True,
             )
             return
@@ -1235,7 +1235,7 @@ class RaidPostEditModal(discord.ui.Modal):
         await interaction.message.edit(embed=embed, view=self.view_ref)
 
         await interaction.response.send_message(
-            "✅ Raid aktualisiert.",
+            "✅ Raid updated.",
             ephemeral=True,
         )
 
@@ -1248,21 +1248,21 @@ class RaidStartView(discord.ui.View):
         self.cog = cog
 
     @discord.ui.button(
-        label="🗡️ Raid erstellen",
+        label="🗡️ Create raid",
         style=discord.ButtonStyle.green,
         custom_id="guildscout_raid_start_v1",
     )
     async def start_raid(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         if not interaction.guild:
             await interaction.response.send_message(
-                "❌ Dieser Button funktioniert nur im Server.",
+                "❌ This button only works in a server.",
                 ephemeral=True,
             )
             return
 
         if not self.cog._has_creator_permission(interaction):
             await interaction.response.send_message(
-                "❌ Keine Berechtigung für Raid-Erstellung.",
+                "❌ You do not have permission to create raids.",
                 ephemeral=True,
             )
             return
@@ -1276,9 +1276,9 @@ class RaidStartView(discord.ui.View):
             manage_channel = interaction.guild.get_channel(
                 self.cog.config.raid_manage_channel_id
             )
-            channel_hint = manage_channel.mention if manage_channel else "den Raid-Channel"
+            channel_hint = manage_channel.mention if manage_channel else "the raid channel"
             await interaction.response.send_message(
-                f"❌ Bitte nutze {channel_hint} für die Raid-Erstellung.",
+                f"❌ Please use {channel_hint} to create raids.",
                 ephemeral=True,
             )
             return
@@ -1331,14 +1331,14 @@ class RaidManageView(discord.ui.View):
     ) -> Optional[object]:
         if not interaction.message:
             await interaction.response.send_message(
-                "❌ Raid-Message nicht gefunden.",
+                "❌ Raid message not found.",
                 ephemeral=True,
             )
             return None
         raid = await self.raid_store.get_raid_by_message_id(interaction.message.id)
         if not raid:
             await interaction.response.send_message(
-                "❌ Raid nicht gefunden.",
+                "❌ Raid not found.",
                 ephemeral=True,
             )
             return None
@@ -1392,7 +1392,7 @@ class RaidManageView(discord.ui.View):
             if not message.author or not message.author.bot:
                 continue
             content = (message.content or "").lower()
-            if "erinnerung" not in content:
+            if "reminder" not in content:
                 continue
             if title_key and title_key not in content:
                 continue
@@ -1412,7 +1412,7 @@ class RaidManageView(discord.ui.View):
             if not message.author or not message.author.bot:
                 continue
             content = (message.content or "").lower()
-            if "slots frei" not in content:
+            if "open slots" not in content:
                 continue
             if title_key and title_key not in content:
                 continue
@@ -1477,7 +1477,7 @@ class RaidManageView(discord.ui.View):
             logger.warning("Failed to send raid log", exc_info=True)
 
     @discord.ui.button(
-        label="✏️ Bearbeiten",
+        label="✏️ Edit",
         style=discord.ButtonStyle.secondary,
         custom_id="guildscout_raid_edit_v1",
         row=0,
@@ -1489,13 +1489,13 @@ class RaidManageView(discord.ui.View):
 
         if not self._can_manage(interaction, raid):
             await interaction.response.send_message(
-                "❌ Keine Berechtigung zum Bearbeiten.",
+                "❌ You do not have permission to edit this raid.",
                 ephemeral=True,
             )
             return
         if raid.status in ("closed", "cancelled"):
             await interaction.response.send_message(
-                "❌ Geschlossene/abgesagte Raids koennen nicht bearbeitet werden.",
+                "❌ Closed/cancelled raids cannot be edited.",
                 ephemeral=True,
             )
             return
@@ -1503,7 +1503,7 @@ class RaidManageView(discord.ui.View):
         await interaction.response.send_modal(RaidPostEditModal(self, raid))
 
     @discord.ui.button(
-        label="🔒 Sperren/Oeffnen",
+        label="🔒 Lock/Unlock",
         style=discord.ButtonStyle.secondary,
         custom_id="guildscout_raid_lock_v1",
         row=0,
@@ -1517,13 +1517,13 @@ class RaidManageView(discord.ui.View):
 
         if not self._can_manage(interaction, raid):
             await interaction.response.send_message(
-                "❌ Keine Berechtigung zum Sperren.",
+                "❌ You do not have permission to lock/unlock.",
                 ephemeral=True,
             )
             return
         if raid.status in ("closed", "cancelled"):
             await interaction.response.send_message(
-                "❌ Abgeschlossene/abgesagte Raids koennen nicht gesperrt werden.",
+                "❌ Closed/cancelled raids cannot be locked.",
                 ephemeral=True,
             )
             return
@@ -1541,12 +1541,12 @@ class RaidManageView(discord.ui.View):
             await interaction.message.edit(embed=embed, view=self)
 
         await interaction.response.send_message(
-            "✅ Raid wurde gesperrt." if new_status == "locked" else "✅ Raid ist wieder offen.",
+            "✅ Raid locked." if new_status == "locked" else "✅ Raid is open again.",
             ephemeral=True,
         )
 
     @discord.ui.button(
-        label="⏭️ Folge-Raid",
+        label="⏭️ Follow-up",
         style=discord.ButtonStyle.secondary,
         custom_id="guildscout_raid_followup_v1",
         row=1,
@@ -1560,7 +1560,7 @@ class RaidManageView(discord.ui.View):
 
         if not self._can_manage(interaction, raid):
             await interaction.response.send_message(
-                "❌ Keine Berechtigung fuer Folge-Raid.",
+                "❌ You do not have permission to create a follow-up raid.",
                 ephemeral=True,
             )
             return
@@ -1619,7 +1619,7 @@ class RaidManageView(discord.ui.View):
 
         if not self._can_manage(interaction, raid):
             await interaction.response.send_message(
-                "❌ Keine Berechtigung fuer Slots.",
+                "❌ You do not have permission to edit slots.",
                 ephemeral=True,
             )
             return
@@ -1646,7 +1646,7 @@ class RaidManageView(discord.ui.View):
         view.message = await interaction.original_response()
 
     @discord.ui.button(
-        label="✅ Abschliessen",
+        label="✅ Close",
         style=discord.ButtonStyle.danger,
         custom_id="guildscout_raid_close_v1",
         row=0,
@@ -1658,20 +1658,20 @@ class RaidManageView(discord.ui.View):
 
         if not self._can_manage(interaction, raid):
             await interaction.response.send_message(
-                "❌ Keine Berechtigung zum Schließen.",
+                "❌ You do not have permission to close this raid.",
                 ephemeral=True,
             )
             return
         if raid.status in ("closed", "cancelled"):
             await interaction.response.send_message(
-                "❌ Raid ist bereits abgeschlossen/abgesagt.",
+                "❌ Raid is already closed/cancelled.",
                 ephemeral=True,
             )
             return
 
         await self.raid_store.close_raid(raid.id)
         await self.raid_store.archive_participation(raid.id, "closed")
-        await self._send_raid_log(interaction, raid, "geschlossen")
+        await self._send_raid_log(interaction, raid, "Closed")
         channel = interaction.channel
         if interaction.message:
             try:
@@ -1698,12 +1698,12 @@ class RaidManageView(discord.ui.View):
         await self._refresh_history_embed(interaction)
 
         await interaction.response.send_message(
-            "✅ Raid geschlossen.",
+            "✅ Raid closed.",
             ephemeral=True,
         )
 
     @discord.ui.button(
-        label="🛑 Absagen",
+        label="🛑 Cancel",
         style=discord.ButtonStyle.danger,
         custom_id="guildscout_raid_cancel_v1",
         row=1,
@@ -1715,26 +1715,26 @@ class RaidManageView(discord.ui.View):
 
         if not self._can_manage(interaction, raid):
             await interaction.response.send_message(
-                "❌ Keine Berechtigung zum Absagen.",
+                "❌ You do not have permission to cancel this raid.",
                 ephemeral=True,
             )
             return
         if raid.status == "cancelled":
             await interaction.response.send_message(
-                "ℹ️ Raid ist bereits abgesagt.",
+                "ℹ️ Raid is already cancelled.",
                 ephemeral=True,
             )
             return
         if raid.status == "closed":
             await interaction.response.send_message(
-                "❌ Abgeschlossene Raids koennen nicht abgesagt werden.",
+                "❌ Closed raids cannot be cancelled.",
                 ephemeral=True,
             )
             return
 
         await self.raid_store.update_status(raid.id, "cancelled")
         await self.raid_store.archive_participation(raid.id, "cancelled")
-        await self._send_raid_log(interaction, raid, "abgesagt")
+        await self._send_raid_log(interaction, raid, "Cancelled")
         channel = interaction.channel
         if interaction.message:
             try:
@@ -1761,7 +1761,7 @@ class RaidManageView(discord.ui.View):
         await self._refresh_history_embed(interaction)
 
         await interaction.response.send_message(
-            "🛑 Raid wurde abgesagt.",
+            "🛑 Raid cancelled.",
             ephemeral=True,
         )
 
@@ -1821,7 +1821,7 @@ class RaidCommand(commands.Cog):
             channel,
             {message.id for message in (info_message,) if message is not None},
         )
-        await self.refresh_raid_stats(guild)
+        await self.refresh_raid_history(guild)
 
     def _has_admin_permission(self, interaction: discord.Interaction) -> bool:
         if interaction.user.guild_permissions.administrator:
@@ -1866,8 +1866,8 @@ class RaidCommand(commands.Cog):
         self, guild: discord.Guild
     ) -> discord.Embed:
         embed = discord.Embed(
-            title="📊 Raid-Teilnahme (All-Time)",
-            description="Top-Teilnahmen mit Rollen (auto-aktualisiert).",
+            title="📊 Raid Participation (All-Time)",
+            description="Top participation with role counts (auto-updated).",
             color=discord.Color.blurple(),
         )
         embed.timestamp = datetime.now(timezone.utc)
@@ -1885,15 +1885,15 @@ class RaidCommand(commands.Cog):
                     count = entry.get(role_key, 0)
                     if count:
                         role_parts.append(f"{ROLE_EMOJIS[role_key]} {count}")
-                roles_text = " ".join(role_parts) if role_parts else "keine Daten"
+                roles_text = " ".join(role_parts) if role_parts else "no data"
                 total = entry.get("total", 0)
                 lines.append(f"{index}. {mention} — {total} ({roles_text})")
             value = "\n".join(lines)
         else:
-            value = "Noch keine abgeschlossenen Raids."
+            value = "No completed raids yet."
 
-        embed.add_field(name="Top Teilnahmen", value=value, inline=False)
-        embed.set_footer(text="Admin: /raid-user-stats fuer Detailansicht")
+        embed.add_field(name="Top participants", value=value, inline=False)
+        embed.set_footer(text="Admin: /raid-user-stats for details")
         return embed
 
     async def _upsert_raid_history_message(
@@ -1932,9 +1932,9 @@ class RaidCommand(commands.Cog):
                     continue
                 title = message.embeds[0].title or ""
                 if (
-                    title.startswith("🗡️ Raid-Guide")
+                    title.startswith("🗡️ Raid Guide")
                     or title.startswith("📚 Raid-Historie")
-                    or title.startswith("📊 Raid-Teilnahme")
+                    or title.startswith("📊 Raid Participation")
                 ):
                     await message.delete()
         except Exception:
@@ -1958,25 +1958,25 @@ class RaidCommand(commands.Cog):
             return
         await self._upsert_raid_history_message(channel, guild)
 
-    @app_commands.command(name="raid-create", description="[Raid] Raid erstellen")
+    @app_commands.command(name="raid-create", description="[Raid] Create a raid")
     async def raid_create(self, interaction: discord.Interaction) -> None:
         if not interaction.guild:
             await interaction.response.send_message(
-                "❌ Dieser Command funktioniert nur im Server.",
+                "❌ This command only works in a server.",
                 ephemeral=True,
             )
             return
 
         if not self.config.raid_enabled:
             await interaction.response.send_message(
-                "❌ Raid-System ist deaktiviert.",
+                "❌ Raid system is disabled.",
                 ephemeral=True,
             )
             return
 
         if not self._has_creator_permission(interaction):
             await interaction.response.send_message(
-                "❌ Keine Berechtigung für Raid-Erstellung.",
+                "❌ You do not have permission to create raids.",
                 ephemeral=True,
             )
             return
@@ -1985,27 +1985,27 @@ class RaidCommand(commands.Cog):
             interaction.channel_id != self.config.raid_manage_channel_id
         ):
             channel = interaction.guild.get_channel(self.config.raid_manage_channel_id)
-            channel_hint = channel.mention if channel else "den Raid-Channel"
+            channel_hint = channel.mention if channel else "the raid channel"
             await interaction.response.send_message(
-                f"❌ Bitte nutze {channel_hint} für die Raid-Erstellung.",
+                f"❌ Please use {channel_hint} to create raids.",
                 ephemeral=True,
             )
             return
 
         await interaction.response.send_modal(RaidCreateModal(self))
 
-    @app_commands.command(name="raid-list", description="[Raid] Kommende Raids anzeigen")
+    @app_commands.command(name="raid-list", description="[Raid] List upcoming raids")
     async def raid_list(self, interaction: discord.Interaction) -> None:
         if not interaction.guild:
             await interaction.response.send_message(
-                "❌ Dieser Command funktioniert nur im Server.",
+                "❌ This command only works in a server.",
                 ephemeral=True,
             )
             return
 
         if not self.config.raid_enabled:
             await interaction.response.send_message(
-                "❌ Raid-System ist deaktiviert.",
+                "❌ Raid system is disabled.",
                 ephemeral=True,
             )
             return
@@ -2014,13 +2014,13 @@ class RaidCommand(commands.Cog):
         raids = await self.raid_store.list_upcoming_raids(now_ts, limit=10)
         if not raids:
             await interaction.response.send_message(
-                "ℹ️ Keine kommenden Raids gefunden.",
+                "ℹ️ No upcoming raids found.",
                 ephemeral=True,
             )
             return
 
         embed = discord.Embed(
-            title="🗓️ Kommende Raids",
+            title="🗓️ Upcoming raids",
             color=discord.Color.blurple(),
         )
 
@@ -2030,7 +2030,7 @@ class RaidCommand(commands.Cog):
             healer_count = len(signups.get(ROLE_HEALER, []))
             dps_count = len(signups.get(ROLE_DPS, []))
             bench_count = len(signups.get(ROLE_BENCH, []))
-            status_label = "Offen" if raid.status == "open" else "Gesperrt"
+            status_label = "Open" if raid.status == "open" else "Locked"
 
             jump_url = "—"
             if raid.message_id:
@@ -2045,7 +2045,7 @@ class RaidCommand(commands.Cog):
                 f"Tanks: {tank_count}/{raid.tanks_needed} · "
                 f"Healer: {healer_count}/{raid.healers_needed} · "
                 f"DPS: {dps_count}/{raid.dps_needed}\n"
-                f"Reserve: {bench_count}/{raid.bench_needed}\n"
+                f"Bench: {bench_count}/{raid.bench_needed}\n"
                 f"Link: {jump_url}"
             )
             embed.add_field(name=raid.title, value=value, inline=False)
@@ -2054,19 +2054,19 @@ class RaidCommand(commands.Cog):
 
     @app_commands.command(
         name="raid-setup",
-        description="[Admin] Erstellt Raid-Channels und speichert die IDs",
+        description="[Admin] Create raid channels and store IDs",
     )
     async def raid_setup(self, interaction: discord.Interaction) -> None:
         if not interaction.guild:
             await interaction.response.send_message(
-                "❌ Dieser Command funktioniert nur im Server.",
+                "❌ This command only works in a server.",
                 ephemeral=True,
             )
             return
 
         if not self._has_admin_permission(interaction):
             await interaction.response.send_message(
-                "❌ Nur Admins können das Setup ausführen.",
+                "❌ Only admins can run setup.",
                 ephemeral=True,
             )
             return
@@ -2081,7 +2081,7 @@ class RaidCommand(commands.Cog):
 
         guild = interaction.guild
         if not guild:
-            await interaction.followup.send("❌ Guild nicht gefunden.", ephemeral=True)
+            await interaction.followup.send("❌ Server not found.", ephemeral=True)
             return
 
         category = discord.utils.get(guild.categories, name="Raids")
@@ -2091,7 +2091,7 @@ class RaidCommand(commands.Cog):
             except Exception as exc:
                 logger.error("Failed to create raid category: %s", exc, exc_info=True)
                 await interaction.followup.send(
-                    "❌ Kategorie konnte nicht erstellt werden.",
+                    "❌ Category could not be created.",
                     ephemeral=True,
                 )
                 return
@@ -2107,7 +2107,7 @@ class RaidCommand(commands.Cog):
             except Exception as exc:
                 logger.error("Failed to create raid post channel: %s", exc, exc_info=True)
                 await interaction.followup.send(
-                    "❌ Raid-Channel konnte nicht erstellt werden.",
+                    "❌ Raid channel could not be created.",
                     ephemeral=True,
                 )
                 return
@@ -2123,7 +2123,7 @@ class RaidCommand(commands.Cog):
             except Exception as exc:
                 logger.error("Failed to create raid manage channel: %s", exc, exc_info=True)
                 await interaction.followup.send(
-                    "❌ Raid-Planungs-Channel konnte nicht erstellt werden.",
+                    "❌ Raid planning channel could not be created.",
                     ephemeral=True,
                 )
                 return
@@ -2135,12 +2135,12 @@ class RaidCommand(commands.Cog):
                     "raid-info",
                     category=category,
                     reason="Raid setup",
-                    topic="🗡️ Infos und Anleitung für Raid-Anmeldungen",
+                    topic="🗡️ Info and instructions for raid signups",
                 )
             except Exception as exc:
                 logger.error("Failed to create raid info channel: %s", exc, exc_info=True)
                 await interaction.followup.send(
-                    "❌ Raid-Info-Channel konnte nicht erstellt werden.",
+                    "❌ Raid info channel could not be created.",
                     ephemeral=True,
                 )
                 return
@@ -2161,16 +2161,16 @@ class RaidCommand(commands.Cog):
         await self._upsert_raid_history_message(post_channel, guild)
 
         embed = discord.Embed(
-            title="✅ Raid-Setup abgeschlossen",
-            description="Channels wurden erstellt und gespeichert.",
+            title="✅ Raid setup complete",
+            description="Channels were created and saved.",
             color=discord.Color.green(),
         )
-        embed.add_field(name="Raid-Posts", value=post_channel.mention, inline=False)
-        embed.add_field(name="Raid-Planung", value=manage_channel.mention, inline=False)
-        embed.add_field(name="Raid-Info", value=info_channel.mention, inline=False)
+        embed.add_field(name="Raid Posts", value=post_channel.mention, inline=False)
+        embed.add_field(name="Raid Planning", value=manage_channel.mention, inline=False)
+        embed.add_field(name="Raid Info", value=info_channel.mention, inline=False)
         if participant_role:
             embed.add_field(
-                name="Teilnehmerrolle",
+                name="Participant role",
                 value=participant_role.mention,
                 inline=False,
             )
@@ -2179,13 +2179,13 @@ class RaidCommand(commands.Cog):
 
     @app_commands.command(
         name="raid-set-channel",
-        description="[Admin] Setzt die Raid-Channels",
+        description="[Admin] Set raid channels",
     )
     @app_commands.describe(
-        post_channel="Channel für Raid-Ankündigungen",
-        manage_channel="Optionaler Channel für Raid-Erstellung",
-        info_channel="Optionaler Channel für Raid-Info",
-        log_channel="Optionaler Channel für Raid-Logs",
+        post_channel="Channel for raid announcements",
+        manage_channel="Optional channel for raid creation",
+        info_channel="Optional channel for raid info",
+        log_channel="Optional channel for raid logs",
     )
     async def raid_set_channel(
         self,
@@ -2197,7 +2197,7 @@ class RaidCommand(commands.Cog):
     ) -> None:
         if not interaction.guild:
             await interaction.response.send_message(
-                "❌ Dieser Command funktioniert nur im Server.",
+                "❌ This command only works in a server.",
                 ephemeral=True,
             )
             return
@@ -2205,14 +2205,14 @@ class RaidCommand(commands.Cog):
 
         if not self._has_admin_permission(interaction):
             await interaction.response.send_message(
-                "❌ Nur Admins können Channels setzen.",
+                "❌ Only admins can set channels.",
                 ephemeral=True,
             )
             return
 
         if not post_channel and not manage_channel and not info_channel and not log_channel:
             await interaction.response.send_message(
-                "❌ Bitte mindestens einen Channel angeben.",
+                "❌ Please provide at least one channel.",
                 ephemeral=True,
             )
             return
@@ -2234,35 +2234,35 @@ class RaidCommand(commands.Cog):
         await self.refresh_raid_history(guild)
 
         embed = discord.Embed(
-            title="✅ Raid-Channels aktualisiert",
+            title="✅ Raid channels updated",
             color=discord.Color.green(),
         )
         if post_channel:
-            embed.add_field(name="Raid-Posts", value=post_channel.mention, inline=False)
+            embed.add_field(name="Raid Posts", value=post_channel.mention, inline=False)
         if manage_channel:
-            embed.add_field(name="Raid-Planung", value=manage_channel.mention, inline=False)
+            embed.add_field(name="Raid Planning", value=manage_channel.mention, inline=False)
         if info_channel:
-            embed.add_field(name="Raid-Info", value=info_channel.mention, inline=False)
+            embed.add_field(name="Raid Info", value=info_channel.mention, inline=False)
         if log_channel:
-            embed.add_field(name="Raid-Logs", value=log_channel.mention, inline=False)
+            embed.add_field(name="Raid Logs", value=log_channel.mention, inline=False)
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(
         name="raid-info-setup",
-        description="[Admin] Erstellt/aktualisiert den Raid-Info-Post",
+        description="[Admin] Create/update the raid info post",
     )
     async def raid_info_setup(self, interaction: discord.Interaction) -> None:
         if not interaction.guild:
             await interaction.response.send_message(
-                "❌ Dieser Command funktioniert nur im Server.",
+                "❌ This command only works in a server.",
                 ephemeral=True,
             )
             return
 
         if not self._has_admin_permission(interaction):
             await interaction.response.send_message(
-                "❌ Nur Admins können das Setup ausführen.",
+                "❌ Only admins can run setup.",
                 ephemeral=True,
             )
             return
@@ -2283,7 +2283,7 @@ class RaidCommand(commands.Cog):
             except Exception as exc:
                 logger.error("Failed to create raid category: %s", exc, exc_info=True)
                 await interaction.followup.send(
-                    "❌ Kategorie konnte nicht erstellt werden.",
+                    "❌ Category could not be created.",
                     ephemeral=True,
                 )
                 return
@@ -2294,7 +2294,7 @@ class RaidCommand(commands.Cog):
                 "raid-info",
                 category=category,
                 reason="Raid info setup",
-                topic="🗡️ Infos und Anleitung für Raid-Anmeldungen",
+                topic="🗡️ Info and instructions for raid signups",
             )
 
         self.config.set_raid_info_channel_id(info_channel.id)
@@ -2310,16 +2310,16 @@ class RaidCommand(commands.Cog):
         await self.refresh_raid_history(guild)
 
         embed = discord.Embed(
-            title="✅ Raid-Info aktualisiert",
+            title="✅ Raid info updated",
             color=discord.Color.green(),
         )
-        embed.add_field(name="Raid-Info", value=info_channel.mention, inline=False)
+        embed.add_field(name="Raid Info", value=info_channel.mention, inline=False)
 
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.command(
         name="raid-add-creator-role",
-        description="[Admin] Rolle zur Raid-Erstellung hinzufügen",
+        description="[Admin] Add a role that can create raids",
     )
     async def raid_add_creator_role(
         self,
@@ -2328,27 +2328,27 @@ class RaidCommand(commands.Cog):
     ) -> None:
         if not interaction.guild:
             await interaction.response.send_message(
-                "❌ Dieser Command funktioniert nur im Server.",
+                "❌ This command only works in a server.",
                 ephemeral=True,
             )
             return
 
         if not self._has_admin_permission(interaction):
             await interaction.response.send_message(
-                "❌ Nur Admins können Rollen hinzufügen.",
+                "❌ Only admins can add roles.",
                 ephemeral=True,
             )
             return
 
         self.config.add_raid_creator_role(role.id)
         await interaction.response.send_message(
-            f"✅ Rolle {role.mention} hinzugefügt.",
+            f"✅ Role {role.mention} added.",
             ephemeral=True,
         )
 
     @app_commands.command(
         name="raid-remove-creator-role",
-        description="[Admin] Rolle von Raid-Erstellung entfernen",
+        description="[Admin] Remove a role from raid creators",
     )
     async def raid_remove_creator_role(
         self,
@@ -2357,27 +2357,27 @@ class RaidCommand(commands.Cog):
     ) -> None:
         if not interaction.guild:
             await interaction.response.send_message(
-                "❌ Dieser Command funktioniert nur im Server.",
+                "❌ This command only works in a server.",
                 ephemeral=True,
             )
             return
 
         if not self._has_admin_permission(interaction):
             await interaction.response.send_message(
-                "❌ Nur Admins können Rollen entfernen.",
+                "❌ Only admins can remove roles.",
                 ephemeral=True,
             )
             return
 
         self.config.remove_raid_creator_role(role.id)
         await interaction.response.send_message(
-            f"✅ Rolle {role.mention} entfernt.",
+            f"✅ Role {role.mention} removed.",
             ephemeral=True,
         )
 
     @app_commands.command(
         name="raid-user-stats",
-        description="[Admin] Raid-Teilnahmen eines Users anzeigen",
+        description="[Admin] Show raid participation stats for a user",
     )
     async def raid_user_stats(
         self,
@@ -2386,14 +2386,14 @@ class RaidCommand(commands.Cog):
     ) -> None:
         if not interaction.guild:
             await interaction.response.send_message(
-                "❌ Dieser Command funktioniert nur im Server.",
+                "❌ This command only works in a server.",
                 ephemeral=True,
             )
             return
 
         if not self._has_admin_permission(interaction):
             await interaction.response.send_message(
-                "❌ Nur Admins koennen diese Statistik sehen.",
+                "❌ Only admins can view these stats.",
                 ephemeral=True,
             )
             return
@@ -2406,21 +2406,21 @@ class RaidCommand(commands.Cog):
         bench = summary.get(ROLE_BENCH, 0)
 
         embed = discord.Embed(
-            title="📊 Raid-Teilnahmen",
+            title="📊 Raid participation",
             color=discord.Color.blurple(),
         )
         embed.add_field(name="User", value=user.mention, inline=False)
-        embed.add_field(name="Gesamt", value=str(total), inline=True)
+        embed.add_field(name="Total", value=str(total), inline=True)
         embed.add_field(name="Tanks", value=str(tanks), inline=True)
         embed.add_field(name="Healer", value=str(healers), inline=True)
         embed.add_field(name="DPS", value=str(dps), inline=True)
-        embed.add_field(name="Reserve", value=str(bench), inline=True)
+        embed.add_field(name="Bench", value=str(bench), inline=True)
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(
         name="raid-set-participant-role",
-        description="[Admin] Setzt die Raid-Teilnehmerrolle",
+        description="[Admin] Set the raid participant role",
     )
     async def raid_set_participant_role(
         self,
@@ -2429,21 +2429,21 @@ class RaidCommand(commands.Cog):
     ) -> None:
         if not interaction.guild:
             await interaction.response.send_message(
-                "❌ Dieser Command funktioniert nur im Server.",
+                "❌ This command only works in a server.",
                 ephemeral=True,
             )
             return
 
         if not self._has_admin_permission(interaction):
             await interaction.response.send_message(
-                "❌ Nur Admins koennen die Teilnehmerrolle setzen.",
+                "❌ Only admins can set the participant role.",
                 ephemeral=True,
             )
             return
 
         self.config.set_raid_participant_role_id(role.id)
         await interaction.response.send_message(
-            f"✅ Teilnehmerrolle gesetzt: {role.mention}",
+            f"✅ Participant role set: {role.mention}",
             ephemeral=True,
         )
 

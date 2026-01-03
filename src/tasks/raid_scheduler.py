@@ -151,9 +151,9 @@ class RaidScheduler(commands.Cog):
                         f"https://discord.com/channels/{raid.guild_id}/"
                         f"{raid.channel_id}/{raid.message_id}"
                     )
-                hour_label = "Stunde" if hours == 1 else "Stunden"
+                hour_label = "hour" if hours == 1 else "hours"
                 content = (
-                    f"{role_mention}⏰ Erinnerung: **{raid.title}** startet in "
+                    f"{role_mention}⏰ Reminder: **{raid.title}** starts in "
                     f"{hours} {hour_label} (<t:{raid.start_time}:R>)."
                 )
                 if jump_url:
@@ -219,11 +219,11 @@ class RaidScheduler(commands.Cog):
                             continue
                     role_label = entry.get("role", "").upper()
                     message = (
-                        f"⏰ Erinnerung: **{raid.title}** startet in {minutes} Minuten "
+                        f"⏰ Reminder: **{raid.title}** starts in {minutes} minutes "
                         f"(<t:{raid.start_time}:R>)."
                     )
                     if role_label:
-                        message = f"{message}\nRolle: {role_label}"
+                        message = f"{message}\nRole: {role_label}"
                     if jump_url:
                         message = f"{message}\n{jump_url}"
                     try:
@@ -276,8 +276,8 @@ class RaidScheduler(commands.Cog):
                     role_mention = f"{role.mention} "
 
             content = (
-                f"{role_mention}Bitte bestaetigt eure Teilnahme fuer "
-                f"**{raid.title}** mit {CONFIRM_EMOJI}."
+                f"{role_mention}Please confirm your attendance for "
+                f"**{raid.title}** with {CONFIRM_EMOJI}."
             )
             try:
                 message = await channel.send(content)
@@ -349,8 +349,8 @@ class RaidScheduler(commands.Cog):
             for idx in range(0, len(mentions), chunk_size):
                 chunk = ", ".join(mentions[idx : idx + chunk_size])
                 content = (
-                    f"⏰ Check-in fehlt fuer **{raid.title}**. "
-                    f"Bitte mit {CONFIRM_EMOJI} bestaetigen: {chunk}"
+                    f"⏰ Check-in missing for **{raid.title}**. "
+                    f"Please confirm with {CONFIRM_EMOJI}: {chunk}"
                 )
                 try:
                     await channel.send(content)
