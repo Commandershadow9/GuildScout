@@ -120,6 +120,15 @@ def build_raid_info_embed() -> discord.Embed:
         inline=False,
     )
     embed.add_field(
+        name="Raid-Archiv & Historie (optional)",
+        value=(
+            "Log-Channel optional: Zusammenfassung mit Rollen, Check-in,\n"
+            "No-Show und Gruenden. Teilnahmen werden intern gespeichert.\n"
+            "Admin: /raid-user-stats zeigt, wer wie oft teilnahm."
+        ),
+        inline=False,
+    )
+    embed.add_field(
         name="Teilnehmerrolle & Reminder",
         value=(
             "Beim Anmelden bekommst du die Teilnehmerrolle (falls gesetzt).\n"
