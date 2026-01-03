@@ -530,32 +530,6 @@ class RaidStore:
             rows = await cursor.fetchall()
             return [self._row_to_record(row) for row in rows]
 
-    async def list_recent_raids(
-        self,
-        limit: int = 5,
-        statuses: Optional[tuple[str, ...]] = None,
-    ) -> List[RaidRecord]:
-        """Return recently closed raids."""
-        await self.initialize()
-        status_values = statuses or ("closed", "auto-closed")
-        placeholders = ",".join("?" for _ in status_values)
-        async with aiosqlite.connect(self.db_path) as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
-                f"""
-                SELECT id, guild_id, channel_id, message_id, creator_id, title, description,
-                       start_time, tanks_needed, healers_needed, dps_needed, bench_needed,
-                       status, created_at, closed_at
-                FROM raids
-                WHERE status IN ({placeholders})
-                ORDER BY closed_at DESC, start_time DESC
-                LIMIT ?
-                """,
-                (*status_values, limit),
-            )
-            rows = await cursor.fetchall()
-            return [self._row_to_record(row) for row in rows]
-
     async def list_signups(self, raid_id: int) -> List[Dict[str, Optional[str]]]:
         """Return signups with role details."""
         await self.initialize()

@@ -134,10 +134,10 @@ Optionales Logging:
   eine kurze Raid-Zusammenfassung in den Log-Channel.
   Darin steht auch, wer welche Rolle gespielt hat.
 
-Historie-Embed:
-- Im `#raid-info` gibt es ein **Raid-Historie**-Embed.
-- Zeigt **Top-Teilnahmen** (mit Rollen) und die **letzten Raids**.
-- Aktualisiert sich automatisch nach jedem Raid-Ende.
+Teilnahme-Statistik:
+- Im `#raid-ankuendigungen` gibt es ein **Raid-Teilnahme**-Embed.
+- Zeigt **Top-Teilnahmen (All-Time)** mit Rollen-Counts.
+- Die Liste ist begrenzt (Top 10), wird automatisch aktualisiert.
 
 ---
 
