@@ -84,6 +84,7 @@ def build_raid_embed(
     signups_by_role: Dict[str, List[int]],
     timezone_name: str = "UTC",
     confirmed_ids: Optional[Iterable[int]] = None,
+    no_show_ids: Optional[Iterable[int]] = None,
 ) -> discord.Embed:
     """Build the public raid embed with roster details."""
     status_labels = {
@@ -182,8 +183,13 @@ def build_raid_embed(
 
     if confirmed_ids is not None and all_signups:
         confirmed_set = set(int(uid) for uid in (confirmed_ids or []))
+        no_show_set = set(int(uid) for uid in (no_show_ids or []))
         confirmed_list = [uid for uid in all_signups if uid in confirmed_set]
-        unconfirmed = [uid for uid in all_signups if uid not in confirmed_set]
+        unconfirmed = [
+            uid
+            for uid in all_signups
+            if uid not in confirmed_set and uid not in no_show_set
+        ]
         confirmed_value = f"{len(confirmed_list)}/{len(all_signups)}"
         if unconfirmed:
             preview = ", ".join(f"<@{uid}>" for uid in unconfirmed[:15])
@@ -193,6 +199,17 @@ def build_raid_embed(
                 preview = f"{len(unconfirmed)} offen"
             confirmed_value = f"{confirmed_value}\nOffen: {preview}"
         embed.add_field(name="Bestaetigt", value=confirmed_value, inline=False)
+        if no_show_set:
+            no_show_preview = ", ".join(f"<@{uid}>" for uid in list(no_show_set)[:15])
+            if len(no_show_set) > 15:
+                no_show_preview = f"{no_show_preview}, +{len(no_show_set) - 15} weitere"
+            if len(no_show_preview) > 1024:
+                no_show_preview = f"{len(no_show_set)} markiert"
+            embed.add_field(
+                name="No-Show",
+                value=no_show_preview,
+                inline=False,
+            )
 
     if raid.status == "locked":
         embed.set_footer(text="Anmeldung gesperrt: nur Reserve moeglich.")

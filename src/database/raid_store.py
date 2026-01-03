@@ -390,6 +390,27 @@ class RaidStore:
             await db.execute("DELETE FROM raid_reminders WHERE raid_id = ?", (raid_id,))
             await db.commit()
 
+    async def update_raid_slots(
+        self,
+        raid_id: int,
+        tanks_needed: int,
+        healers_needed: int,
+        dps_needed: int,
+        bench_needed: int,
+    ) -> None:
+        """Update role slot counts for a raid."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """
+                UPDATE raids
+                SET tanks_needed = ?, healers_needed = ?, dps_needed = ?, bench_needed = ?
+                WHERE id = ?
+                """,
+                (tanks_needed, healers_needed, dps_needed, bench_needed, raid_id),
+            )
+            await db.commit()
+
     async def list_raids_to_close(self, now_ts: int) -> List[RaidRecord]:
         """Return open/locked raids with start_time <= now_ts."""
         await self.initialize()
@@ -490,7 +511,7 @@ class RaidStore:
                     "role": row[1],
                     "preferred_role": row[2],
                     "joined_at": int(row[3]),
-                    "confirmed": bool(row[4]),
+                    "confirmed": int(row[4] or 0),
                 }
                 for row in rows
             ]
@@ -520,6 +541,28 @@ class RaidStore:
             )
             await db.commit()
 
+    async def mark_no_shows(self, raid_id: int) -> List[int]:
+        """Mark unconfirmed signups as no-shows and return their IDs."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """
+                SELECT user_id
+                FROM raid_signups
+                WHERE raid_id = ? AND confirmed = 0
+                """,
+                (raid_id,),
+            )
+            rows = await cursor.fetchall()
+            user_ids = [int(row[0]) for row in rows]
+            if user_ids:
+                await db.execute(
+                    "UPDATE raid_signups SET confirmed = 2 WHERE raid_id = ? AND confirmed = 0",
+                    (raid_id,),
+                )
+            await db.commit()
+            return user_ids
+
     async def get_confirmed_user_ids(self, raid_id: int) -> List[int]:
         """Return confirmed signup user IDs."""
         await self.initialize()
@@ -529,6 +572,36 @@ class RaidStore:
                 SELECT user_id
                 FROM raid_signups
                 WHERE raid_id = ? AND confirmed = 1
+                """,
+                (raid_id,),
+            )
+            rows = await cursor.fetchall()
+            return [int(row[0]) for row in rows]
+
+    async def get_unconfirmed_user_ids(self, raid_id: int) -> List[int]:
+        """Return unconfirmed signup user IDs."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """
+                SELECT user_id
+                FROM raid_signups
+                WHERE raid_id = ? AND confirmed = 0
+                """,
+                (raid_id,),
+            )
+            rows = await cursor.fetchall()
+            return [int(row[0]) for row in rows]
+
+    async def get_no_show_user_ids(self, raid_id: int) -> List[int]:
+        """Return no-show user IDs."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """
+                SELECT user_id
+                FROM raid_signups
+                WHERE raid_id = ? AND confirmed = 2
                 """,
                 (raid_id,),
             )

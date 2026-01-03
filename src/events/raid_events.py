@@ -129,9 +129,13 @@ class RaidEvents(commands.Cog):
         signups = await self.raid_store.get_signups_by_role(raid_id)
         confirmation_message_id = await self.raid_store.get_confirmation_message_id(raid_id)
         confirmed = None
+        no_shows = None
         if confirmation_message_id:
             confirmed = await self.raid_store.get_confirmed_user_ids(raid_id)
-        embed = build_raid_embed(raid, signups, self.config.raid_timezone, confirmed)
+            no_shows = await self.raid_store.get_no_show_user_ids(raid_id)
+        embed = build_raid_embed(
+            raid, signups, self.config.raid_timezone, confirmed, no_shows
+        )
         try:
             await message.edit(embed=embed)
         except Exception:

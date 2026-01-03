@@ -22,6 +22,7 @@ from src.utils.raid_utils import (
     ROLE_EMOJIS,
     build_raid_embed,
     build_raid_log_embed,
+    get_role_limit,
     parse_raid_datetime,
 )
 
@@ -102,7 +103,8 @@ def build_raid_info_embed() -> discord.Embed:
             "Reagiere mit: 🛡️ Tank, 💉 Healer, ⚔️ DPS, 🪑 Reserve\n"
             "❌ = Abmelden. Pro Person nur eine Rolle.\n"
             "Wenn Rolle voll ist, wirst du auf Reserve gesetzt (falls frei).\n"
-            "Kurz vor Start gibt es einen Check-in per ✅."
+            "Kurz vor Start gibt es einen Check-in per ✅.\n"
+            "5 Minuten vorher werden fehlende Check-ins gepingt."
         ),
         inline=False,
     )
@@ -110,7 +112,7 @@ def build_raid_info_embed() -> discord.Embed:
         name="Verwalten (Ersteller/Admin/Lead)",
         value=(
             "Buttons im Raid-Post: ✏️ Bearbeiten, 🔒 Sperren/Oeffnen,\n"
-            "✅ Abschliessen, 🛑 Absagen, ⏭️ Folge-Raid.\n"
+            "✅ Abschliessen, 🛑 Absagen, ⏭️ Folge-Raid, ⚙️ Slots.\n"
             "Sperren = nur Reserve. Auto-Close kann deaktiviert werden\n"
             "oder als Sicherung nach X Stunden greifen."
         ),
@@ -160,7 +162,7 @@ class RoleCountSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction) -> None:
         view = self.view
-        if not isinstance(view, RaidSlotsView):
+        if not view or not hasattr(view, "counts") or not hasattr(view, "build_embed"):
             return
         selected = int(self.values[0])
         view.counts[self.role_key] = selected
@@ -745,7 +747,7 @@ class RaidSlotsView(discord.ui.View):
             )
             return
 
-        embed = build_raid_embed(raid, {}, self.config.raid_timezone, None)
+        embed = build_raid_embed(raid, {}, self.config.raid_timezone, None, None)
         manage_view = RaidManageView(self.config, self.raid_store)
         raid_message = await post_channel.send(embed=embed, view=manage_view)
         await self.raid_store.set_message_id(raid_id, raid_message.id)
@@ -788,6 +790,232 @@ class RaidSlotsView(discord.ui.View):
         self.stop()
         await interaction.response.edit_message(
             content="❌ Raid-Erstellung abgebrochen.",
+            embed=None,
+            view=self,
+        )
+
+
+class RaidSlotEditView(discord.ui.View):
+    """Edit slot counts for an existing raid."""
+
+    def __init__(
+        self,
+        config: Config,
+        raid_store: RaidStore,
+        requester_id: int,
+        raid_id: int,
+        title: str,
+        counts: Dict[str, int],
+    ):
+        super().__init__(timeout=600)
+        self.config = config
+        self.raid_store = raid_store
+        self.requester_id = requester_id
+        self.raid_id = raid_id
+        self.title = title
+        self.counts = counts
+        self.message: Optional[discord.Message] = None
+
+        self.add_item(RoleCountSelect("Tanks", ROLE_TANK, self.counts[ROLE_TANK], row=0))
+        self.add_item(RoleCountSelect("Healer", ROLE_HEALER, self.counts[ROLE_HEALER], row=1))
+        self.add_item(RoleCountSelect("DPS", ROLE_DPS, self.counts[ROLE_DPS], row=2))
+        self.add_item(RoleCountSelect("Reserve", ROLE_BENCH, self.counts[ROLE_BENCH], row=3))
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.requester_id:
+            await interaction.response.send_message(
+                "❌ Nur der Ersteller kann das bearbeiten.",
+                ephemeral=True,
+            )
+            return False
+        return True
+
+    def build_embed(self) -> discord.Embed:
+        embed = discord.Embed(
+            title=f"⚙️ Slots bearbeiten: {self.title}",
+            color=discord.Color.blurple(),
+        )
+        embed.add_field(name="Tanks", value=str(self.counts[ROLE_TANK]), inline=True)
+        embed.add_field(name="Healer", value=str(self.counts[ROLE_HEALER]), inline=True)
+        embed.add_field(name="DPS", value=str(self.counts[ROLE_DPS]), inline=True)
+        embed.add_field(name="Reserve", value=str(self.counts[ROLE_BENCH]), inline=True)
+        embed.set_footer(text="Aendern und speichern.")
+        return embed
+
+    async def _get_raid_message(self, guild: discord.Guild):
+        raid = await self.raid_store.get_raid(self.raid_id)
+        if not raid or not raid.message_id:
+            return None, None
+        channel = guild.get_channel(raid.channel_id)
+        if not isinstance(channel, discord.TextChannel):
+            try:
+                channel = await guild.fetch_channel(raid.channel_id)
+            except Exception:
+                return raid, None
+        try:
+            message = await channel.fetch_message(raid.message_id)
+        except Exception:
+            return raid, None
+        return raid, message
+
+    async def _send_dm(self, member: Optional[discord.Member], message: str) -> None:
+        if not member:
+            return
+        try:
+            await member.send(message)
+        except Exception:
+            pass
+
+    async def _promote_from_bench(
+        self,
+        raid,
+        message: Optional[discord.Message],
+        guild: discord.Guild,
+    ) -> None:
+        if raid.status != "open":
+            return
+
+        for role in (ROLE_TANK, ROLE_HEALER, ROLE_DPS):
+            limit = get_role_limit(raid, role)
+            if limit <= 0:
+                continue
+
+            while True:
+                signups = await self.raid_store.get_signups_by_role(raid.id)
+                current_count = len(signups.get(role, []))
+                if current_count >= limit:
+                    break
+
+                bench_candidates = await self.raid_store.get_bench_queue(
+                    raid.id, preferred_role=role
+                )
+                if not bench_candidates:
+                    bench_candidates = await self.raid_store.get_bench_queue(raid.id)
+                if not bench_candidates:
+                    break
+
+                user_id = bench_candidates[0]
+                await self.raid_store.upsert_signup(raid.id, user_id, role)
+                member = guild.get_member(user_id)
+                if not member:
+                    try:
+                        member = await guild.fetch_member(user_id)
+                    except Exception:
+                        member = None
+                if message and member:
+                    try:
+                        await message.remove_reaction(ROLE_EMOJIS[ROLE_BENCH], member)
+                    except Exception:
+                        pass
+                await self._send_dm(
+                    member,
+                    f"✅ Du wurdest von Reserve auf {role.upper()} verschoben.",
+                )
+
+    async def _maybe_ping_open_slots(
+        self,
+        raid,
+        message: Optional[discord.Message],
+        guild: discord.Guild,
+    ) -> None:
+        if raid.status != "open":
+            return
+        role_id = self.config.raid_participant_role_id
+        if not role_id:
+            return
+        role = guild.get_role(role_id)
+        if not role:
+            return
+
+        signups = await self.raid_store.get_signups_by_role(raid.id)
+        open_tanks = max(raid.tanks_needed - len(signups.get(ROLE_TANK, [])), 0)
+        open_healers = max(raid.healers_needed - len(signups.get(ROLE_HEALER, [])), 0)
+        open_dps = max(raid.dps_needed - len(signups.get(ROLE_DPS, [])), 0)
+        total_open = open_tanks + open_healers + open_dps
+        if total_open <= 0:
+            return
+
+        cooldown = self.config.raid_open_slot_ping_minutes * 60
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        last_sent = await self.raid_store.get_alert_sent_at(raid.id, "open_slots")
+        if last_sent and now_ts - last_sent < cooldown:
+            return
+
+        parts = []
+        if open_tanks:
+            parts.append(f"Tanks: {open_tanks}")
+        if open_healers:
+            parts.append(f"Healer: {open_healers}")
+        if open_dps:
+            parts.append(f"DPS: {open_dps}")
+        slot_text = " | ".join(parts)
+        content = f"{role.mention} Slots frei fuer **{raid.title}**: {slot_text}"
+        try:
+            if message:
+                await message.channel.send(content)
+                await self.raid_store.mark_alert_sent(raid.id, "open_slots")
+        except Exception:
+            logger.warning("Failed to send open slot ping", exc_info=True)
+
+    @discord.ui.button(label="✅ Speichern", style=discord.ButtonStyle.green, row=4)
+    async def save(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        if self.counts[ROLE_TANK] + self.counts[ROLE_HEALER] + self.counts[ROLE_DPS] == 0:
+            await interaction.response.send_message(
+                "❌ Bitte mindestens einen Slot fuer Tank/Healer/DPS setzen.",
+                ephemeral=True,
+            )
+            return
+
+        guild = interaction.guild
+        if not guild:
+            await interaction.response.send_message(
+                "❌ Guild nicht gefunden.",
+                ephemeral=True,
+            )
+            return
+
+        await self.raid_store.update_raid_slots(
+            self.raid_id,
+            self.counts[ROLE_TANK],
+            self.counts[ROLE_HEALER],
+            self.counts[ROLE_DPS],
+            self.counts[ROLE_BENCH],
+        )
+
+        raid, raid_message = await self._get_raid_message(guild)
+        if raid and raid_message:
+            await self._promote_from_bench(raid, raid_message, guild)
+            await self._maybe_ping_open_slots(raid, raid_message, guild)
+            signups = await self.raid_store.get_signups_by_role(raid.id)
+            confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
+            no_shows = await self.raid_store.get_no_show_user_ids(raid.id)
+            embed = build_raid_embed(
+                raid, signups, self.config.raid_timezone, confirmed, no_shows
+            )
+            try:
+                await raid_message.edit(embed=embed)
+            except Exception:
+                pass
+
+        for item in self.children:
+            item.disabled = True
+        self.stop()
+
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title="✅ Slots aktualisiert",
+                color=discord.Color.green(),
+            ),
+            view=self,
+        )
+
+    @discord.ui.button(label="❌ Abbrechen", style=discord.ButtonStyle.red, row=4)
+    async def cancel(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        for item in self.children:
+            item.disabled = True
+        self.stop()
+        await interaction.response.edit_message(
+            content="❌ Slot-Bearbeitung abgebrochen.",
             embed=None,
             view=self,
         )
@@ -985,8 +1213,13 @@ class RaidPostEditModal(discord.ui.Modal):
 
         signups = await self.view_ref.raid_store.get_signups_by_role(self.raid.id)
         confirmed = await self.view_ref.raid_store.get_confirmed_user_ids(self.raid.id)
+        no_shows = await self.view_ref.raid_store.get_no_show_user_ids(self.raid.id)
         embed = build_raid_embed(
-            updated, signups, self.view_ref.config.raid_timezone, confirmed
+            updated,
+            signups,
+            self.view_ref.config.raid_timezone,
+            confirmed,
+            no_shows,
         )
         await interaction.message.edit(embed=embed, view=self.view_ref)
 
@@ -1277,7 +1510,10 @@ class RaidManageView(discord.ui.View):
         if updated and interaction.message:
             signups = await self.raid_store.get_signups_by_role(raid.id)
             confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
-            embed = build_raid_embed(updated, signups, self.config.raid_timezone, confirmed)
+            no_shows = await self.raid_store.get_no_show_user_ids(raid.id)
+            embed = build_raid_embed(
+                updated, signups, self.config.raid_timezone, confirmed, no_shows
+            )
             await interaction.message.edit(embed=embed, view=self)
 
         await interaction.response.send_message(
@@ -1345,6 +1581,47 @@ class RaidManageView(discord.ui.View):
         view.message = await interaction.original_response()
 
     @discord.ui.button(
+        label="⚙️ Slots",
+        style=discord.ButtonStyle.secondary,
+        custom_id="guildscout_raid_slots_v1",
+        row=1,
+    )
+    async def edit_slots(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ) -> None:
+        raid = await self._get_raid_from_interaction(interaction)
+        if not raid:
+            return
+
+        if not self._can_manage(interaction, raid):
+            await interaction.response.send_message(
+                "❌ Keine Berechtigung fuer Slots.",
+                ephemeral=True,
+            )
+            return
+
+        counts = {
+            ROLE_TANK: raid.tanks_needed,
+            ROLE_HEALER: raid.healers_needed,
+            ROLE_DPS: raid.dps_needed,
+            ROLE_BENCH: raid.bench_needed,
+        }
+        view = RaidSlotEditView(
+            config=self.config,
+            raid_store=self.raid_store,
+            requester_id=interaction.user.id,
+            raid_id=raid.id,
+            title=raid.title,
+            counts=counts,
+        )
+        await interaction.response.send_message(
+            embed=view.build_embed(),
+            view=view,
+            ephemeral=True,
+        )
+        view.message = await interaction.original_response()
+
+    @discord.ui.button(
         label="✅ Abschliessen",
         style=discord.ButtonStyle.danger,
         custom_id="guildscout_raid_close_v1",
@@ -1379,8 +1656,9 @@ class RaidManageView(discord.ui.View):
                 if updated:
                     signups = await self.raid_store.get_signups_by_role(raid.id)
                     confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
+                    no_shows = await self.raid_store.get_no_show_user_ids(raid.id)
                     embed = build_raid_embed(
-                        updated, signups, self.config.raid_timezone, confirmed
+                        updated, signups, self.config.raid_timezone, confirmed, no_shows
                     )
                     await interaction.message.edit(embed=embed, view=self)
                     try:
@@ -1439,8 +1717,9 @@ class RaidManageView(discord.ui.View):
                 if updated:
                     signups = await self.raid_store.get_signups_by_role(raid.id)
                     confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
+                    no_shows = await self.raid_store.get_no_show_user_ids(raid.id)
                     embed = build_raid_embed(
-                        updated, signups, self.config.raid_timezone, confirmed
+                        updated, signups, self.config.raid_timezone, confirmed, no_shows
                     )
                     await interaction.message.edit(embed=embed, view=self)
                     try:

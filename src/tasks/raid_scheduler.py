@@ -36,6 +36,8 @@ class RaidScheduler(commands.Cog):
         await self._send_reminders(now_ts)
         await self._send_dm_reminders(now_ts)
         await self._send_confirmation_checks(now_ts)
+        await self._send_confirmation_reminders(now_ts)
+        await self._mark_no_shows(now_ts)
 
         raids_to_close = {}
         if self.config.raid_auto_close_at_start:
@@ -76,7 +78,10 @@ class RaidScheduler(commands.Cog):
 
             signups = await self.raid_store.get_signups_by_role(raid.id)
             confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
-            embed = build_raid_embed(updated, signups, self.config.raid_timezone, confirmed)
+            no_shows = await self.raid_store.get_no_show_user_ids(raid.id)
+            embed = build_raid_embed(
+                updated, signups, self.config.raid_timezone, confirmed, no_shows
+            )
 
             try:
                 await message.delete()
@@ -277,9 +282,128 @@ class RaidScheduler(commands.Cog):
                 await message.add_reaction(CONFIRM_EMOJI)
                 await self.raid_store.reset_confirmations(raid.id)
                 await self.raid_store.set_confirmation_message(raid.id, message.id)
+                if raid.message_id:
+                    try:
+                        raid_message = await channel.fetch_message(raid.message_id)
+                    except Exception:
+                        raid_message = None
+                    if raid_message:
+                        signups = await self.raid_store.get_signups_by_role(raid.id)
+                        confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
+                        no_shows = await self.raid_store.get_no_show_user_ids(raid.id)
+                        embed = build_raid_embed(
+                            raid, signups, self.config.raid_timezone, confirmed, no_shows
+                        )
+                        await raid_message.edit(embed=embed)
             except Exception:
                 logger.warning(
                     "Failed to send confirmation check for raid %s", raid.id, exc_info=True
+                )
+
+    async def _send_confirmation_reminders(self, now_ts: int) -> None:
+        minutes = self.config.raid_confirmation_reminder_minutes
+        if minutes <= 0:
+            return
+
+        raids = await self.raid_store.list_active_raids(now_ts)
+        if not raids:
+            return
+
+        window_seconds = 120
+
+        for raid in raids:
+            confirmation_message_id = await self.raid_store.get_confirmation_message_id(
+                raid.id
+            )
+            if not confirmation_message_id:
+                continue
+
+            trigger_ts = raid.start_time - (minutes * 60)
+            if now_ts < trigger_ts or (now_ts - trigger_ts) > window_seconds:
+                continue
+
+            alert_type = f"confirm_reminder_{minutes}"
+            if await self.raid_store.get_alert_sent_at(raid.id, alert_type):
+                continue
+
+            unconfirmed = await self.raid_store.get_unconfirmed_user_ids(raid.id)
+            if not unconfirmed:
+                await self.raid_store.mark_alert_sent(raid.id, alert_type)
+                continue
+
+            guild = self.bot.get_guild(raid.guild_id)
+            if not guild:
+                continue
+
+            channel = guild.get_channel(raid.channel_id)
+            if not isinstance(channel, discord.TextChannel):
+                try:
+                    channel = await guild.fetch_channel(raid.channel_id)
+                except Exception:
+                    continue
+
+            mentions = [f"<@{user_id}>" for user_id in unconfirmed]
+            chunk_size = 20
+            for idx in range(0, len(mentions), chunk_size):
+                chunk = ", ".join(mentions[idx : idx + chunk_size])
+                content = (
+                    f"⏰ Check-in fehlt fuer **{raid.title}**. "
+                    f"Bitte mit {CONFIRM_EMOJI} bestaetigen: {chunk}"
+                )
+                try:
+                    await channel.send(content)
+                except Exception:
+                    logger.warning(
+                        "Failed to send confirmation reminder for raid %s",
+                        raid.id,
+                        exc_info=True,
+                    )
+                    break
+
+            await self.raid_store.mark_alert_sent(raid.id, alert_type)
+
+    async def _mark_no_shows(self, now_ts: int) -> None:
+        raids = await self.raid_store.list_raids_to_close(now_ts)
+        if not raids:
+            return
+
+        for raid in raids:
+            if await self.raid_store.get_alert_sent_at(raid.id, "no_show_marked"):
+                continue
+
+            no_shows = await self.raid_store.mark_no_shows(raid.id)
+            await self.raid_store.mark_alert_sent(raid.id, "no_show_marked")
+
+            if not raid.message_id:
+                continue
+
+            guild = self.bot.get_guild(raid.guild_id)
+            if not guild:
+                continue
+
+            channel = guild.get_channel(raid.channel_id)
+            if not isinstance(channel, discord.TextChannel):
+                try:
+                    channel = await guild.fetch_channel(raid.channel_id)
+                except Exception:
+                    continue
+
+            try:
+                message = await channel.fetch_message(raid.message_id)
+            except Exception:
+                continue
+
+            signups = await self.raid_store.get_signups_by_role(raid.id)
+            confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
+            no_show_ids = await self.raid_store.get_no_show_user_ids(raid.id)
+            embed = build_raid_embed(
+                raid, signups, self.config.raid_timezone, confirmed, no_show_ids
+            )
+            try:
+                await message.edit(embed=embed)
+            except Exception:
+                logger.warning(
+                    "Failed to update raid message for no-shows %s", raid.id, exc_info=True
                 )
 
     async def _send_raid_log(

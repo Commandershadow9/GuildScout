@@ -127,6 +127,7 @@ Buttons:
 - **✅ Abschliessen**: Raid manuell schliessen
 - **🛑 Absagen**: Raid absagen
 - **⏭️ Folge-Raid**: Neuen Raid mit gleichem Titel/Slots erstellen (nur Zeit waehlen)
+- **⚙️ Slots**: Slotzahlen anpassen (Reserve wird automatisch hochgezogen)
 
 Optionales Logging:
 - Wenn `log_channel_id` gesetzt ist, postet der Bot beim Abschluss/Abbruch
@@ -143,13 +144,19 @@ Erinnerungen vor Start (Default: 24h und 1h):
 DM-Erinnerung (Default: 15 Minuten vor Start):
 - Der Bot schickt eine DM an alle angemeldeten Teilnehmer.
 
-Check-in (Default: 30 Minuten vor Start):
+Check-in (Default: 15 Minuten vor Start):
 - Der Bot postet eine Nachricht mit ✅.
 - Teilnehmer bestaetigen ihre Teilnahme per Reaktion.
 - Im Raid-Embed siehst du, wer noch offen ist.
 
 Slots frei Ping (Cooldown: 30 Minuten):
 - Wenn Slots frei werden, pingt der Bot @Raid Teilnehmer.
+
+Check-in Reminder (Default: 5 Minuten vor Start):
+- Nur die **unbestaetigten** Teilnehmer werden nochmal gepingt.
+
+No-Show Markierung:
+- Nach Start werden nicht bestaetigte Teilnehmer als **No-Show** markiert.
 
 Config:
 ```yaml
@@ -158,7 +165,8 @@ raid_management:
   dm_reminder_minutes: [15]
   auto_close_at_start: true
   auto_close_after_hours: 12
-  confirmation_minutes: 30
+  confirmation_minutes: 15
+  confirmation_reminder_minutes: 5
   open_slot_ping_minutes: 30
   log_channel_id: null
 ```
@@ -202,10 +210,17 @@ raid_management:
   info_channel_id: 789
   info_message_id: 111
   participant_role_id: 222
+  log_channel_id: null
   creator_roles:
     - 333
   timezone: "Europe/Berlin"
   reminder_hours: [24, 1]
+  dm_reminder_minutes: [15]
+  auto_close_at_start: true
+  auto_close_after_hours: 12
+  confirmation_minutes: 15
+  confirmation_reminder_minutes: 5
+  open_slot_ping_minutes: 30
 ```
 
 ---

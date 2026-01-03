@@ -476,6 +476,16 @@ class Config:
         return max(0, minutes)
 
     @property
+    def raid_confirmation_reminder_minutes(self) -> int:
+        """Minutes before start to remind unconfirmed participants."""
+        value = self.get("raid_management.confirmation_reminder_minutes", 5)
+        try:
+            minutes = int(value)
+        except (TypeError, ValueError):
+            minutes = 5
+        return max(0, minutes)
+
+    @property
     def raid_open_slot_ping_minutes(self) -> int:
         """Cooldown for open slot pings."""
         value = self.get("raid_management.open_slot_ping_minutes", 30)

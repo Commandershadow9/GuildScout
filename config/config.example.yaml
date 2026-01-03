@@ -121,7 +121,10 @@ raid_management:
   auto_close_after_hours: 12
 
   # Minutes before start to request confirmations
-  confirmation_minutes: 30
+  confirmation_minutes: 15
+
+  # Minutes before start to remind unconfirmed participants
+  confirmation_reminder_minutes: 5
 
   # Cooldown before sending another "slots frei" ping
   open_slot_ping_minutes: 30
