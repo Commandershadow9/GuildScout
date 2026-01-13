@@ -458,7 +458,7 @@ class RaidScheduler(commands.Cog):
             if not message.author or not message.author.bot:
                 continue
             content = (message.content or "").lower()
-            if "erinnerung" not in content:
+            if "reminder" not in content and "erinnerung" not in content:
                 continue
             if title_key and title_key not in content:
                 continue
@@ -478,7 +478,7 @@ class RaidScheduler(commands.Cog):
             if not message.author or not message.author.bot:
                 continue
             content = (message.content or "").lower()
-            if "slots frei" not in content:
+            if "open slots" not in content and "slots frei" not in content:
                 continue
             if title_key and title_key not in content:
                 continue

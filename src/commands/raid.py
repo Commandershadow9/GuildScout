@@ -1620,7 +1620,7 @@ class RaidManageView(discord.ui.View):
             if not message.author or not message.author.bot:
                 continue
             content = (message.content or "").lower()
-            if "reminder" not in content:
+            if "reminder" not in content and "erinnerung" not in content:
                 continue
             if title_key and title_key not in content:
                 continue
@@ -1640,7 +1640,7 @@ class RaidManageView(discord.ui.View):
             if not message.author or not message.author.bot:
                 continue
             content = (message.content or "").lower()
-            if "open slots" not in content:
+            if "open slots" not in content and "slots frei" not in content:
                 continue
             if title_key and title_key not in content:
                 continue
