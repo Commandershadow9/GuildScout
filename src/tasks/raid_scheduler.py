@@ -234,6 +234,8 @@ class RaidScheduler(commands.Cog):
                 await self.raid_store.mark_reminder_sent(raid.id, marker)
 
     async def _send_confirmation_checks(self, now_ts: int) -> None:
+        if not self.config.raid_checkin_enabled:
+            return
         minutes = self.config.raid_confirmation_minutes
         if minutes <= 0:
             return
@@ -303,6 +305,8 @@ class RaidScheduler(commands.Cog):
                 )
 
     async def _send_confirmation_reminders(self, now_ts: int) -> None:
+        if not self.config.raid_checkin_enabled:
+            return
         minutes = self.config.raid_confirmation_reminder_minutes
         if minutes <= 0:
             return
@@ -365,6 +369,8 @@ class RaidScheduler(commands.Cog):
             await self.raid_store.mark_alert_sent(raid.id, alert_type)
 
     async def _mark_no_shows(self, now_ts: int) -> None:
+        if not self.config.raid_checkin_enabled:
+            return
         raids = await self.raid_store.list_raids_to_close(now_ts)
         if not raids:
             return

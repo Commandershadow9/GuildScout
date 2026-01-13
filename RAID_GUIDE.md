@@ -174,7 +174,9 @@ Config:
 ```yaml
 raid_management:
   reminder_hours: [24, 1]
-  dm_reminder_minutes: [15]
+  dm_reminder_minutes: [15, 5]
+  checkin_enabled: true
+  open_slot_ping_enabled: true
   auto_close_at_start: true
   auto_close_after_hours: 12
   confirmation_minutes: 15

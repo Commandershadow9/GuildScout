@@ -488,6 +488,16 @@ class Config:
         return sorted({minute for minute in parsed if minute > 0})
 
     @property
+    def raid_checkin_enabled(self) -> bool:
+        """Whether check-in messages and no-show tracking are enabled."""
+        return bool(self.get("raid_management.checkin_enabled", True))
+
+    @property
+    def raid_open_slot_ping_enabled(self) -> bool:
+        """Whether open-slot pings are enabled."""
+        return bool(self.get("raid_management.open_slot_ping_enabled", True))
+
+    @property
     def raid_confirmation_minutes(self) -> int:
         """Minutes before start to request attendance confirmations."""
         value = self.get("raid_management.confirmation_minutes", 30)

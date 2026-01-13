@@ -120,6 +120,12 @@ raid_management:
   # DM reminder offsets before start time (minutes)
   dm_reminder_minutes: [15, 5]
 
+  # Enable check-in messages and no-show marking
+  checkin_enabled: true
+
+  # Enable open-slot pings
+  open_slot_ping_enabled: true
+
   # Auto-close raids at start time
   auto_close_at_start: true
 

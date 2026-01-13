@@ -273,6 +273,8 @@ class RaidEvents(commands.Cog):
         message: discord.Message,
         guild: discord.Guild,
     ) -> None:
+        if not self.config.raid_open_slot_ping_enabled:
+            return
         if raid.status != "open":
             return
         role = self._get_participant_role(guild)

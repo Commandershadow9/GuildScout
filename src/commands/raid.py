@@ -111,8 +111,7 @@ def build_raid_info_embed() -> discord.Embed:
             "React with: 🛡️ Tank, 💉 Healer, ⚔️ DPS, 🪑 Bench\n"
             "❌ = leave. One role per person.\n"
             "If a role is full, you are moved to bench (if available).\n"
-            "Shortly before start there is a ✅ check-in.\n"
-            "5 minutes before start, missing check-ins are pinged.\n"
+            "Optional: ✅ check-in can be enabled before start.\n"
             "On leave you can optionally send a DM reason."
         ),
         inline=False,
@@ -1165,6 +1164,8 @@ class RaidSlotEditView(discord.ui.View):
         message: Optional[discord.Message],
         guild: discord.Guild,
     ) -> None:
+        if not self.config.raid_open_slot_ping_enabled:
+            return
         if raid.status != "open":
             return
         role_id = self.config.raid_participant_role_id
