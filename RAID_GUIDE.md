@@ -37,9 +37,14 @@ Rules:
 ### Method A: Button
 1) In `#raid-info`, click **"Create raid"**.
 2) Enter title + description.
-3) Pick date and time via dropdowns (page weeks).
-4) Choose slots or a template.
-5) Click **"Post raid"**.
+3) Select game + mode.
+4) Pick date and time via dropdowns (page weeks).
+5) Choose slots or a template.
+6) Click **"Post raid"**.
+
+Notes:
+- **Mode = Raid** posts in `#raid-ankuendigungen`.
+- **Mode = Guildwar** posts in `#guildwar-ankuendigungen`.
 
 ### Method B: Command
 `/raid-create`
@@ -81,7 +86,7 @@ If **Bench** is full:
 ## 🧾 Participant Role
 
 Optional participant role:
-- Default name: **"Raid Teilnehmer"**
+- Default name: **"Raid Participants"**
 - Created automatically if missing.
 - **Granted on signup**.
 - **Removed on leave or after raid end**.
@@ -214,6 +219,7 @@ This helps mixed time zones.
 raid_management:
   enabled: true
   post_channel_id: 123
+  guildwar_post_channel_id: 124
   manage_channel_id: 456
   info_channel_id: 789
   info_message_id: 111

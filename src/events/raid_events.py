@@ -67,7 +67,11 @@ class RaidEvents(commands.Cog):
     def _get_participant_role(self, guild: discord.Guild) -> Optional[discord.Role]:
         role_id = self.config.raid_participant_role_id
         if not role_id:
-            fallback = discord.utils.get(guild.roles, name="Raid Teilnehmer")
+            fallback = None
+            for name in ("Raid Participants", "Raid Teilnehmer"):
+                fallback = discord.utils.get(guild.roles, name=name)
+                if fallback:
+                    break
             if fallback:
                 self.config.set_raid_participant_role_id(fallback.id)
             return fallback

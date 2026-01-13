@@ -36,6 +36,20 @@ ROLE_EMOJIS = {
 
 CONFIRM_EMOJI = "✅"
 
+GAME_WWM = "where_winds_meet"
+
+GAME_LABELS = {
+    GAME_WWM: "Where Winds Meet",
+}
+
+MODE_RAID = "raid"
+MODE_GUILDWAR = "guildwar"
+
+MODE_LABELS = {
+    MODE_RAID: "Raid",
+    MODE_GUILDWAR: "Guildwar",
+}
+
 
 def parse_raid_datetime(date_str: str, time_str: str, timezone_name: str) -> datetime:
     """Parse raid date/time strings into a timezone-aware datetime."""
@@ -147,6 +161,11 @@ def build_raid_embed(
         inline=False,
     )
 
+    game_label = GAME_LABELS.get(raid.game, str(raid.game).replace("_", " ").title())
+    mode_label = MODE_LABELS.get(raid.mode, str(raid.mode).replace("_", " ").title())
+
+    embed.add_field(name="Game", value=game_label, inline=True)
+    embed.add_field(name="Mode", value=mode_label, inline=True)
     embed.add_field(name="Created by", value=f"<@{raid.creator_id}>", inline=True)
     embed.add_field(name="Status", value=status_label, inline=True)
 
@@ -243,6 +262,18 @@ def build_raid_log_embed(
     embed.add_field(
         name="Status",
         value=status,
+        inline=True,
+    )
+    game_label = GAME_LABELS.get(raid.game, str(raid.game).replace("_", " ").title())
+    mode_label = MODE_LABELS.get(raid.mode, str(raid.mode).replace("_", " ").title())
+    embed.add_field(
+        name="Game",
+        value=game_label,
+        inline=True,
+    )
+    embed.add_field(
+        name="Mode",
+        value=mode_label,
         inline=True,
     )
     embed.add_field(

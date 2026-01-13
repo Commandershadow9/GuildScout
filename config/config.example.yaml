@@ -86,6 +86,9 @@ raid_management:
   # Channel where raid announcements are posted
   post_channel_id: null
 
+  # Channel where guildwar announcements are posted
+  guildwar_post_channel_id: null
+
   # Optional: channel where raid creation is allowed (null = anywhere)
   manage_channel_id: null
 
@@ -115,7 +118,7 @@ raid_management:
   reminder_hours: [24, 1]
 
   # DM reminder offsets before start time (minutes)
-  dm_reminder_minutes: [15]
+  dm_reminder_minutes: [15, 5]
 
   # Auto-close raids at start time
   auto_close_at_start: true

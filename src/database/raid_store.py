@@ -25,6 +25,8 @@ class RaidRecord:
     creator_id: int
     title: str
     description: Optional[str]
+    game: str
+    mode: str
     start_time: int
     tanks_needed: int
     healers_needed: int
@@ -61,6 +63,8 @@ class RaidStore:
                     creator_id INTEGER NOT NULL,
                     title TEXT NOT NULL,
                     description TEXT,
+                    game TEXT NOT NULL DEFAULT 'where_winds_meet',
+                    mode TEXT NOT NULL DEFAULT 'raid',
                     start_time INTEGER NOT NULL,
                     tanks_needed INTEGER NOT NULL,
                     healers_needed INTEGER NOT NULL,
@@ -79,6 +83,17 @@ class RaidStore:
                 ON raids(message_id)
                 """
             )
+
+            cursor = await db.execute("PRAGMA table_info(raids)")
+            columns = [row[1] for row in await cursor.fetchall()]
+            if "game" not in columns:
+                await db.execute(
+                    "ALTER TABLE raids ADD COLUMN game TEXT NOT NULL DEFAULT 'where_winds_meet'"
+                )
+            if "mode" not in columns:
+                await db.execute(
+                    "ALTER TABLE raids ADD COLUMN mode TEXT NOT NULL DEFAULT 'raid'"
+                )
 
             await db.execute(
                 """
@@ -197,14 +212,16 @@ class RaidStore:
             creator_id=row[4],
             title=row[5],
             description=row[6],
-            start_time=row[7],
-            tanks_needed=row[8],
-            healers_needed=row[9],
-            dps_needed=row[10],
-            bench_needed=row[11],
-            status=row[12],
-            created_at=row[13],
-            closed_at=row[14],
+            game=row[7],
+            mode=row[8],
+            start_time=row[9],
+            tanks_needed=row[10],
+            healers_needed=row[11],
+            dps_needed=row[12],
+            bench_needed=row[13],
+            status=row[14],
+            created_at=row[15],
+            closed_at=row[16],
         )
 
     async def create_raid(
@@ -214,6 +231,8 @@ class RaidStore:
         creator_id: int,
         title: str,
         description: Optional[str],
+        game: str,
+        mode: str,
         start_time: int,
         tanks_needed: int,
         healers_needed: int,
@@ -233,6 +252,8 @@ class RaidStore:
                     creator_id,
                     title,
                     description,
+                    game,
+                    mode,
                     start_time,
                     tanks_needed,
                     healers_needed,
@@ -240,7 +261,7 @@ class RaidStore:
                     bench_needed,
                     status,
                     created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
                 """,
                 (
                     guild_id,
@@ -248,6 +269,8 @@ class RaidStore:
                     creator_id,
                     title,
                     description,
+                    game,
+                    mode,
                     start_time,
                     tanks_needed,
                     healers_needed,
@@ -277,8 +300,8 @@ class RaidStore:
             cursor = await db.execute(
                 """
                 SELECT id, guild_id, channel_id, message_id, creator_id, title, description,
-                       start_time, tanks_needed, healers_needed, dps_needed, bench_needed,
-                       status, created_at, closed_at
+                       game, mode, start_time, tanks_needed, healers_needed, dps_needed,
+                       bench_needed, status, created_at, closed_at
                 FROM raids
                 WHERE message_id = ?
                 """,
@@ -295,8 +318,8 @@ class RaidStore:
             cursor = await db.execute(
                 """
                 SELECT id, guild_id, channel_id, message_id, creator_id, title, description,
-                       start_time, tanks_needed, healers_needed, dps_needed, bench_needed,
-                       status, created_at, closed_at
+                       game, mode, start_time, tanks_needed, healers_needed, dps_needed,
+                       bench_needed, status, created_at, closed_at
                 FROM raids
                 WHERE id = ?
                 """,
@@ -458,8 +481,8 @@ class RaidStore:
             cursor = await db.execute(
                 """
                 SELECT id, guild_id, channel_id, message_id, creator_id, title, description,
-                       start_time, tanks_needed, healers_needed, dps_needed, bench_needed,
-                       status, created_at, closed_at
+                       game, mode, start_time, tanks_needed, healers_needed, dps_needed,
+                       bench_needed, status, created_at, closed_at
                 FROM raids
                 WHERE status IN ('open', 'locked') AND start_time <= ?
                 """,
@@ -476,8 +499,8 @@ class RaidStore:
             cursor = await db.execute(
                 """
                 SELECT id, guild_id, channel_id, message_id, creator_id, title, description,
-                       start_time, tanks_needed, healers_needed, dps_needed, bench_needed,
-                       status, created_at, closed_at
+                       game, mode, start_time, tanks_needed, healers_needed, dps_needed,
+                       bench_needed, status, created_at, closed_at
                 FROM raids
                 WHERE status IN ('open', 'locked') AND start_time > ?
                 ORDER BY start_time ASC
@@ -500,8 +523,8 @@ class RaidStore:
             cursor = await db.execute(
                 """
                 SELECT id, guild_id, channel_id, message_id, creator_id, title, description,
-                       start_time, tanks_needed, healers_needed, dps_needed, bench_needed,
-                       status, created_at, closed_at
+                       game, mode, start_time, tanks_needed, healers_needed, dps_needed,
+                       bench_needed, status, created_at, closed_at
                 FROM raids
                 WHERE status IN ('open', 'locked') AND start_time <= ?
                 """,
@@ -518,8 +541,8 @@ class RaidStore:
             cursor = await db.execute(
                 """
                 SELECT id, guild_id, channel_id, message_id, creator_id, title, description,
-                       start_time, tanks_needed, healers_needed, dps_needed, bench_needed,
-                       status, created_at, closed_at
+                       game, mode, start_time, tanks_needed, healers_needed, dps_needed,
+                       bench_needed, status, created_at, closed_at
                 FROM raids
                 WHERE status IN ('open', 'locked') AND start_time > ?
                 ORDER BY start_time ASC

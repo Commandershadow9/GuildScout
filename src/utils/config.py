@@ -366,6 +366,17 @@ class Config:
         self.save()
 
     @property
+    def raid_guildwar_post_channel_id(self) -> Optional[int]:
+        """Channel ID where guildwar announcements are posted."""
+        channel_id = self.get("raid_management.guildwar_post_channel_id")
+        return int(channel_id) if channel_id else None
+
+    def set_raid_guildwar_post_channel_id(self, channel_id: Optional[int]) -> None:
+        """Persist the guildwar announcement channel ID."""
+        self._set_nested_value("raid_management.guildwar_post_channel_id", channel_id)
+        self.save()
+
+    @property
     def raid_manage_channel_id(self) -> Optional[int]:
         """Optional channel ID where raid creation is allowed."""
         channel_id = self.get("raid_management.manage_channel_id")

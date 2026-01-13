@@ -14,12 +14,17 @@ from discord.ext import commands
 from src.database.raid_store import RaidStore
 from src.utils.config import Config
 from src.utils.raid_utils import (
+    GAME_LABELS,
+    GAME_WWM,
     ROLE_BENCH,
     ROLE_CANCEL,
     ROLE_DPS,
     ROLE_HEALER,
     ROLE_TANK,
     ROLE_EMOJIS,
+    MODE_GUILDWAR,
+    MODE_LABELS,
+    MODE_RAID,
     build_raid_embed,
     build_raid_log_embed,
     get_role_limit,
@@ -92,9 +97,11 @@ def build_raid_info_embed() -> discord.Embed:
         value=(
             "1) Click 'Create raid'\n"
             "2) Enter title + description\n"
-            "3) Pick date/time via dropdowns (page weeks)\n"
-            "4) Set slots or use a template\n"
-            "5) Click 'Post raid'"
+            "3) Select game + mode\n"
+            "4) Pick date/time via dropdowns (page weeks)\n"
+            "5) Set slots or use a template\n"
+            "6) Click 'Post raid'\n"
+            "Guildwar posts go to the guildwar channel."
         ),
         inline=False,
     )
@@ -303,6 +310,191 @@ class RaidMinuteSelect(discord.ui.Select):
         await interaction.response.edit_message(embed=view.build_embed(), view=view)
 
 
+class RaidGameSelect(discord.ui.Select):
+    """Dropdown for selecting the game."""
+
+    def __init__(self, view: "RaidGameModeView"):
+        options = [
+            discord.SelectOption(
+                label=GAME_LABELS[GAME_WWM],
+                value=GAME_WWM,
+                default=(view.game == GAME_WWM),
+            )
+        ]
+        super().__init__(
+            placeholder=f"Game: {GAME_LABELS.get(view.game, view.game)}",
+            min_values=1,
+            max_values=1,
+            options=options,
+            row=0,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        view = self.view
+        if not isinstance(view, RaidGameModeView):
+            return
+        view.game = self.values[0]
+        view.update_select_defaults()
+        await interaction.response.edit_message(embed=view.build_embed(), view=view)
+
+
+class RaidModeSelect(discord.ui.Select):
+    """Dropdown for selecting the game mode."""
+
+    def __init__(self, view: "RaidGameModeView"):
+        options = [
+            discord.SelectOption(
+                label=MODE_LABELS[MODE_RAID],
+                value=MODE_RAID,
+                default=(view.mode == MODE_RAID),
+            ),
+            discord.SelectOption(
+                label=MODE_LABELS[MODE_GUILDWAR],
+                value=MODE_GUILDWAR,
+                default=(view.mode == MODE_GUILDWAR),
+            ),
+        ]
+        super().__init__(
+            placeholder=f"Mode: {MODE_LABELS.get(view.mode, view.mode)}",
+            min_values=1,
+            max_values=1,
+            options=options,
+            row=1,
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        view = self.view
+        if not isinstance(view, RaidGameModeView):
+            return
+        view.mode = self.values[0]
+        view.update_select_defaults()
+        await interaction.response.edit_message(embed=view.build_embed(), view=view)
+
+
+class RaidGameModeView(discord.ui.View):
+    """Pick game/mode before choosing date/time."""
+
+    def __init__(
+        self,
+        bot: commands.Bot,
+        config: Config,
+        raid_store: RaidStore,
+        requester_id: int,
+        title: str,
+        description: Optional[str],
+        game: str = GAME_WWM,
+        mode: str = MODE_RAID,
+    ):
+        super().__init__(timeout=600)
+        self.bot = bot
+        self.config = config
+        self.raid_store = raid_store
+        self.requester_id = requester_id
+        self.title = title
+        self.description = description
+        self.game = game
+        self.mode = mode
+        self.message: Optional[discord.Message] = None
+
+        self.add_item(RaidGameSelect(self))
+        self.add_item(RaidModeSelect(self))
+
+    def update_select_defaults(self) -> None:
+        for item in self.children:
+            if isinstance(item, RaidGameSelect):
+                item.placeholder = f"Game: {GAME_LABELS.get(self.game, self.game)}"
+                for option in item.options:
+                    option.default = option.value == self.game
+            elif isinstance(item, RaidModeSelect):
+                item.placeholder = f"Mode: {MODE_LABELS.get(self.mode, self.mode)}"
+                for option in item.options:
+                    option.default = option.value == self.mode
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.requester_id:
+            await interaction.response.send_message(
+                "❌ Only the creator can edit this draft.",
+                ephemeral=True,
+            )
+            return False
+        return True
+
+    def build_embed(self) -> discord.Embed:
+        embed = discord.Embed(
+            title=f"📝 Raid Draft: {self.title}",
+            description=self.description or None,
+            color=discord.Color.blurple(),
+        )
+        embed.add_field(
+            name="Game",
+            value=GAME_LABELS.get(self.game, self.game),
+            inline=True,
+        )
+        embed.add_field(
+            name="Mode",
+            value=MODE_LABELS.get(self.mode, self.mode),
+            inline=True,
+        )
+        embed.set_footer(text="Select game/mode, then click 'Next'.")
+        return embed
+
+    async def on_timeout(self) -> None:
+        for item in self.children:
+            item.disabled = True
+        if self.message:
+            try:
+                await self.message.edit(view=self)
+            except Exception:
+                pass
+
+    @discord.ui.button(label="➡️ Next", style=discord.ButtonStyle.green, row=2)
+    async def continue_to_schedule(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ) -> None:
+        try:
+            date_value, time_value, start_ts = get_default_date_time(
+                self.config.raid_timezone
+            )
+        except ValueError as exc:
+            await interaction.response.send_message(
+                f"❌ {exc}",
+                ephemeral=True,
+            )
+            return
+
+        view = RaidScheduleView(
+            bot=self.bot,
+            config=self.config,
+            raid_store=self.raid_store,
+            requester_id=self.requester_id,
+            title=self.title,
+            description=self.description,
+            start_ts=start_ts,
+            timezone_name=self.config.raid_timezone,
+            date_value=date_value,
+            time_value=time_value,
+            game=self.game,
+            mode=self.mode,
+        )
+        await interaction.response.edit_message(
+            embed=view.build_embed(),
+            view=view,
+        )
+        view.message = interaction.message
+        self.stop()
+
+    @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.red, row=2)
+    async def cancel(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        for item in self.children:
+            item.disabled = True
+        self.stop()
+        await interaction.response.edit_message(
+            content="❌ Raid creation cancelled.",
+            embed=None,
+            view=self,
+        )
+
+
 class RaidScheduleView(discord.ui.View):
     """Pick date/time before choosing slot counts."""
 
@@ -318,6 +510,8 @@ class RaidScheduleView(discord.ui.View):
         timezone_name: str,
         date_value: str,
         time_value: str,
+        game: str = GAME_WWM,
+        mode: str = MODE_RAID,
         counts: Optional[Dict[str, int]] = None,
         template_index: int = 0,
     ):
@@ -332,6 +526,8 @@ class RaidScheduleView(discord.ui.View):
         self.timezone_name = timezone_name
         self.date_value = date_value
         self.time_value = time_value
+        self.game = game
+        self.mode = mode
         self.template_index = template_index
         self.hour_value = 0
         self.minute_value = 0
@@ -470,6 +666,16 @@ class RaidScheduleView(discord.ui.View):
             color=discord.Color.blurple(),
         )
         embed.add_field(
+            name="Game",
+            value=GAME_LABELS.get(self.game, self.game),
+            inline=True,
+        )
+        embed.add_field(
+            name="Mode",
+            value=MODE_LABELS.get(self.mode, self.mode),
+            inline=True,
+        )
+        embed.add_field(
             name="Start Time",
             value=f"<t:{self.start_ts}:F>\n<t:{self.start_ts}:R>",
             inline=False,
@@ -513,6 +719,8 @@ class RaidScheduleView(discord.ui.View):
             timezone_name=self.timezone_name,
             date_value=self.date_value,
             time_value=self.time_value,
+            game=self.game,
+            mode=self.mode,
             counts=self.counts,
             template_index=self.template_index,
         )
@@ -584,6 +792,8 @@ class RaidSlotsView(discord.ui.View):
         timezone_name: str,
         date_value: str,
         time_value: str,
+        game: str = GAME_WWM,
+        mode: str = MODE_RAID,
         counts: Optional[Dict[str, int]] = None,
         template_index: int = 0,
     ):
@@ -598,6 +808,8 @@ class RaidSlotsView(discord.ui.View):
         self.timezone_name = timezone_name
         self.date_value = date_value
         self.time_value = time_value
+        self.game = game
+        self.mode = mode
         self.counts = counts or DEFAULT_COUNTS.copy()
         self.template_index = template_index
         self.message: Optional[discord.Message] = None
@@ -642,6 +854,16 @@ class RaidSlotsView(discord.ui.View):
             color=discord.Color.blurple(),
         )
         embed.add_field(
+            name="Game",
+            value=GAME_LABELS.get(self.game, self.game),
+            inline=True,
+        )
+        embed.add_field(
+            name="Mode",
+            value=MODE_LABELS.get(self.mode, self.mode),
+            inline=True,
+        )
+        embed.add_field(
             name="Start Time",
             value=f"<t:{self.start_ts}:F>\n<t:{self.start_ts}:R>",
             inline=False,
@@ -678,6 +900,8 @@ class RaidSlotsView(discord.ui.View):
             timezone_name=self.timezone_name,
             date_value=self.date_value,
             time_value=self.time_value,
+            game=self.game,
+            mode=self.mode,
             counts=self.counts,
             template_index=self.template_index,
         )
@@ -701,7 +925,16 @@ class RaidSlotsView(discord.ui.View):
 
     @discord.ui.button(label="✅ Post raid", style=discord.ButtonStyle.green, row=4)
     async def post_raid(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
-        if not self.config.raid_post_channel_id:
+        post_channel_id = self.config.raid_post_channel_id
+        if self.mode == MODE_GUILDWAR:
+            post_channel_id = self.config.raid_guildwar_post_channel_id
+            if not post_channel_id:
+                await interaction.response.send_message(
+                    "❌ No guildwar channel configured. Use `/raid-setup` or `/raid-set-channel`.",
+                    ephemeral=True,
+                )
+                return
+        if not post_channel_id:
             await interaction.response.send_message(
                 "❌ No raid channel configured. Use `/raid-setup` or `/raid-set-channel`.",
                 ephemeral=True,
@@ -727,10 +960,11 @@ class RaidSlotsView(discord.ui.View):
             await interaction.response.send_message("❌ Server not found.", ephemeral=True)
             return
 
-        post_channel = guild.get_channel(self.config.raid_post_channel_id)
+        post_channel = guild.get_channel(post_channel_id)
         if not isinstance(post_channel, discord.TextChannel):
+            missing_label = "Guildwar channel" if self.mode == MODE_GUILDWAR else "Raid channel"
             await interaction.response.send_message(
-                "❌ Raid channel not found. Please reconfigure.",
+                f"❌ {missing_label} not found. Please reconfigure.",
                 ephemeral=True,
             )
             return
@@ -743,6 +977,8 @@ class RaidSlotsView(discord.ui.View):
             creator_id=interaction.user.id,
             title=self.title,
             description=self.description,
+            game=self.game,
+            mode=self.mode,
             start_time=self.start_ts,
             tanks_needed=self.counts[ROLE_TANK],
             healers_needed=self.counts[ROLE_HEALER],
@@ -1056,28 +1292,15 @@ class RaidCreateModal(discord.ui.Modal):
         self.add_item(self.desc_input)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        try:
-            date_value, time_value, start_ts = get_default_date_time(
-                self.cog.config.raid_timezone
-            )
-        except ValueError as exc:
-            await interaction.response.send_message(
-                f"❌ {exc}",
-                ephemeral=True,
-            )
-            return
-
-        view = RaidScheduleView(
+        view = RaidGameModeView(
             bot=self.cog.bot,
             config=self.cog.config,
             raid_store=self.cog.raid_store,
             requester_id=interaction.user.id,
             title=self.title_input.value,
             description=self.desc_input.value,
-            start_ts=start_ts,
-            timezone_name=self.cog.config.raid_timezone,
-            date_value=date_value,
-            time_value=time_value,
+            game=GAME_WWM,
+            mode=MODE_RAID,
         )
 
         await interaction.response.send_message(
@@ -1350,7 +1573,11 @@ class RaidManageView(discord.ui.View):
             return
         role_id = self.config.raid_participant_role_id
         if not role_id:
-            fallback = discord.utils.get(guild.roles, name="Raid Teilnehmer")
+            fallback = None
+            for name in ("Raid Participants", "Raid Teilnehmer"):
+                fallback = discord.utils.get(guild.roles, name=name)
+                if fallback:
+                    break
             if fallback:
                 self.config.set_raid_participant_role_id(fallback.id)
                 role_id = fallback.id
@@ -1594,6 +1821,8 @@ class RaidManageView(discord.ui.View):
             timezone_name=self.config.raid_timezone,
             date_value=date_value,
             time_value=time_value,
+            game=raid.game,
+            mode=raid.mode,
             counts=counts,
         )
 
@@ -1784,13 +2013,17 @@ class RaidCommand(commands.Cog):
             role = guild.get_role(role_id)
             if role:
                 return role
-        role = discord.utils.get(guild.roles, name="Raid Teilnehmer")
+        role = None
+        for name in ("Raid Participants", "Raid Teilnehmer"):
+            role = discord.utils.get(guild.roles, name=name)
+            if role:
+                break
         if role:
             self.config.set_raid_participant_role_id(role.id)
             return role
         try:
             role = await guild.create_role(
-                name="Raid Teilnehmer",
+                name="Raid Participants",
                 mentionable=True,
                 reason="Raid setup",
             )
@@ -2031,6 +2264,8 @@ class RaidCommand(commands.Cog):
             dps_count = len(signups.get(ROLE_DPS, []))
             bench_count = len(signups.get(ROLE_BENCH, []))
             status_label = "Open" if raid.status == "open" else "Locked"
+            game_label = GAME_LABELS.get(raid.game, raid.game)
+            mode_label = MODE_LABELS.get(raid.mode, raid.mode)
 
             jump_url = "—"
             if raid.message_id:
@@ -2040,6 +2275,8 @@ class RaidCommand(commands.Cog):
                 )
 
             value = (
+                f"Game: {game_label}\n"
+                f"Mode: {mode_label}\n"
                 f"Start: <t:{raid.start_time}:F> (<t:{raid.start_time}:R>)\n"
                 f"Status: {status_label}\n"
                 f"Tanks: {tank_count}/{raid.tanks_needed} · "
@@ -2112,6 +2349,24 @@ class RaidCommand(commands.Cog):
                 )
                 return
 
+        guildwar_channel = discord.utils.get(
+            category.channels, name="guildwar-ankuendigungen"
+        )
+        if not guildwar_channel:
+            try:
+                guildwar_channel = await guild.create_text_channel(
+                    "guildwar-ankuendigungen",
+                    category=category,
+                    reason="Raid setup",
+                )
+            except Exception as exc:
+                logger.error("Failed to create guildwar channel: %s", exc, exc_info=True)
+                await interaction.followup.send(
+                    "❌ Guildwar channel could not be created.",
+                    ephemeral=True,
+                )
+                return
+
         manage_channel = discord.utils.get(category.channels, name="raid-planung")
         if not manage_channel:
             try:
@@ -2148,6 +2403,7 @@ class RaidCommand(commands.Cog):
         participant_role = await self._ensure_participant_role(guild)
 
         self.config.set_raid_post_channel_id(post_channel.id)
+        self.config.set_raid_guildwar_post_channel_id(guildwar_channel.id)
         self.config.set_raid_manage_channel_id(manage_channel.id)
         self.config.set_raid_info_channel_id(info_channel.id)
         if participant_role:
@@ -2166,6 +2422,7 @@ class RaidCommand(commands.Cog):
             color=discord.Color.green(),
         )
         embed.add_field(name="Raid Posts", value=post_channel.mention, inline=False)
+        embed.add_field(name="Guildwar Posts", value=guildwar_channel.mention, inline=False)
         embed.add_field(name="Raid Planning", value=manage_channel.mention, inline=False)
         embed.add_field(name="Raid Info", value=info_channel.mention, inline=False)
         if participant_role:
@@ -2183,6 +2440,7 @@ class RaidCommand(commands.Cog):
     )
     @app_commands.describe(
         post_channel="Channel for raid announcements",
+        guildwar_channel="Channel for guildwar announcements",
         manage_channel="Optional channel for raid creation",
         info_channel="Optional channel for raid info",
         log_channel="Optional channel for raid logs",
@@ -2191,6 +2449,7 @@ class RaidCommand(commands.Cog):
         self,
         interaction: discord.Interaction,
         post_channel: Optional[discord.TextChannel] = None,
+        guildwar_channel: Optional[discord.TextChannel] = None,
         manage_channel: Optional[discord.TextChannel] = None,
         info_channel: Optional[discord.TextChannel] = None,
         log_channel: Optional[discord.TextChannel] = None,
@@ -2210,7 +2469,13 @@ class RaidCommand(commands.Cog):
             )
             return
 
-        if not post_channel and not manage_channel and not info_channel and not log_channel:
+        if (
+            not post_channel
+            and not guildwar_channel
+            and not manage_channel
+            and not info_channel
+            and not log_channel
+        ):
             await interaction.response.send_message(
                 "❌ Please provide at least one channel.",
                 ephemeral=True,
@@ -2219,6 +2484,8 @@ class RaidCommand(commands.Cog):
 
         if post_channel:
             self.config.set_raid_post_channel_id(post_channel.id)
+        if guildwar_channel:
+            self.config.set_raid_guildwar_post_channel_id(guildwar_channel.id)
         if manage_channel:
             self.config.set_raid_manage_channel_id(manage_channel.id)
         if info_channel:
@@ -2239,6 +2506,12 @@ class RaidCommand(commands.Cog):
         )
         if post_channel:
             embed.add_field(name="Raid Posts", value=post_channel.mention, inline=False)
+        if guildwar_channel:
+            embed.add_field(
+                name="Guildwar Posts",
+                value=guildwar_channel.mention,
+                inline=False,
+            )
         if manage_channel:
             embed.add_field(name="Raid Planning", value=manage_channel.mention, inline=False)
         if info_channel:

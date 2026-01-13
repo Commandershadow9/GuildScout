@@ -503,7 +503,11 @@ class RaidScheduler(commands.Cog):
     async def _remove_participant_roles(self, guild: discord.Guild, raid_id: int) -> None:
         role_id = self.config.raid_participant_role_id
         if not role_id:
-            fallback = discord.utils.get(guild.roles, name="Raid Teilnehmer")
+            fallback = None
+            for name in ("Raid Participants", "Raid Teilnehmer"):
+                fallback = discord.utils.get(guild.roles, name=name)
+                if fallback:
+                    break
             if fallback:
                 self.config.set_raid_participant_role_id(fallback.id)
                 role_id = fallback.id
