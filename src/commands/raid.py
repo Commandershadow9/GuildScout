@@ -2807,7 +2807,7 @@ class RaidCommand(commands.Cog):
     ) -> None:
         if not member:
             return
-        view = BenchPreferenceView(self.raid_store, raid.id, member.id)
+        view = BenchPreferenceView(self.bot, self.config, self.raid_store, raid.id, member.id)
         try:
             await member.send(
                 (
@@ -2823,7 +2823,9 @@ class RaidCommand(commands.Cog):
         if not message:
             return
         try:
-            prompt_view = BenchPreferenceView(self.raid_store, raid.id, member.id)
+            prompt_view = BenchPreferenceView(
+                self.bot, self.config, self.raid_store, raid.id, member.id
+            )
             prompt = await message.channel.send(
                 (
                     f"{member.mention} I couldn't DM you.\n"

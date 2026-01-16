@@ -40,11 +40,67 @@ ROLE_EMOJI_TO_ROLE = {
 class BenchPreferenceView(discord.ui.View):
     """DM view for selecting a bench preference."""
 
-    def __init__(self, raid_store: RaidStore, raid_id: int, user_id: int):
+    def __init__(
+        self,
+        bot: commands.Bot,
+        config: Config,
+        raid_store: RaidStore,
+        raid_id: int,
+        user_id: int,
+    ):
         super().__init__(timeout=600)
+        self.bot = bot
+        self.config = config
         self.raid_store = raid_store
         self.raid_id = raid_id
         self.user_id = user_id
+
+    async def _refresh_raid_embed(self) -> None:
+        raid = await self.raid_store.get_raid(self.raid_id)
+        if not raid or not raid.message_id:
+            return
+
+        guild = self.bot.get_guild(raid.guild_id)
+        if not guild:
+            return
+
+        channel = guild.get_channel(raid.channel_id)
+        if not isinstance(channel, discord.TextChannel):
+            try:
+                channel = await guild.fetch_channel(raid.channel_id)
+            except Exception:
+                return
+        if not isinstance(channel, discord.TextChannel):
+            return
+
+        try:
+            message = await channel.fetch_message(raid.message_id)
+        except Exception:
+            return
+
+        signups = await self.raid_store.get_signups_by_role(raid.id)
+        bench_preferences = await self.raid_store.get_bench_preferences(raid.id)
+        confirmation_message_id = await self.raid_store.get_confirmation_message_id(
+            raid.id
+        )
+        confirmed = None
+        no_shows = None
+        if confirmation_message_id:
+            confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
+            no_shows = await self.raid_store.get_no_show_user_ids(raid.id)
+
+        embed = build_raid_embed(
+            raid,
+            signups,
+            self.config.raid_timezone,
+            confirmed,
+            no_shows,
+            bench_preferences=bench_preferences,
+        )
+        try:
+            await message.edit(embed=embed)
+        except Exception:
+            logger.warning("Failed to update raid message %s", raid.id, exc_info=True)
 
     async def _set_preference(
         self, interaction: discord.Interaction, preferred_role: Optional[str]
@@ -74,6 +130,7 @@ class BenchPreferenceView(discord.ui.View):
         self.stop()
 
         label = ROLE_LABELS.get(preferred_role, "Any") if preferred_role else "Any"
+        await self._refresh_raid_embed()
         if interaction.guild:
             try:
                 await interaction.response.send_message(
@@ -164,7 +221,7 @@ class RaidEvents(commands.Cog):
     ) -> None:
         if not member:
             return
-        view = BenchPreferenceView(self.raid_store, raid.id, member.id)
+        view = BenchPreferenceView(self.bot, self.config, self.raid_store, raid.id, member.id)
         try:
             await member.send(
                 (
@@ -180,7 +237,9 @@ class RaidEvents(commands.Cog):
         if not message:
             return
         try:
-            prompt_view = BenchPreferenceView(self.raid_store, raid.id, member.id)
+            prompt_view = BenchPreferenceView(
+                self.bot, self.config, self.raid_store, raid.id, member.id
+            )
             prompt = await message.channel.send(
                 (
                     f"{member.mention} I couldn't DM you.\n"
