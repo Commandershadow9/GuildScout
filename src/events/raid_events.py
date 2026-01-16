@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Optional
@@ -17,6 +18,7 @@ from src.utils.raid_utils import (
     ROLE_CANCEL,
     ROLE_DPS,
     ROLE_HEALER,
+    ROLE_LABELS,
     ROLE_TANK,
     ROLE_EMOJIS,
     build_raid_embed,
@@ -33,6 +35,73 @@ ROLE_EMOJI_TO_ROLE = {
     ROLE_EMOJIS[ROLE_BENCH]: ROLE_BENCH,
     ROLE_EMOJIS[ROLE_CANCEL]: ROLE_CANCEL,
 }
+
+
+class BenchPreferenceView(discord.ui.View):
+    """DM view for selecting a bench preference."""
+
+    def __init__(self, raid_store: RaidStore, raid_id: int, user_id: int):
+        super().__init__(timeout=600)
+        self.raid_store = raid_store
+        self.raid_id = raid_id
+        self.user_id = user_id
+
+    async def _set_preference(
+        self, interaction: discord.Interaction, preferred_role: Optional[str]
+    ) -> None:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "❌ This selection is not for you.",
+                ephemeral=True,
+            )
+            return
+
+        current_role = await self.raid_store.get_user_role(self.raid_id, self.user_id)
+        if current_role != ROLE_BENCH:
+            await interaction.response.edit_message(
+                content="❌ You are no longer on bench.",
+                view=None,
+            )
+            self.stop()
+            return
+
+        await self.raid_store.set_preferred_role(
+            self.raid_id, self.user_id, preferred_role
+        )
+
+        for item in self.children:
+            item.disabled = True
+        self.stop()
+
+        label = ROLE_LABELS.get(preferred_role, "Any") if preferred_role else "Any"
+        await interaction.response.edit_message(
+            content=f"✅ Bench preference set to {label}.",
+            view=self,
+        )
+
+    @discord.ui.button(label="Tank", style=discord.ButtonStyle.secondary, row=0)
+    async def choose_tank(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ) -> None:
+        await self._set_preference(interaction, ROLE_TANK)
+
+    @discord.ui.button(label="Healer", style=discord.ButtonStyle.secondary, row=0)
+    async def choose_healer(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ) -> None:
+        await self._set_preference(interaction, ROLE_HEALER)
+
+    @discord.ui.button(label="DPS", style=discord.ButtonStyle.secondary, row=0)
+    async def choose_dps(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ) -> None:
+        await self._set_preference(interaction, ROLE_DPS)
+
+    @discord.ui.button(label="Any", style=discord.ButtonStyle.secondary, row=1)
+    async def choose_any(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ) -> None:
+        await self._set_preference(interaction, None)
 
 
 class RaidEvents(commands.Cog):
@@ -61,6 +130,50 @@ class RaidEvents(commands.Cog):
             return
         try:
             await member.send(message)
+        except Exception:
+            pass
+
+    async def _delete_message_later(
+        self, message: discord.Message, delay_seconds: int = 600
+    ) -> None:
+        await asyncio.sleep(delay_seconds)
+        try:
+            await message.delete()
+        except Exception:
+            pass
+
+    async def _prompt_bench_preference(
+        self,
+        raid,
+        member: Optional[discord.Member],
+        message: Optional[discord.Message],
+    ) -> None:
+        if not member:
+            return
+        view = BenchPreferenceView(self.raid_store, raid.id, member.id)
+        try:
+            await member.send(
+                (
+                    f"ℹ️ You are on bench for **{raid.title}**.\n"
+                    "Pick a preferred role (or Any) so leaders can choose you faster."
+                ),
+                view=view,
+            )
+            return
+        except Exception:
+            pass
+
+        if not message:
+            return
+        try:
+            prompt = await message.channel.send(
+                (
+                    f"{member.mention} I couldn't DM you.\n"
+                    "Please react with 🛡️/💉/⚔️ on the raid post to set "
+                    "your bench preference."
+                )
+            )
+            self.bot.loop.create_task(self._delete_message_later(prompt))
         except Exception:
             pass
 
@@ -377,6 +490,8 @@ class RaidEvents(commands.Cog):
 
         effective_role = role
         preferred_role: Optional[str] = None
+        existing_preferred_role: Optional[str] = None
+        stored_preferred_role: Optional[str] = None
 
         bench_limit = get_role_limit(raid, ROLE_BENCH)
         bench_count = len(signups.get(ROLE_BENCH, []))
@@ -384,7 +499,11 @@ class RaidEvents(commands.Cog):
 
         if current_role == ROLE_BENCH and role in (ROLE_TANK, ROLE_HEALER, ROLE_DPS):
             effective_role = ROLE_BENCH
+            existing_preferred_role = await self.raid_store.get_user_preferred_role(
+                raid.id, payload.user_id
+            )
             preferred_role = role
+            stored_preferred_role = preferred_role
             await self._remove_reaction(message, str(payload.emoji), member)
             await self._send_dm(
                 member,
@@ -400,6 +519,7 @@ class RaidEvents(commands.Cog):
                 return
             effective_role = ROLE_BENCH
             preferred_role = role
+            stored_preferred_role = preferred_role
             await self._remove_reaction(message, str(payload.emoji), member)
             await self._send_dm(
                 member,
@@ -417,9 +537,11 @@ class RaidEvents(commands.Cog):
             if current_role in (ROLE_TANK, ROLE_HEALER, ROLE_DPS):
                 preferred_role = current_role
             elif current_role == ROLE_BENCH:
-                preferred_role = await self.raid_store.get_user_preferred_role(
+                existing_preferred_role = await self.raid_store.get_user_preferred_role(
                     raid.id, payload.user_id
                 )
+                preferred_role = existing_preferred_role
+            stored_preferred_role = preferred_role or existing_preferred_role
             if current_role != ROLE_BENCH and preferred_role:
                 await self._send_dm(
                     member,
@@ -443,6 +565,7 @@ class RaidEvents(commands.Cog):
                     return
                 effective_role = ROLE_BENCH
                 preferred_role = role
+                stored_preferred_role = preferred_role
                 await self._remove_reaction(message, str(payload.emoji), member)
                 await self._send_dm(
                     member,
@@ -453,15 +576,24 @@ class RaidEvents(commands.Cog):
             return
 
         if effective_role == ROLE_BENCH:
-            await self.raid_store.upsert_signup_with_preference(
-                raid.id,
-                payload.user_id,
-                effective_role,
-                preferred_role,
-            )
+            if current_role == ROLE_BENCH:
+                if preferred_role is not None and preferred_role != existing_preferred_role:
+                    await self.raid_store.set_preferred_role(
+                        raid.id, payload.user_id, preferred_role
+                    )
+            else:
+                await self.raid_store.upsert_signup_with_preference(
+                    raid.id,
+                    payload.user_id,
+                    effective_role,
+                    preferred_role,
+                )
+            await self._ensure_participant_role(member)
+            if stored_preferred_role is None:
+                await self._prompt_bench_preference(raid, member, message)
         else:
             await self.raid_store.upsert_signup(raid.id, payload.user_id, effective_role)
-        await self._ensure_participant_role(member)
+            await self._ensure_participant_role(member)
 
         if current_role and current_role != effective_role:
             previous_emoji = ROLE_EMOJIS.get(current_role)

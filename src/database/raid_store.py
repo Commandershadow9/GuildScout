@@ -410,6 +410,25 @@ class RaidStore:
             )
             await db.commit()
 
+    async def set_preferred_role(
+        self,
+        raid_id: int,
+        user_id: int,
+        preferred_role: Optional[str],
+    ) -> None:
+        """Update preferred role without changing join order."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                """
+                UPDATE raid_signups
+                SET preferred_role = ?
+                WHERE raid_id = ? AND user_id = ?
+                """,
+                (preferred_role, raid_id, user_id),
+            )
+            await db.commit()
+
     async def remove_signup(self, raid_id: int, user_id: int) -> None:
         """Remove a signup entry."""
         await self.initialize()

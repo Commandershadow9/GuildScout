@@ -2852,11 +2852,18 @@ class RaidCommand(commands.Cog):
                 preferred_role = current_role
             else:
                 preferred_role = existing_preferred
-            await self.raid_store.upsert_signup_with_preference(
-                raid.id, user_id, ROLE_BENCH, preferred_role
-            )
-            await self._ensure_participant_role_for_member(member)
-            changed = current_role != ROLE_BENCH or preferred_role != existing_preferred
+            if current_role == ROLE_BENCH:
+                if preferred_role != existing_preferred:
+                    await self.raid_store.set_preferred_role(
+                        raid.id, user_id, preferred_role
+                    )
+                    changed = True
+            else:
+                await self.raid_store.upsert_signup_with_preference(
+                    raid.id, user_id, ROLE_BENCH, preferred_role
+                )
+                await self._ensure_participant_role_for_member(member)
+                changed = True
             return ROLE_BENCH, note, changed
 
         if current_role == requested_role:
@@ -2866,6 +2873,17 @@ class RaidCommand(commands.Cog):
             if not bench_available and current_role != ROLE_BENCH:
                 note = "❌ Signups are locked and bench is full."
                 return current_role or ROLE_CANCEL, note, False
+            if current_role == ROLE_BENCH:
+                existing_preferred = await self.raid_store.get_user_preferred_role(
+                    raid.id, user_id
+                )
+                if requested_role != existing_preferred:
+                    await self.raid_store.set_preferred_role(
+                        raid.id, user_id, requested_role
+                    )
+                    changed = True
+                note = "ℹ️ Signups locked: you remain on bench (preference saved)."
+                return ROLE_BENCH, note, changed
             await self.raid_store.upsert_signup_with_preference(
                 raid.id, user_id, ROLE_BENCH, requested_role
             )
@@ -2879,6 +2897,17 @@ class RaidCommand(commands.Cog):
             if not bench_available and current_role != ROLE_BENCH:
                 note = "❌ That role is full and the bench is also full."
                 return current_role or ROLE_CANCEL, note, False
+            if current_role == ROLE_BENCH:
+                existing_preferred = await self.raid_store.get_user_preferred_role(
+                    raid.id, user_id
+                )
+                if requested_role != existing_preferred:
+                    await self.raid_store.set_preferred_role(
+                        raid.id, user_id, requested_role
+                    )
+                    changed = True
+                note = "ℹ️ Role full: you remain on bench (preference saved)."
+                return ROLE_BENCH, note, changed
             await self.raid_store.upsert_signup_with_preference(
                 raid.id, user_id, ROLE_BENCH, requested_role
             )
@@ -3072,6 +3101,22 @@ class RaidCommand(commands.Cog):
                 refreshed += 1
             except Exception:
                 continue
+
+            try:
+                last_notice = await self.raid_store.get_alert_sent_at(
+                    raid.id, "restart_notice"
+                )
+                if not last_notice or now_ts - last_notice > 600:
+                    await channel.send(
+                        (
+                            "⚠️ The bot was offline. If you reacted or removed a "
+                            "reaction during that time, please re-apply your reaction.\n"
+                            f"{message.jump_url}"
+                        )
+                    )
+                    await self.raid_store.mark_alert_sent(raid.id, "restart_notice")
+            except Exception:
+                pass
 
         return refreshed
 
