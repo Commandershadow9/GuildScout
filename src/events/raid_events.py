@@ -166,12 +166,14 @@ class RaidEvents(commands.Cog):
         if not message:
             return
         try:
+            prompt_view = BenchPreferenceView(self.raid_store, raid.id, member.id)
             prompt = await message.channel.send(
                 (
                     f"{member.mention} I couldn't DM you.\n"
-                    "Please react with 🛡️/💉/⚔️ on the raid post to set "
-                    "your bench preference."
-                )
+                    "Pick a bench preference below (or react with 🛡️/💉/⚔️ "
+                    "on the raid post)."
+                ),
+                view=prompt_view,
             )
             self.bot.loop.create_task(self._delete_message_later(prompt))
         except Exception:

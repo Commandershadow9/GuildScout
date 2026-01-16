@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional
@@ -13,6 +14,7 @@ from discord.ext import commands
 
 from src.database.raid_store import RaidStore
 from src.database.raid_template_store import RaidTemplateStore, DEFAULT_TEMPLATE_SPECS
+from src.events.raid_events import BenchPreferenceView
 from src.utils.config import Config
 from src.utils.raid_utils import (
     GAME_LABELS,
@@ -2750,6 +2752,52 @@ class RaidCommand(commands.Cog):
         except Exception:
             pass
 
+    async def _delete_message_later(
+        self, message: discord.Message, delay_seconds: int = 600
+    ) -> None:
+        await asyncio.sleep(delay_seconds)
+        try:
+            await message.delete()
+        except Exception:
+            pass
+
+    async def _prompt_bench_preference(
+        self,
+        raid,
+        member: Optional[discord.Member],
+        message: Optional[discord.Message],
+    ) -> None:
+        if not member:
+            return
+        view = BenchPreferenceView(self.raid_store, raid.id, member.id)
+        try:
+            await member.send(
+                (
+                    f"ℹ️ You are on bench for **{raid.title}**.\n"
+                    "Pick a preferred role (or Any) so leaders can choose you faster."
+                ),
+                view=view,
+            )
+            return
+        except Exception:
+            pass
+
+        if not message:
+            return
+        try:
+            prompt_view = BenchPreferenceView(self.raid_store, raid.id, member.id)
+            prompt = await message.channel.send(
+                (
+                    f"{member.mention} I couldn't DM you.\n"
+                    "Pick a bench preference below (or react with 🛡️/💉/⚔️ "
+                    "on the raid post)."
+                ),
+                view=prompt_view,
+            )
+            self.bot.loop.create_task(self._delete_message_later(prompt))
+        except Exception:
+            pass
+
     def _get_participant_role_for_guild(
         self, guild: discord.Guild
     ) -> Optional[discord.Role]:
@@ -3100,6 +3148,20 @@ class RaidCommand(commands.Cog):
                 )
 
             signups = await self.raid_store.get_signups_by_role(raid.id)
+            signups_raw = await self.raid_store.list_signups(raid.id)
+            bench_missing: list[int] = []
+            for entry in signups_raw:
+                if entry.get("role") != ROLE_BENCH:
+                    continue
+                if entry.get("preferred_role"):
+                    continue
+                user_id = entry.get("user_id")
+                if user_id is None:
+                    continue
+                try:
+                    bench_missing.append(int(user_id))
+                except (TypeError, ValueError):
+                    continue
             confirmation_message_id = await self.raid_store.get_confirmation_message_id(
                 raid.id
             )
@@ -3118,6 +3180,17 @@ class RaidCommand(commands.Cog):
                 refreshed += 1
             except Exception:
                 continue
+
+            for user_id in bench_missing:
+                alert_key = f"bench_pref_prompt:{user_id}"
+                last_prompt = await self.raid_store.get_alert_sent_at(
+                    raid.id, alert_key
+                )
+                if last_prompt:
+                    continue
+                member = await self._get_member(guild, user_id)
+                await self._prompt_bench_preference(raid, member, message)
+                await self.raid_store.mark_alert_sent(raid.id, alert_key)
 
             try:
                 offline_seconds = getattr(self.bot, "last_offline_seconds", None)
