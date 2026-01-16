@@ -353,6 +353,19 @@ class RaidStore:
             row = await cursor.fetchone()
             return row[0] if row else None
 
+    async def get_user_preferred_role(
+        self, raid_id: int, user_id: int
+    ) -> Optional[str]:
+        """Return a user's preferred role for a raid."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT preferred_role FROM raid_signups WHERE raid_id = ? AND user_id = ?",
+                (raid_id, user_id),
+            )
+            row = await cursor.fetchone()
+            return row[0] if row else None
+
     async def upsert_signup(self, raid_id: int, user_id: int, role: str) -> None:
         """Insert or update a signup."""
         await self.initialize()
@@ -552,6 +565,35 @@ class RaidStore:
             )
             rows = await cursor.fetchall()
             return [self._row_to_record(row) for row in rows]
+
+    async def list_raids_by_guild(
+        self,
+        guild_id: int,
+        status: Optional[str] = None,
+        limit: int = 50,
+        order_desc: bool = False,
+    ) -> List[RaidRecord]:
+        """List raids for a guild with optional status filter."""
+        await self.initialize()
+        query = (
+            "SELECT id, guild_id, channel_id, message_id, creator_id, title, description, "
+            "game, mode, start_time, tanks_needed, healers_needed, dps_needed, bench_needed, "
+            "status, created_at, closed_at FROM raids WHERE guild_id = ?"
+        )
+        params: List[object] = [guild_id]
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        order = "DESC" if order_desc else "ASC"
+        query += f" ORDER BY start_time {order} LIMIT ?"
+        params.append(limit)
+
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(query, params)
+            rows = await cursor.fetchall()
+
+        return [self._row_to_record(row) for row in rows]
 
     async def list_signups(self, raid_id: int) -> List[Dict[str, Optional[str]]]:
         """Return signups with role details."""

@@ -12,6 +12,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from src.database.raid_store import RaidStore
+from src.database.raid_template_store import RaidTemplateStore, DEFAULT_TEMPLATE_SPECS
 from src.utils.config import Config
 from src.utils.raid_utils import (
     GAME_LABELS,
@@ -20,6 +21,7 @@ from src.utils.raid_utils import (
     ROLE_CANCEL,
     ROLE_DPS,
     ROLE_HEALER,
+    ROLE_LABELS,
     ROLE_TANK,
     ROLE_EMOJIS,
     MODE_GUILDWAR,
@@ -41,11 +43,59 @@ DEFAULT_COUNTS = {
     ROLE_BENCH: 0,
 }
 
-SLOT_TEMPLATES = [
-    ("Standard", {ROLE_TANK: 2, ROLE_HEALER: 2, ROLE_DPS: 6, ROLE_BENCH: 0}),
-    ("Small", {ROLE_TANK: 1, ROLE_HEALER: 1, ROLE_DPS: 3, ROLE_BENCH: 0}),
-    ("Large", {ROLE_TANK: 3, ROLE_HEALER: 3, ROLE_DPS: 9, ROLE_BENCH: 2}),
+DEFAULT_TEMPLATE_PAYLOADS = [
+    {
+        "name": spec["name"],
+        "counts": {
+            ROLE_TANK: spec["tanks"],
+            ROLE_HEALER: spec["healers"],
+            ROLE_DPS: spec["dps"],
+            ROLE_BENCH: spec["bench"],
+        },
+        "is_default": spec.get("is_default", False),
+    }
+    for spec in DEFAULT_TEMPLATE_SPECS
 ]
+
+ROLE_SIGNUP_ROLES = (ROLE_TANK, ROLE_HEALER, ROLE_DPS, ROLE_BENCH)
+ROLE_EMOJI_TO_ROLE = {
+    ROLE_EMOJIS[ROLE_TANK]: ROLE_TANK,
+    ROLE_EMOJIS[ROLE_HEALER]: ROLE_HEALER,
+    ROLE_EMOJIS[ROLE_DPS]: ROLE_DPS,
+    ROLE_EMOJIS[ROLE_BENCH]: ROLE_BENCH,
+    ROLE_EMOJIS[ROLE_CANCEL]: ROLE_CANCEL,
+}
+
+
+async def load_template_payloads(
+    template_store: RaidTemplateStore, guild_id: int
+) -> list[dict]:
+    """Load template payloads for a guild with sane defaults."""
+    if not template_store or not guild_id:
+        return DEFAULT_TEMPLATE_PAYLOADS
+    try:
+        await template_store.ensure_default_templates(guild_id)
+        templates = await template_store.list_templates(guild_id)
+    except Exception:
+        logger.warning("Failed to load raid templates", exc_info=True)
+        return DEFAULT_TEMPLATE_PAYLOADS
+    if not templates:
+        return DEFAULT_TEMPLATE_PAYLOADS
+    payloads = []
+    for template in templates:
+        payloads.append(
+            {
+                "name": template.name,
+                "counts": {
+                    ROLE_TANK: template.tanks,
+                    ROLE_HEALER: template.healers,
+                    ROLE_DPS: template.dps,
+                    ROLE_BENCH: template.bench,
+                },
+                "is_default": template.is_default,
+            }
+        )
+    return payloads
 
 MAX_SLOT_OPTION = 20
 DATE_RANGE_DAYS = 25
@@ -111,8 +161,17 @@ def build_raid_info_embed() -> discord.Embed:
             "React with: 🛡️ Tank, 💉 Healer, ⚔️ DPS, 🪑 Bench\n"
             "❌ = leave. One role per person.\n"
             "If a role is full, you are moved to bench (if available).\n"
+            "On bench, react with a role to set your preference.\n"
             "Optional: ✅ check-in can be enabled before start.\n"
             "On leave you can optionally send a DM reason."
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="Web UI",
+        value=(
+            "Use the GuildScout Web UI to create raids, edit templates,\n"
+            "and update settings without commands."
         ),
         inline=False,
     )
@@ -120,7 +179,7 @@ def build_raid_info_embed() -> discord.Embed:
         name="Manage (Creator/Admin/Lead)",
         value=(
             "Buttons in the raid post: ✏️ Edit, 🔒 Lock/Unlock,\n"
-            "✅ Close, 🛑 Cancel, ⏭️ Follow-up, ⚙️ Slots.\n"
+            "✅ Close, 🛑 Cancel, ⏭️ Follow-up, ⚙️ Slots, 🪑 Promote.\n"
             "Lock = bench only. Auto-close can be disabled\n"
             "or used as a safety close after X hours."
         ),
@@ -378,6 +437,8 @@ class RaidGameModeView(discord.ui.View):
         bot: commands.Bot,
         config: Config,
         raid_store: RaidStore,
+        template_store: RaidTemplateStore,
+        guild_id: int,
         requester_id: int,
         title: str,
         description: Optional[str],
@@ -388,6 +449,8 @@ class RaidGameModeView(discord.ui.View):
         self.bot = bot
         self.config = config
         self.raid_store = raid_store
+        self.template_store = template_store
+        self.guild_id = guild_id
         self.requester_id = requester_id
         self.title = title
         self.description = description
@@ -465,6 +528,8 @@ class RaidGameModeView(discord.ui.View):
             bot=self.bot,
             config=self.config,
             raid_store=self.raid_store,
+            template_store=self.template_store,
+            guild_id=self.guild_id,
             requester_id=self.requester_id,
             title=self.title,
             description=self.description,
@@ -502,6 +567,8 @@ class RaidScheduleView(discord.ui.View):
         bot: commands.Bot,
         config: Config,
         raid_store: RaidStore,
+        template_store: RaidTemplateStore,
+        guild_id: int,
         requester_id: int,
         title: str,
         description: Optional[str],
@@ -518,6 +585,8 @@ class RaidScheduleView(discord.ui.View):
         self.bot = bot
         self.config = config
         self.raid_store = raid_store
+        self.template_store = template_store
+        self.guild_id = guild_id
         self.requester_id = requester_id
         self.title = title
         self.description = description
@@ -707,10 +776,14 @@ class RaidScheduleView(discord.ui.View):
             )
             return
 
+        templates = await load_template_payloads(self.template_store, self.guild_id)
+
         next_view = RaidSlotsView(
             bot=self.bot,
             config=self.config,
             raid_store=self.raid_store,
+            template_store=self.template_store,
+            templates=templates,
             requester_id=self.requester_id,
             title=self.title,
             description=self.description,
@@ -784,6 +857,8 @@ class RaidSlotsView(discord.ui.View):
         bot: commands.Bot,
         config: Config,
         raid_store: RaidStore,
+        template_store: RaidTemplateStore,
+        templates: Optional[list[dict]],
         requester_id: int,
         title: str,
         description: Optional[str],
@@ -800,6 +875,7 @@ class RaidSlotsView(discord.ui.View):
         self.bot = bot
         self.config = config
         self.raid_store = raid_store
+        self.template_store = template_store
         self.requester_id = requester_id
         self.title = title
         self.description = description
@@ -810,8 +886,11 @@ class RaidSlotsView(discord.ui.View):
         self.game = game
         self.mode = mode
         self.counts = counts or DEFAULT_COUNTS.copy()
+        self.templates = templates or DEFAULT_TEMPLATE_PAYLOADS
         self.template_index = template_index
         self.message: Optional[discord.Message] = None
+
+        self._normalize_template_index()
 
         self.add_item(RoleCountSelect("Tanks", ROLE_TANK, self.counts[ROLE_TANK], row=0))
         self.add_item(RoleCountSelect("Healer", ROLE_HEALER, self.counts[ROLE_HEALER], row=1))
@@ -819,17 +898,32 @@ class RaidSlotsView(discord.ui.View):
         self.add_item(RoleCountSelect("Bench", ROLE_BENCH, self.counts[ROLE_BENCH], row=3))
 
     def _get_template_label(self) -> str:
-        for idx, (name, template) in enumerate(SLOT_TEMPLATES):
-            if all(self.counts.get(role) == template.get(role) for role in DEFAULT_COUNTS):
+        for idx, template in enumerate(self.templates):
+            template_counts = template.get("counts", {})
+            if all(
+                self.counts.get(role) == template_counts.get(role)
+                for role in DEFAULT_COUNTS
+            ):
                 self.template_index = idx
-                return name
+                return template.get("name", "Custom")
         return "Custom"
 
     def _apply_template(self) -> str:
-        name, template = SLOT_TEMPLATES[self.template_index]
-        for role_key, value in template.items():
+        template = self.templates[self.template_index]
+        for role_key, value in template.get("counts", {}).items():
             self.counts[role_key] = value
-        return name
+        return template.get("name", "Custom")
+
+    def _normalize_template_index(self) -> None:
+        if not self.templates:
+            self.templates = DEFAULT_TEMPLATE_PAYLOADS
+        if self.template_index < 0 or self.template_index >= len(self.templates):
+            default_index = 0
+            for idx, template in enumerate(self.templates):
+                if template.get("is_default"):
+                    default_index = idx
+                    break
+            self.template_index = default_index
 
     def _sync_select_placeholders(self) -> None:
         for item in self.children:
@@ -892,6 +986,8 @@ class RaidSlotsView(discord.ui.View):
             bot=self.bot,
             config=self.config,
             raid_store=self.raid_store,
+            template_store=self.template_store,
+            guild_id=interaction.guild.id if interaction.guild else 0,
             requester_id=self.requester_id,
             title=self.title,
             description=self.description,
@@ -917,7 +1013,9 @@ class RaidSlotsView(discord.ui.View):
 
     @discord.ui.button(label="🧩 Switch template", style=discord.ButtonStyle.secondary, row=4)
     async def cycle_template(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
-        self.template_index = (self.template_index + 1) % len(SLOT_TEMPLATES)
+        if not self.templates:
+            self.templates = DEFAULT_TEMPLATE_PAYLOADS
+        self.template_index = (self.template_index + 1) % len(self.templates)
         self._apply_template()
         self._sync_select_placeholders()
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
@@ -994,7 +1092,7 @@ class RaidSlotsView(discord.ui.View):
             return
 
         embed = build_raid_embed(raid, {}, self.config.raid_timezone, None, None)
-        manage_view = RaidManageView(self.config, self.raid_store)
+        manage_view = RaidManageView(self.config, self.raid_store, self.template_store)
         raid_message = await post_channel.send(embed=embed, view=manage_view)
         await self.raid_store.set_message_id(raid_id, raid_message.id)
 
@@ -1232,7 +1330,6 @@ class RaidSlotEditView(discord.ui.View):
 
         raid, raid_message = await self._get_raid_message(guild)
         if raid and raid_message:
-            await self._promote_from_bench(raid, raid_message, guild)
             await self._maybe_ping_open_slots(raid, raid_message, guild)
             signups = await self.raid_store.get_signups_by_role(raid.id)
             confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
@@ -1297,6 +1394,8 @@ class RaidCreateModal(discord.ui.Modal):
             bot=self.cog.bot,
             config=self.cog.config,
             raid_store=self.cog.raid_store,
+            template_store=self.cog.template_store,
+            guild_id=interaction.guild.id if interaction.guild else 0,
             requester_id=interaction.user.id,
             title=self.title_input.value,
             description=self.desc_input.value,
@@ -1510,13 +1609,336 @@ class RaidStartView(discord.ui.View):
         await interaction.response.send_modal(RaidCreateModal(self.cog))
 
 
+class BenchRoleSelect(discord.ui.Select):
+    """Dropdown for selecting a role to promote into."""
+
+    def __init__(self, view_ref: "BenchPromotionView"):
+        options = [
+            discord.SelectOption(label="Tank", value=ROLE_TANK),
+            discord.SelectOption(label="Healer", value=ROLE_HEALER),
+            discord.SelectOption(label="DPS", value=ROLE_DPS),
+        ]
+        super().__init__(placeholder="Select role", options=options, row=0)
+        self.view_ref = view_ref
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        self.view_ref.selected_role = self.values[0]
+        await interaction.response.defer()
+
+
+class BenchUserSelect(discord.ui.Select):
+    """Dropdown for selecting a bench user."""
+
+    def __init__(self, view_ref: "BenchPromotionView", options: list[discord.SelectOption]):
+        super().__init__(placeholder="Select bench user", options=options, row=1)
+        self.view_ref = view_ref
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        self.view_ref.selected_user_id = int(self.values[0])
+        await interaction.response.defer()
+
+
+class BenchPromotionView(discord.ui.View):
+    """Promote a bench signup into an open role."""
+
+    def __init__(
+        self,
+        config: Config,
+        raid_store: RaidStore,
+        raid,
+        raid_message: Optional[discord.Message],
+        guild: discord.Guild,
+        requester_id: int,
+        bench_options: list[discord.SelectOption],
+    ):
+        super().__init__(timeout=300)
+        self.config = config
+        self.raid_store = raid_store
+        self.raid = raid
+        self.raid_message = raid_message
+        self.guild = guild
+        self.requester_id = requester_id
+        self.selected_role: Optional[str] = None
+        self.selected_user_id: Optional[int] = None
+        self.add_item(BenchRoleSelect(self))
+        self.add_item(BenchUserSelect(self, bench_options))
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.requester_id:
+            await interaction.response.send_message(
+                "❌ Only the requester can use this menu.",
+                ephemeral=True,
+            )
+            return False
+        return True
+
+    def _get_participant_role(self) -> Optional[discord.Role]:
+        role_id = self.config.raid_participant_role_id
+        if not role_id:
+            fallback = None
+            for name in ("Raid Participants", "Raid Teilnehmer"):
+                fallback = discord.utils.get(self.guild.roles, name=name)
+                if fallback:
+                    break
+            if fallback:
+                self.config.set_raid_participant_role_id(fallback.id)
+            return fallback
+        return self.guild.get_role(role_id)
+
+    async def _ensure_participant_role(self, member: Optional[discord.Member]) -> None:
+        if not member:
+            return
+        role = self._get_participant_role()
+        if not role or role in member.roles:
+            return
+        try:
+            await member.add_roles(role, reason="Raid signup promotion")
+        except Exception:
+            logger.warning("Failed to add raid participant role", exc_info=True)
+
+    async def _get_member(self, user_id: int) -> Optional[discord.Member]:
+        member = self.guild.get_member(user_id)
+        if member:
+            return member
+        try:
+            return await self.guild.fetch_member(user_id)
+        except Exception:
+            return None
+
+    async def _send_dm(self, member: Optional[discord.Member], message: str) -> None:
+        if not member:
+            return
+        try:
+            await member.send(message)
+        except Exception:
+            pass
+
+    @discord.ui.button(label="⬆️ Promote", style=discord.ButtonStyle.green, row=2)
+    async def promote(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        if not self.selected_role or not self.selected_user_id:
+            await interaction.response.send_message(
+                "❌ Please select a role and a bench user.",
+                ephemeral=True,
+            )
+            return
+
+        raid = await self.raid_store.get_raid(self.raid.id)
+        if not raid or raid.status != "open":
+            await interaction.response.send_message(
+                "❌ Raid is not open.",
+                ephemeral=True,
+            )
+            return
+
+        current_role = await self.raid_store.get_user_role(
+            raid.id, self.selected_user_id
+        )
+        if current_role != ROLE_BENCH:
+            await interaction.response.send_message(
+                "❌ That user is no longer on bench.",
+                ephemeral=True,
+            )
+            return
+
+        signups = await self.raid_store.get_signups_by_role(raid.id)
+        limit = get_role_limit(raid, self.selected_role)
+        if limit <= 0:
+            await interaction.response.send_message(
+                "❌ No slots configured for that role.",
+                ephemeral=True,
+            )
+            return
+        current_count = len(signups.get(self.selected_role, []))
+        if current_count >= limit:
+            await interaction.response.send_message(
+                "❌ No open slots for that role.",
+                ephemeral=True,
+            )
+            return
+
+        await self.raid_store.upsert_signup(raid.id, self.selected_user_id, self.selected_role)
+
+        member = await self._get_member(self.selected_user_id)
+        await self._ensure_participant_role(member)
+        if self.raid_message and member:
+            try:
+                await self.raid_message.remove_reaction(ROLE_EMOJIS[ROLE_BENCH], member)
+                await self.raid_message.remove_reaction(
+                    ROLE_EMOJIS[self.selected_role], member
+                )
+            except Exception:
+                pass
+        await self._send_dm(
+            member,
+            (
+                f"✅ You were moved from bench to {self.selected_role.upper()} "
+                f"for **{self.raid.title}**.\n"
+                f"Please contact the raid creator <@{self.raid.creator_id}> to confirm "
+                "your spot (DM or voice is fine)."
+            ),
+        )
+
+        if self.raid_message:
+            updated_signups = await self.raid_store.get_signups_by_role(raid.id)
+            confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
+            no_shows = await self.raid_store.get_no_show_user_ids(raid.id)
+            embed = build_raid_embed(
+                raid, updated_signups, self.config.raid_timezone, confirmed, no_shows
+            )
+            try:
+                await self.raid_message.edit(embed=embed)
+            except Exception:
+                pass
+
+        for item in self.children:
+            item.disabled = True
+        self.stop()
+
+        role_label = ROLE_LABELS.get(self.selected_role, self.selected_role.upper())
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title="✅ Bench promotion complete",
+                description=f"<@{self.selected_user_id}> -> {role_label}",
+                color=discord.Color.green(),
+            ),
+            view=self,
+        )
+
+    @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.red, row=2)
+    async def cancel(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        for item in self.children:
+            item.disabled = True
+        self.stop()
+        await interaction.response.edit_message(
+            content="❌ Bench promotion cancelled.",
+            embed=None,
+            view=self,
+        )
+
+
+class RaidRoleChoiceView(discord.ui.View):
+    """Let a user pick a single role after multiple reactions."""
+
+    def __init__(
+        self,
+        raid_cog: "RaidCommand",
+        raid_id: int,
+        guild_id: int,
+        channel_id: int,
+        message_id: int,
+        user_id: int,
+    ):
+        super().__init__(timeout=600)
+        self.raid_cog = raid_cog
+        self.raid_id = raid_id
+        self.guild_id = guild_id
+        self.channel_id = channel_id
+        self.message_id = message_id
+        self.user_id = user_id
+
+    async def _handle_choice(
+        self, interaction: discord.Interaction, requested_role: str
+    ) -> None:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                "❌ This selection is not for you.",
+                ephemeral=True,
+            )
+            return
+
+        raid = await self.raid_cog.raid_store.get_raid(self.raid_id)
+        if not raid or raid.status not in ("open", "locked"):
+            await interaction.response.edit_message(
+                content="❌ This raid is no longer open.",
+                view=None,
+            )
+            self.stop()
+            return
+
+        guild = self.raid_cog.bot.get_guild(self.guild_id)
+        if not guild:
+            await interaction.response.edit_message(
+                content="❌ Server not found.",
+                view=None,
+            )
+            self.stop()
+            return
+
+        message = None
+        channel = guild.get_channel(self.channel_id)
+        if not isinstance(channel, discord.TextChannel):
+            try:
+                channel = await guild.fetch_channel(self.channel_id)
+            except Exception:
+                channel = None
+        if isinstance(channel, discord.TextChannel):
+            try:
+                message = await channel.fetch_message(self.message_id)
+            except Exception:
+                message = None
+
+        member = await self.raid_cog._get_member(guild, self.user_id)
+        effective_role, note, _ = await self.raid_cog._apply_role_choice(
+            raid, self.user_id, requested_role, member
+        )
+
+        if message and member:
+            roles_to_remove = tuple(
+                role for role in ROLE_SIGNUP_ROLES if role != effective_role
+            )
+            await self.raid_cog._remove_user_reactions(message, member, roles_to_remove)
+        if message:
+            await self.raid_cog._refresh_raid_message(raid.id, message)
+
+        for item in self.children:
+            item.disabled = True
+        self.stop()
+
+        if effective_role == ROLE_CANCEL:
+            role_label = "No signup"
+        else:
+            role_label = ROLE_LABELS.get(effective_role, effective_role.upper())
+        text = f"✅ Choice saved: {role_label}."
+        if note:
+            text = f"{text}\n{note}"
+        await interaction.response.edit_message(
+            content=text,
+            view=self,
+        )
+
+    @discord.ui.button(label="Tank", style=discord.ButtonStyle.secondary, row=0)
+    async def choose_tank(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ) -> None:
+        await self._handle_choice(interaction, ROLE_TANK)
+
+    @discord.ui.button(label="Healer", style=discord.ButtonStyle.secondary, row=0)
+    async def choose_healer(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ) -> None:
+        await self._handle_choice(interaction, ROLE_HEALER)
+
+    @discord.ui.button(label="DPS", style=discord.ButtonStyle.secondary, row=0)
+    async def choose_dps(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ) -> None:
+        await self._handle_choice(interaction, ROLE_DPS)
+
+    @discord.ui.button(label="Bench", style=discord.ButtonStyle.secondary, row=0)
+    async def choose_bench(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ) -> None:
+        await self._handle_choice(interaction, ROLE_BENCH)
+
+
 class RaidManageView(discord.ui.View):
     """Persistent view for managing posted raids."""
 
-    def __init__(self, config: Config, raid_store: RaidStore):
+    def __init__(self, config: Config, raid_store: RaidStore, template_store: RaidTemplateStore):
         super().__init__(timeout=None)
         self.config = config
         self.raid_store = raid_store
+        self.template_store = template_store
 
     def _has_admin_permission(self, interaction: discord.Interaction) -> bool:
         if interaction.user.guild_permissions.administrator:
@@ -1815,6 +2237,8 @@ class RaidManageView(discord.ui.View):
             bot=interaction.client,
             config=self.config,
             raid_store=self.raid_store,
+            template_store=self.template_store,
+            guild_id=interaction.guild.id if interaction.guild else 0,
             requester_id=interaction.user.id,
             title=raid.title,
             description=raid.description,
@@ -1874,6 +2298,115 @@ class RaidManageView(discord.ui.View):
             ephemeral=True,
         )
         view.message = await interaction.original_response()
+
+    @discord.ui.button(
+        label="🪑 Promote",
+        style=discord.ButtonStyle.secondary,
+        custom_id="guildscout_raid_promote_v1",
+        row=2,
+    )
+    async def promote_from_bench(
+        self, interaction: discord.Interaction, _: discord.ui.Button
+    ) -> None:
+        raid = await self._get_raid_from_interaction(interaction)
+        if not raid:
+            return
+
+        if not self._can_manage(interaction, raid):
+            await interaction.response.send_message(
+                "❌ You do not have permission to promote from bench.",
+                ephemeral=True,
+            )
+            return
+        if raid.status != "open":
+            await interaction.response.send_message(
+                "❌ Raid is not open.",
+                ephemeral=True,
+            )
+            return
+
+        guild = interaction.guild
+        if not guild:
+            await interaction.response.send_message(
+                "❌ Server not found.",
+                ephemeral=True,
+            )
+            return
+
+        signups = await self.raid_store.list_signups(raid.id)
+        bench_entries = [entry for entry in signups if entry.get("role") == ROLE_BENCH]
+        if not bench_entries:
+            await interaction.response.send_message(
+                "ℹ️ No bench signups available.",
+                ephemeral=True,
+            )
+            return
+
+        truncated = len(bench_entries) > 25
+        bench_entries = bench_entries[:25]
+        options: list[discord.SelectOption] = []
+        for entry in bench_entries:
+            user_id = entry.get("user_id")
+            if not user_id:
+                continue
+            member = guild.get_member(int(user_id))
+            label = member.display_name if member else f"User {user_id}"
+            preferred_role = entry.get("preferred_role")
+            preferred_label = ROLE_LABELS.get(preferred_role, "Any") if preferred_role else "Any"
+            options.append(
+                discord.SelectOption(
+                    label=label[:100],
+                    value=str(user_id),
+                    description=f"pref: {preferred_label}"[:100],
+                )
+            )
+        if not options:
+            await interaction.response.send_message(
+                "ℹ️ No bench signups available.",
+                ephemeral=True,
+            )
+            return
+
+        view = BenchPromotionView(
+            config=self.config,
+            raid_store=self.raid_store,
+            raid=raid,
+            raid_message=interaction.message,
+            guild=guild,
+            requester_id=interaction.user.id,
+            bench_options=options,
+        )
+
+        signups_by_role = await self.raid_store.get_signups_by_role(raid.id)
+        open_tanks = max(raid.tanks_needed - len(signups_by_role.get(ROLE_TANK, [])), 0)
+        open_healers = max(
+            raid.healers_needed - len(signups_by_role.get(ROLE_HEALER, [])), 0
+        )
+        open_dps = max(raid.dps_needed - len(signups_by_role.get(ROLE_DPS, [])), 0)
+        parts = []
+        if open_tanks:
+            parts.append(f"Tanks: {open_tanks}")
+        if open_healers:
+            parts.append(f"Healer: {open_healers}")
+        if open_dps:
+            parts.append(f"DPS: {open_dps}")
+        slot_text = " | ".join(parts) if parts else "No open slots."
+        description = "Select a role and a bench user to promote."
+        if truncated:
+            description += " Showing first 25 bench signups."
+
+        embed = discord.Embed(
+            title="🪑 Bench promotion",
+            description=description,
+            color=discord.Color.blurple(),
+        )
+        embed.add_field(name="Open slots", value=slot_text, inline=False)
+
+        await interaction.response.send_message(
+            embed=embed,
+            view=view,
+            ephemeral=True,
+        )
 
     @discord.ui.button(
         label="✅ Close",
@@ -1999,10 +2532,17 @@ class RaidManageView(discord.ui.View):
 class RaidCommand(commands.Cog):
     """Cog for raid scheduling and configuration."""
 
-    def __init__(self, bot: commands.Bot, config: Config, raid_store: RaidStore):
+    def __init__(
+        self,
+        bot: commands.Bot,
+        config: Config,
+        raid_store: RaidStore,
+        template_store: RaidTemplateStore,
+    ):
         self.bot = bot
         self.config = config
         self.raid_store = raid_store
+        self.template_store = template_store
         if self.config.raid_info_channel_id:
             self.bot.loop.create_task(self._refresh_info_on_start())
 
@@ -2174,6 +2714,283 @@ class RaidCommand(commands.Cog):
         except Exception:
             logger.warning("Failed to clean raid info channel", exc_info=True)
 
+    async def _get_member(
+        self, guild: discord.Guild, user_id: int
+    ) -> Optional[discord.Member]:
+        member = guild.get_member(user_id)
+        if member:
+            return member
+        try:
+            return await guild.fetch_member(user_id)
+        except Exception:
+            return None
+
+    async def _send_dm(self, member: Optional[discord.Member], message: str) -> None:
+        if not member:
+            return
+        try:
+            await member.send(message)
+        except Exception:
+            pass
+
+    def _get_participant_role_for_guild(
+        self, guild: discord.Guild
+    ) -> Optional[discord.Role]:
+        role_id = self.config.raid_participant_role_id
+        if not role_id:
+            fallback = None
+            for name in ("Raid Participants", "Raid Teilnehmer"):
+                fallback = discord.utils.get(guild.roles, name=name)
+                if fallback:
+                    break
+            if fallback:
+                self.config.set_raid_participant_role_id(fallback.id)
+            return fallback
+        return guild.get_role(role_id)
+
+    async def _ensure_participant_role_for_member(
+        self, member: Optional[discord.Member]
+    ) -> None:
+        if not member:
+            return
+        role = self._get_participant_role_for_guild(member.guild)
+        if not role or role in member.roles:
+            return
+        try:
+            await member.add_roles(role, reason="Raid signup")
+        except Exception:
+            logger.warning("Failed to add raid participant role", exc_info=True)
+
+    async def _remove_participant_role_for_member_if_unused(
+        self,
+        member: Optional[discord.Member],
+    ) -> None:
+        if not member:
+            return
+        role = self._get_participant_role_for_guild(member.guild)
+        if not role or role not in member.roles:
+            return
+        active_count = await self.raid_store.count_user_active_signups(
+            member.guild.id,
+            member.id,
+        )
+        if active_count > 0:
+            return
+        try:
+            await member.remove_roles(role, reason="Raid signup removed")
+        except Exception:
+            logger.warning("Failed to remove raid participant role", exc_info=True)
+
+    async def _remove_user_reactions(
+        self,
+        message: discord.Message,
+        member: Optional[discord.Member],
+        roles: tuple[str, ...],
+    ) -> None:
+        if not member:
+            return
+        for role in roles:
+            emoji = ROLE_EMOJIS.get(role)
+            if not emoji:
+                continue
+            try:
+                await message.remove_reaction(emoji, member)
+            except Exception:
+                pass
+
+    async def _refresh_raid_message(
+        self, raid_id: int, message: discord.Message
+    ) -> None:
+        raid = await self.raid_store.get_raid(raid_id)
+        if not raid:
+            return
+        signups = await self.raid_store.get_signups_by_role(raid.id)
+        confirmation_message_id = await self.raid_store.get_confirmation_message_id(
+            raid.id
+        )
+        confirmed = None
+        no_shows = None
+        if confirmation_message_id:
+            confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
+            no_shows = await self.raid_store.get_no_show_user_ids(raid.id)
+        embed = build_raid_embed(
+            raid, signups, self.config.raid_timezone, confirmed, no_shows
+        )
+        try:
+            await message.edit(embed=embed)
+        except Exception:
+            logger.warning("Failed to update raid message %s", raid_id, exc_info=True)
+
+    async def _apply_role_choice(
+        self,
+        raid,
+        user_id: int,
+        requested_role: str,
+        member: Optional[discord.Member],
+    ) -> tuple[str, Optional[str], bool]:
+        current_role = await self.raid_store.get_user_role(raid.id, user_id)
+        signups = await self.raid_store.get_signups_by_role(raid.id)
+        bench_limit = get_role_limit(raid, ROLE_BENCH)
+        bench_count = len(signups.get(ROLE_BENCH, []))
+        bench_available = bench_limit > 0 and (
+            bench_count < bench_limit or current_role == ROLE_BENCH
+        )
+
+        note: Optional[str] = None
+        changed = False
+
+        if requested_role == ROLE_BENCH:
+            if not bench_available and current_role != ROLE_BENCH:
+                note = "❌ Bench is already full."
+                return current_role or ROLE_CANCEL, note, False
+            existing_preferred = None
+            if current_role == ROLE_BENCH:
+                existing_preferred = await self.raid_store.get_user_preferred_role(
+                    raid.id, user_id
+                )
+            if current_role in (ROLE_TANK, ROLE_HEALER, ROLE_DPS):
+                preferred_role = current_role
+            else:
+                preferred_role = existing_preferred
+            await self.raid_store.upsert_signup_with_preference(
+                raid.id, user_id, ROLE_BENCH, preferred_role
+            )
+            await self._ensure_participant_role_for_member(member)
+            changed = current_role != ROLE_BENCH or preferred_role != existing_preferred
+            return ROLE_BENCH, note, changed
+
+        if current_role == requested_role:
+            return current_role, None, False
+
+        if raid.status == "locked":
+            if not bench_available and current_role != ROLE_BENCH:
+                note = "❌ Signups are locked and bench is full."
+                return current_role or ROLE_CANCEL, note, False
+            await self.raid_store.upsert_signup_with_preference(
+                raid.id, user_id, ROLE_BENCH, requested_role
+            )
+            await self._ensure_participant_role_for_member(member)
+            note = "ℹ️ Signups locked: you were moved to bench (preference saved)."
+            return ROLE_BENCH, note, True
+
+        limit = get_role_limit(raid, requested_role)
+        current_count = len(signups.get(requested_role, []))
+        if limit <= 0 or (current_count >= limit and current_role != requested_role):
+            if not bench_available and current_role != ROLE_BENCH:
+                note = "❌ That role is full and the bench is also full."
+                return current_role or ROLE_CANCEL, note, False
+            await self.raid_store.upsert_signup_with_preference(
+                raid.id, user_id, ROLE_BENCH, requested_role
+            )
+            await self._ensure_participant_role_for_member(member)
+            note = "ℹ️ Role full: you were moved to bench (preference saved)."
+            return ROLE_BENCH, note, True
+
+        await self.raid_store.upsert_signup(raid.id, user_id, requested_role)
+        await self._ensure_participant_role_for_member(member)
+        return requested_role, None, True
+
+    async def _collect_reaction_users(
+        self, message: discord.Message
+    ) -> Dict[str, set[int]]:
+        users_by_role: Dict[str, set[int]] = {
+            role: set() for role in ROLE_EMOJI_TO_ROLE.values()
+        }
+        for reaction in message.reactions:
+            role = ROLE_EMOJI_TO_ROLE.get(str(reaction.emoji))
+            if not role:
+                continue
+            try:
+                async for user in reaction.users(limit=None):
+                    if user.bot:
+                        continue
+                    users_by_role[role].add(int(user.id))
+            except Exception:
+                continue
+        return users_by_role
+
+    async def _reconcile_raid_reactions(
+        self,
+        raid,
+        message: discord.Message,
+        guild: discord.Guild,
+    ) -> None:
+        users_by_role = await self._collect_reaction_users(message)
+        cancel_users = users_by_role.get(ROLE_CANCEL, set())
+
+        user_roles: Dict[int, set[str]] = {}
+        for role in ROLE_SIGNUP_ROLES:
+            for user_id in users_by_role.get(role, set()):
+                user_roles.setdefault(user_id, set()).add(role)
+
+        processed: set[int] = set()
+        roles_to_clear = ROLE_SIGNUP_ROLES + (ROLE_CANCEL,)
+
+        for user_id in cancel_users:
+            processed.add(user_id)
+            await self.raid_store.remove_signup(raid.id, user_id)
+            member = await self._get_member(guild, user_id)
+            if member:
+                await self._remove_user_reactions(message, member, roles_to_clear)
+                await self._remove_participant_role_for_member_if_unused(member)
+                await self._send_dm(
+                    member, f"✅ You left **{raid.title}**."
+                )
+
+        for user_id, roles in user_roles.items():
+            if len(roles) <= 1 or user_id in processed:
+                continue
+            processed.add(user_id)
+            member = await self._get_member(guild, user_id)
+            if member:
+                jump_url = message.jump_url
+                view = RaidRoleChoiceView(
+                    self,
+                    raid.id,
+                    raid.guild_id,
+                    raid.channel_id,
+                    raid.message_id,
+                    user_id,
+                )
+                try:
+                    await member.send(
+                        (
+                            f"⚠️ You reacted to multiple roles for **{raid.title}**.\n"
+                            f"Please pick a single role below.\n{jump_url}"
+                        ),
+                        view=view,
+                    )
+                except Exception:
+                    pass
+
+        for user_id, roles in user_roles.items():
+            if len(roles) != 1 or user_id in processed:
+                continue
+            requested_role = next(iter(roles))
+            member = await self._get_member(guild, user_id)
+            effective_role, note, _ = await self._apply_role_choice(
+                raid, user_id, requested_role, member
+            )
+            if member and requested_role != effective_role:
+                await self._remove_user_reactions(
+                    message, member, (requested_role,)
+                )
+            if note:
+                await self._send_dm(member, note)
+
+        users_with_reactions = set(user_roles.keys())
+        signups = await self.raid_store.list_signups(raid.id)
+        for entry in signups:
+            role = entry.get("role")
+            user_id = entry.get("user_id")
+            if not user_id or role not in (ROLE_TANK, ROLE_HEALER, ROLE_DPS):
+                continue
+            if int(user_id) in users_with_reactions:
+                continue
+            await self.raid_store.remove_signup(raid.id, int(user_id))
+            member = await self._get_member(guild, int(user_id))
+            await self._remove_participant_role_for_member_if_unused(member)
+
     async def refresh_raid_history(self, guild: Optional[discord.Guild] = None) -> None:
         """Refresh the raid stats embed if configured."""
         if not self.config.raid_post_channel_id:
@@ -2191,6 +3008,72 @@ class RaidCommand(commands.Cog):
         if not isinstance(channel, discord.TextChannel):
             return
         await self._upsert_raid_history_message(channel, guild)
+
+    async def refresh_active_raids(self, guild: Optional[discord.Guild] = None) -> int:
+        """Refresh all open/locked raid embeds and views after startup."""
+        if not self.config.raid_enabled:
+            return 0
+        if guild is None:
+            guild = self.bot.get_guild(self.config.guild_id)
+        if not guild:
+            return 0
+
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        upcoming = await self.raid_store.list_active_raids(now_ts)
+        ongoing = await self.raid_store.list_raids_to_close(now_ts)
+        raid_map = {raid.id: raid for raid in upcoming}
+        for raid in ongoing:
+            raid_map[raid.id] = raid
+
+        refreshed = 0
+        for raid in raid_map.values():
+            if not raid.message_id:
+                continue
+
+            channel = guild.get_channel(raid.channel_id)
+            if not isinstance(channel, discord.TextChannel):
+                try:
+                    channel = await guild.fetch_channel(raid.channel_id)
+                except Exception:
+                    continue
+            if not isinstance(channel, discord.TextChannel):
+                continue
+
+            try:
+                message = await channel.fetch_message(raid.message_id)
+            except Exception:
+                continue
+
+            try:
+                await self._reconcile_raid_reactions(raid, message, guild)
+            except Exception:
+                logger.warning(
+                    "Failed to reconcile raid reactions for %s",
+                    raid.id,
+                    exc_info=True,
+                )
+
+            signups = await self.raid_store.get_signups_by_role(raid.id)
+            confirmation_message_id = await self.raid_store.get_confirmation_message_id(
+                raid.id
+            )
+            confirmed = None
+            no_shows = None
+            if confirmation_message_id:
+                confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
+                no_shows = await self.raid_store.get_no_show_user_ids(raid.id)
+
+            embed = build_raid_embed(
+                raid, signups, self.config.raid_timezone, confirmed, no_shows
+            )
+            view = RaidManageView(self.config, self.raid_store, self.template_store)
+            try:
+                await message.edit(embed=embed, view=view)
+                refreshed += 1
+            except Exception:
+                continue
+
+        return refreshed
 
     @app_commands.command(name="raid-create", description="[Raid] Create a raid")
     async def raid_create(self, interaction: discord.Interaction) -> None:
@@ -2724,8 +3607,10 @@ class RaidCommand(commands.Cog):
 
 async def setup(bot: commands.Bot, config: Config, raid_store: RaidStore) -> None:
     """Setup function for raid commands."""
-    cog = RaidCommand(bot, config, raid_store)
+    template_store = RaidTemplateStore()
+    await template_store.initialize()
+    cog = RaidCommand(bot, config, raid_store, template_store)
     await bot.add_cog(cog)
     bot.add_view(RaidStartView(cog))
-    bot.add_view(RaidManageView(config, raid_store))
+    bot.add_view(RaidManageView(config, raid_store, template_store))
     logger.info("RaidCommand cog loaded")

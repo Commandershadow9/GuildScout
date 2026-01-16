@@ -367,7 +367,6 @@ class RaidEvents(commands.Cog):
             await self.raid_store.remove_signup(raid.id, payload.user_id)
             await self._clear_user_reactions(message, member)
             await self._remove_participant_role_if_unused(member)
-            await self._fill_open_slots(raid, message, guild)
             await self._maybe_ping_open_slots(raid, message, guild)
             await self._update_raid_message(message, raid.id)
             await self._prompt_leave_reason(member, raid)
@@ -383,7 +382,15 @@ class RaidEvents(commands.Cog):
         bench_count = len(signups.get(ROLE_BENCH, []))
         bench_available = bench_limit > 0 and bench_count < bench_limit
 
-        if raid.status == "locked" and role != ROLE_BENCH:
+        if current_role == ROLE_BENCH and role in (ROLE_TANK, ROLE_HEALER, ROLE_DPS):
+            effective_role = ROLE_BENCH
+            preferred_role = role
+            await self._remove_reaction(message, str(payload.emoji), member)
+            await self._send_dm(
+                member,
+                f"ℹ️ Bench preference set to {role.upper()}.",
+            )
+        elif raid.status == "locked" and role != ROLE_BENCH:
             if not bench_available:
                 await self._remove_reaction(message, str(payload.emoji), member)
                 await self._send_dm(
@@ -396,10 +403,10 @@ class RaidEvents(commands.Cog):
             await self._remove_reaction(message, str(payload.emoji), member)
             await self._send_dm(
                 member,
-                "ℹ️ Signups locked: you were moved to bench.",
+                "ℹ️ Signups locked: you were moved to bench (preference saved).",
             )
         elif role == ROLE_BENCH:
-            if not bench_available:
+            if not bench_available and current_role != ROLE_BENCH:
                 await self._remove_reaction(message, str(payload.emoji), member)
                 await self._send_dm(
                     member,
@@ -407,6 +414,22 @@ class RaidEvents(commands.Cog):
                 )
                 return
             effective_role = ROLE_BENCH
+            if current_role in (ROLE_TANK, ROLE_HEALER, ROLE_DPS):
+                preferred_role = current_role
+            elif current_role == ROLE_BENCH:
+                preferred_role = await self.raid_store.get_user_preferred_role(
+                    raid.id, payload.user_id
+                )
+            if current_role != ROLE_BENCH and preferred_role:
+                await self._send_dm(
+                    member,
+                    f"ℹ️ You are on bench (preference: {preferred_role.upper()}).",
+                )
+            elif current_role != ROLE_BENCH and not preferred_role:
+                await self._send_dm(
+                    member,
+                    "ℹ️ You are on bench. React with a role to set a preference.",
+                )
         else:
             limit = get_role_limit(raid, role)
             current_count = len(signups.get(role, []))
@@ -423,7 +446,7 @@ class RaidEvents(commands.Cog):
                 await self._remove_reaction(message, str(payload.emoji), member)
                 await self._send_dm(
                     member,
-                    "ℹ️ Role full: you were moved to bench.",
+                    "ℹ️ Role full: you were moved to bench (preference saved).",
                 )
 
         if current_role == effective_role and effective_role != ROLE_BENCH:
@@ -446,7 +469,6 @@ class RaidEvents(commands.Cog):
                 await self._remove_reaction(message, previous_emoji, member)
 
         if current_role and current_role != effective_role and current_role != ROLE_BENCH:
-            await self._fill_open_slots(raid, message, guild)
             await self._maybe_ping_open_slots(raid, message, guild)
 
         await self._update_raid_message(message, raid.id)
@@ -485,7 +507,6 @@ class RaidEvents(commands.Cog):
             return
         member = await self._get_member(guild, payload.user_id)
         await self._remove_participant_role_if_unused(member)
-        await self._fill_open_slots(raid, message, guild)
         await self._maybe_ping_open_slots(raid, message, guild)
         await self._update_raid_message(message, raid.id)
 

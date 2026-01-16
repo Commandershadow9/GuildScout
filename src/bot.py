@@ -236,6 +236,15 @@ class GuildScoutBot(commands.Bot):
         # Check for missed messages or start full import if needed
         await self._check_and_start_auto_import(guild, force_reimport=False)
 
+        # Refresh active raid posts after restart.
+        try:
+            raid_cog = self.get_cog("RaidCommand")
+            if raid_cog and hasattr(raid_cog, "refresh_active_raids"):
+                refreshed = await raid_cog.refresh_active_raids(guild)
+                self.logger.info("Refreshed %s raid posts after startup", refreshed)
+        except Exception:
+            self.logger.warning("Failed to refresh raid posts after startup", exc_info=True)
+
         # Signal that initial startup is complete after a short delay
         # This allows verification tasks to start after everything else is settled
         self.logger.info("Initial startup sequence completed. Waiting 10 seconds before enabling background tasks...")
