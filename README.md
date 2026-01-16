@@ -38,8 +38,8 @@ Perfect for communities who need to fairly select members for limited guild spot
 - **💬 Welcome Messages**: Auto-updating channel info with debouncing
 - **🔧 Set Max Spots**: Configure maximum guild size
 - **⚠️ Interactive Dashboard**: Manage "at-risk" users directly with buttons
-- **🗡️ Raid Planner**: Interactive raid flow with templates, role limits, bench,
-  lock/close, reminders, and auto-cleanup
+- **🗡️ Raid Planner**: Interactive raid flow with templates, role limits, bench
+  preferences, manual bench promotion, lock/close, reminders, and auto-cleanup
 
 ### User Features
 - **📊 /my-score**: Users receive a generated graphical card with their ranking
@@ -119,6 +119,38 @@ Perfect for communities who need to fairly select members for limited guild spot
    ```bash
    python run.py
    ```
+
+## 🌐 Web UI (Raid Control Room)
+
+The web UI adds a Discord-authenticated dashboard for raid creation, templates, and settings.
+
+### Setup
+
+1. **Create OAuth credentials** in the Discord Developer Portal and add the redirect URL
+   (example: `https://guildscout.zerodox.de/auth/callback`).
+2. **Copy env template**
+   ```bash
+   cp .env.example .env
+   ```
+3. **Fill in** `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI`,
+   and `SESSION_SECRET`.
+4. **Install web dependencies**
+   ```bash
+   pip install -r web_api/requirements.txt
+   ```
+5. **Run the web server**
+   ```bash
+   uvicorn web_api.app:app --host 0.0.0.0 --port 8090
+   ```
+   Or use the helper:
+   ```bash
+   ./scripts/run_web_ui.sh
+   ```
+
+### Notes
+- Web settings sync to `config/config.yaml` for the configured guild.
+- Template changes apply to new raid creations immediately.
+- If you change channels/roles, restart the bot so it reloads config.
 
 ## ⚙️ Configuration
 

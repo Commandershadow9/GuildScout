@@ -29,6 +29,7 @@ Rules:
 - **One role per person**.
 - If a role is full, you are moved to **Bench** (if available).
 - If **Locked**, only bench is possible.
+- Bench preferences can be set (see below).
 
 ---
 
@@ -49,24 +50,30 @@ Notes:
 ### Method B: Command
 `/raid-create`
 
+### Method C: Web UI
+1) Open the Web UI and pick your guild.
+2) Use **Create raid** in the dashboard.
+3) Select template + slots, then post.
+
 ---
 
 ## 🧩 Slot Templates
 
 In the slot step you can use **"Switch template"**.
-Templates are currently defined in code:
+Templates are stored in the web UI database (`data/web_ui.db`) and can be edited
+from the Web UI (Templates page).
 
-File: `src/commands/raid.py`
+Default templates are seeded from `src/database/raid_template_store.py`:
 
 ```py
-SLOT_TEMPLATES = [
-    ("Standard", {ROLE_TANK: 2, ROLE_HEALER: 2, ROLE_DPS: 6, ROLE_BENCH: 0}),
-    ("Small", {ROLE_TANK: 1, ROLE_HEALER: 1, ROLE_DPS: 3, ROLE_BENCH: 0}),
-    ("Large", {ROLE_TANK: 3, ROLE_HEALER: 3, ROLE_DPS: 9, ROLE_BENCH: 2}),
+DEFAULT_TEMPLATE_SPECS = [
+    {"name": "Standard", "tanks": 2, "healers": 2, "dps": 6, "bench": 0},
+    {"name": "Small", "tanks": 1, "healers": 1, "dps": 3, "bench": 0},
+    {"name": "Large", "tanks": 3, "healers": 3, "dps": 9, "bench": 2},
 ]
 ```
 
-Tell me if you want different templates.
+Changes apply immediately for new raid drafts.
 
 ---
 
@@ -77,9 +84,18 @@ You will appear in the participant list with your role.
 
 If **Bench** is available:
 - Full role -> automatically bench + DM note.
+- Locked or full -> bench + preferred role saved.
 
 If **Bench** is full:
 - Signup is rejected.
+
+Bench preferences:
+- When on bench, react with 🛡️/💉/⚔️ to set your preferred role.
+- The bot may DM you with buttons to choose your preference.
+- If DMs are closed, the bot posts a short prompt in the raid channel
+  (auto-deletes after ~10 minutes).
+- The raid embed shows your preference icon next to your name.
+  - 🛡️ = Tank, 💉 = Healer, ⚔️ = DPS, 🎲 = Any
 
 ---
 
@@ -110,15 +126,15 @@ Signup status in title:
 - **SIGNUPS CLOSED** (red): closed or full
 
 Auto-close:
-Default: raid auto-closes at start time.
-Optional: auto-close can be disabled (see config).
-Safety: optional close after X hours.
+Set `auto_close_at_start` to close automatically at start time.
+If disabled, raids stay open until manual close or `auto_close_after_hours`.
 
 ## 🧹 Cleanup
 
 If a raid is **closed or cancelled**, the bot deletes the post
 so only open raids remain in the channel. Related reminder posts
 are also removed.
+Restart notices auto-delete after ~2 hours.
 
 ---
 
@@ -132,7 +148,9 @@ Buttons:
 - **✅ Close**: close raid manually
 - **🛑 Cancel**: cancel raid
 - **⏭️ Follow-up**: create a new raid with same title/slots (only time needed)
-- **⚙️ Slots**: adjust slot counts (bench auto-promotes)
+- **⚙️ Slots**: adjust slot counts
+- **🪑 Promote**: select role + bench user to move into the raid
+  (sends a DM to the user to contact the raid creator)
 
 Optional logging:
 - If `log_channel_id` is set, the bot posts a raid summary
@@ -195,6 +213,16 @@ In the raid embed:
 - English format line
 
 This helps mixed time zones.
+
+---
+
+## 🔄 Restart Behavior
+
+- On restart, the bot refreshes active raid embeds and re-attaches buttons.
+- Reactions are reconciled against the DB.
+  - If a user reacted to multiple roles while the bot was offline,
+    they receive a DM to pick one.
+- A short offline notice is posted per channel (auto-deletes after ~2 hours).
 
 ---
 
