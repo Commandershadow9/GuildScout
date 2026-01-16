@@ -104,8 +104,9 @@ def _format_bench_list(
     formatted = []
     for user_id in user_ids:
         preferred = bench_preferences.get(int(user_id))
-        preferred_label = ROLE_LABELS.get(preferred, "Any") if preferred else "Any"
-        formatted.append(f"<@{user_id}> (pref: {preferred_label})")
+        preferred_emoji = ROLE_EMOJIS.get(preferred) if preferred else None
+        marker = preferred_emoji or "🎲"
+        formatted.append(f"<@{user_id}> {marker}")
     return ", ".join(formatted)
 
 
