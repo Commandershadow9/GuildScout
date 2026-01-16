@@ -57,6 +57,23 @@ DEFAULT_TEMPLATE_PAYLOADS = [
     for spec in DEFAULT_TEMPLATE_SPECS
 ]
 
+def _format_duration(seconds: int) -> str:
+    if seconds <= 0:
+        return "a moment"
+    minutes, secs = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+    parts = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes:
+        parts.append(f"{minutes}m")
+    if not parts and secs:
+        parts.append(f"{secs}s")
+    return " ".join(parts)
+
 ROLE_SIGNUP_ROLES = (ROLE_TANK, ROLE_HEALER, ROLE_DPS, ROLE_BENCH)
 ROLE_EMOJI_TO_ROLE = {
     ROLE_EMOJIS[ROLE_TANK]: ROLE_TANK,
@@ -3103,14 +3120,23 @@ class RaidCommand(commands.Cog):
                 continue
 
             try:
+                offline_seconds = getattr(self.bot, "last_offline_seconds", None)
+                offline_text = None
+                if isinstance(offline_seconds, int) and offline_seconds >= 0:
+                    offline_text = _format_duration(offline_seconds)
                 last_notice = await self.raid_store.get_alert_sent_at(
                     raid.id, "restart_notice"
                 )
                 if not last_notice or now_ts - last_notice > 600:
+                    if offline_text:
+                        offline_line = f" for about {offline_text}"
+                    else:
+                        offline_line = ""
                     await channel.send(
                         (
-                            "⚠️ The bot was offline. If you reacted or removed a "
-                            "reaction during that time, please re-apply your reaction.\n"
+                            "⚠️ The bot was offline"
+                            f"{offline_line}. If you reacted or removed a reaction "
+                            "during that time, please re-apply your reaction.\n"
                             f"{message.jump_url}"
                         )
                     )

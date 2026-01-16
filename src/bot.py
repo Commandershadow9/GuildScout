@@ -1,5 +1,6 @@
 """Main bot file for GuildScout Discord Bot."""
 
+import json
 import logging
 import discord
 from discord.ext import commands
@@ -7,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 import asyncio # Moved from on_ready
+from datetime import datetime, timezone
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -81,6 +83,9 @@ class GuildScoutBot(commands.Bot):
         self._chunking_done = False  # Flag to track if chunking is complete
         self._chunking_task = None  # Store chunking task to prevent garbage collection
         self._initial_startup_complete = False # Flag for initial setup completion
+        self._heartbeat_task = None
+        self._heartbeat_path = Path("data/bot_heartbeat.json")
+        self.last_offline_seconds: Optional[int] = None
 
         # Initialize bot with intents
         intents = discord.Intents.default()
@@ -97,6 +102,10 @@ class GuildScoutBot(commands.Bot):
     async def setup_hook(self):
         """Setup hook called when bot is starting."""
         self.logger.info("Setting up bot...")
+
+        self.last_offline_seconds = self._compute_offline_seconds()
+        if self._heartbeat_task is None:
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
         # Initialize cache
         await self.cache.initialize()
@@ -205,6 +214,38 @@ class GuildScoutBot(commands.Bot):
                     status="🔄 Reconnected",
                     color=discord.Color.blurple()
                 )
+
+    def _read_last_seen_at(self) -> Optional[int]:
+        try:
+            data = json.loads(self._heartbeat_path.read_text())
+            last_seen = int(data.get("last_seen_at", 0))
+            return last_seen or None
+        except Exception:
+            return None
+
+    def _compute_offline_seconds(self) -> Optional[int]:
+        last_seen = self._read_last_seen_at()
+        if not last_seen:
+            return None
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+        return max(0, now_ts - last_seen)
+
+    def _write_heartbeat(self) -> None:
+        self._heartbeat_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "last_seen_at": int(datetime.now(timezone.utc).timestamp()),
+        }
+        tmp_path = self._heartbeat_path.with_suffix(".tmp")
+        tmp_path.write_text(json.dumps(payload))
+        tmp_path.replace(self._heartbeat_path)
+
+    async def _heartbeat_loop(self) -> None:
+        while True:
+            try:
+                self._write_heartbeat()
+            except Exception:
+                self.logger.warning("Failed to write heartbeat file", exc_info=True)
+            await asyncio.sleep(60)
 
     async def _perform_initial_startup_sequence(self):
         """
