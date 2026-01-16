@@ -74,10 +74,24 @@ class BenchPreferenceView(discord.ui.View):
         self.stop()
 
         label = ROLE_LABELS.get(preferred_role, "Any") if preferred_role else "Any"
-        await interaction.response.edit_message(
-            content=f"✅ Bench preference set to {label}.",
-            view=self,
-        )
+        if interaction.guild:
+            try:
+                await interaction.response.send_message(
+                    f"✅ Bench preference set to {label}.",
+                    ephemeral=True,
+                )
+            except Exception:
+                pass
+            try:
+                if interaction.message:
+                    await interaction.message.delete()
+            except Exception:
+                pass
+        else:
+            await interaction.response.edit_message(
+                content=f"✅ Bench preference set to {label}.",
+                view=self,
+            )
 
     @discord.ui.button(label="Tank", style=discord.ButtonStyle.secondary, row=0)
     async def choose_tank(

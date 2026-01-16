@@ -3164,6 +3164,7 @@ class RaidCommand(commands.Cog):
             raid_map[raid.id] = raid
 
         refreshed = 0
+        notified_channels: set[int] = set()
         for raid in raid_map.values():
             if not raid.message_id:
                 continue
@@ -3247,6 +3248,8 @@ class RaidCommand(commands.Cog):
                 offline_text = None
                 if isinstance(offline_seconds, int) and offline_seconds >= 0:
                     offline_text = _format_duration(offline_seconds)
+                if raid.channel_id in notified_channels:
+                    continue
                 last_notice = await self.raid_store.get_alert_sent_at(
                     raid.id, "restart_notice"
                 )
@@ -3255,7 +3258,7 @@ class RaidCommand(commands.Cog):
                         offline_line = f" for about {offline_text}"
                     else:
                         offline_line = ""
-                    await channel.send(
+                    notice = await channel.send(
                         (
                             "⚠️ The bot was offline"
                             f"{offline_line}. If you reacted or removed a reaction "
@@ -3264,6 +3267,10 @@ class RaidCommand(commands.Cog):
                         )
                     )
                     await self.raid_store.mark_alert_sent(raid.id, "restart_notice")
+                    notified_channels.add(raid.channel_id)
+                    self.bot.loop.create_task(
+                        self._delete_message_later(notice, delay_seconds=7200)
+                    )
             except Exception:
                 pass
 
