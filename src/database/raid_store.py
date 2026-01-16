@@ -342,6 +342,26 @@ class RaidStore:
                 signups.setdefault(role, []).append(int(user_id))
         return signups
 
+    async def get_bench_preferences(
+        self, raid_id: int
+    ) -> Dict[int, Optional[str]]:
+        """Return preferred roles for bench signups."""
+        await self.initialize()
+        preferences: Dict[int, Optional[str]] = {}
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """
+                SELECT user_id, preferred_role
+                FROM raid_signups
+                WHERE raid_id = ? AND role = 'bench'
+                """,
+                (raid_id,),
+            )
+            rows = await cursor.fetchall()
+            for user_id, preferred_role in rows:
+                preferences[int(user_id)] = preferred_role or None
+        return preferences
+
     async def get_user_role(self, raid_id: int, user_id: int) -> Optional[str]:
         """Return a user's current role for a raid."""
         await self.initialize()

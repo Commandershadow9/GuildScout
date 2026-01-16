@@ -246,6 +246,7 @@ class RaidEvents(commands.Cog):
         if not raid:
             return
         signups = await self.raid_store.get_signups_by_role(raid_id)
+        bench_preferences = await self.raid_store.get_bench_preferences(raid_id)
         confirmation_message_id = await self.raid_store.get_confirmation_message_id(raid_id)
         confirmed = None
         no_shows = None
@@ -253,7 +254,12 @@ class RaidEvents(commands.Cog):
             confirmed = await self.raid_store.get_confirmed_user_ids(raid_id)
             no_shows = await self.raid_store.get_no_show_user_ids(raid_id)
         embed = build_raid_embed(
-            raid, signups, self.config.raid_timezone, confirmed, no_shows
+            raid,
+            signups,
+            self.config.raid_timezone,
+            confirmed,
+            no_shows,
+            bench_preferences=bench_preferences,
         )
         try:
             await message.edit(embed=embed)

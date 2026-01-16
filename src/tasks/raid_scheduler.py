@@ -78,10 +78,16 @@ class RaidScheduler(commands.Cog):
                 continue
 
             signups = await self.raid_store.get_signups_by_role(raid.id)
+            bench_preferences = await self.raid_store.get_bench_preferences(raid.id)
             confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
             no_shows = await self.raid_store.get_no_show_user_ids(raid.id)
             embed = build_raid_embed(
-                updated, signups, self.config.raid_timezone, confirmed, no_shows
+                updated,
+                signups,
+                self.config.raid_timezone,
+                confirmed,
+                no_shows,
+                bench_preferences=bench_preferences,
             )
 
             try:
@@ -293,10 +299,18 @@ class RaidScheduler(commands.Cog):
                         raid_message = None
                     if raid_message:
                         signups = await self.raid_store.get_signups_by_role(raid.id)
+                        bench_preferences = await self.raid_store.get_bench_preferences(
+                            raid.id
+                        )
                         confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
                         no_shows = await self.raid_store.get_no_show_user_ids(raid.id)
                         embed = build_raid_embed(
-                            raid, signups, self.config.raid_timezone, confirmed, no_shows
+                            raid,
+                            signups,
+                            self.config.raid_timezone,
+                            confirmed,
+                            no_shows,
+                            bench_preferences=bench_preferences,
                         )
                         await raid_message.edit(embed=embed)
             except Exception:
@@ -402,10 +416,16 @@ class RaidScheduler(commands.Cog):
                 continue
 
             signups = await self.raid_store.get_signups_by_role(raid.id)
+            bench_preferences = await self.raid_store.get_bench_preferences(raid.id)
             confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
             no_show_ids = await self.raid_store.get_no_show_user_ids(raid.id)
             embed = build_raid_embed(
-                raid, signups, self.config.raid_timezone, confirmed, no_show_ids
+                raid,
+                signups,
+                self.config.raid_timezone,
+                confirmed,
+                no_show_ids,
+                bench_preferences=bench_preferences,
             )
             try:
                 await message.edit(embed=embed)

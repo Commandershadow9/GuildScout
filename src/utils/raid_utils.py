@@ -93,12 +93,29 @@ def _format_user_list(user_ids: List[int]) -> str:
     return ", ".join(f"<@{user_id}>" for user_id in user_ids)
 
 
+def _format_bench_list(
+    user_ids: List[int],
+    bench_preferences: Optional[Dict[int, Optional[str]]],
+) -> str:
+    if not user_ids:
+        return "—"
+    if not bench_preferences:
+        return _format_user_list(user_ids)
+    formatted = []
+    for user_id in user_ids:
+        preferred = bench_preferences.get(int(user_id))
+        preferred_label = ROLE_LABELS.get(preferred, "Any") if preferred else "Any"
+        formatted.append(f"<@{user_id}> (pref: {preferred_label})")
+    return ", ".join(formatted)
+
+
 def build_raid_embed(
     raid: RaidRecord,
     signups_by_role: Dict[str, List[int]],
     timezone_name: str = "UTC",
     confirmed_ids: Optional[Iterable[int]] = None,
     no_show_ids: Optional[Iterable[int]] = None,
+    bench_preferences: Optional[Dict[int, Optional[str]]] = None,
 ) -> discord.Embed:
     """Build the public raid embed with roster details."""
     status_labels = {
@@ -192,9 +209,13 @@ def build_raid_embed(
         count_text = f"{len(users)}/{limit}" if limit > 0 else f"{len(users)}"
         if limit > 0:
             count_text = f"{count_text} · Open: {open_slots}"
+        if role == ROLE_BENCH:
+            value = _format_bench_list(users, bench_preferences)
+        else:
+            value = _format_user_list(users)
         embed.add_field(
             name=f"{emoji} {label} ({count_text})",
-            value=_format_user_list(users),
+            value=value,
             inline=False,
         )
 

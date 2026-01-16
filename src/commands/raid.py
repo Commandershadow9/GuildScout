@@ -1351,10 +1351,16 @@ class RaidSlotEditView(discord.ui.View):
         if raid and raid_message:
             await self._maybe_ping_open_slots(raid, raid_message, guild)
             signups = await self.raid_store.get_signups_by_role(raid.id)
+            bench_preferences = await self.raid_store.get_bench_preferences(raid.id)
             confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
             no_shows = await self.raid_store.get_no_show_user_ids(raid.id)
             embed = build_raid_embed(
-                raid, signups, self.config.raid_timezone, confirmed, no_shows
+                raid,
+                signups,
+                self.config.raid_timezone,
+                confirmed,
+                no_shows,
+                bench_preferences=bench_preferences,
             )
             try:
                 await raid_message.edit(embed=embed)
@@ -1565,6 +1571,9 @@ class RaidPostEditModal(discord.ui.Modal):
             return
 
         signups = await self.view_ref.raid_store.get_signups_by_role(self.raid.id)
+        bench_preferences = await self.view_ref.raid_store.get_bench_preferences(
+            self.raid.id
+        )
         confirmed = await self.view_ref.raid_store.get_confirmed_user_ids(self.raid.id)
         no_shows = await self.view_ref.raid_store.get_no_show_user_ids(self.raid.id)
         embed = build_raid_embed(
@@ -1573,6 +1582,7 @@ class RaidPostEditModal(discord.ui.Modal):
             self.view_ref.config.raid_timezone,
             confirmed,
             no_shows,
+            bench_preferences=bench_preferences,
         )
         await interaction.message.edit(embed=embed, view=self.view_ref)
 
@@ -1799,10 +1809,16 @@ class BenchPromotionView(discord.ui.View):
 
         if self.raid_message:
             updated_signups = await self.raid_store.get_signups_by_role(raid.id)
+            bench_preferences = await self.raid_store.get_bench_preferences(raid.id)
             confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
             no_shows = await self.raid_store.get_no_show_user_ids(raid.id)
             embed = build_raid_embed(
-                raid, updated_signups, self.config.raid_timezone, confirmed, no_shows
+                raid,
+                updated_signups,
+                self.config.raid_timezone,
+                confirmed,
+                no_shows,
+                bench_preferences=bench_preferences,
             )
             try:
                 await self.raid_message.edit(embed=embed)
@@ -2202,10 +2218,16 @@ class RaidManageView(discord.ui.View):
         updated = await self.raid_store.get_raid(raid.id)
         if updated and interaction.message:
             signups = await self.raid_store.get_signups_by_role(raid.id)
+            bench_preferences = await self.raid_store.get_bench_preferences(raid.id)
             confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
             no_shows = await self.raid_store.get_no_show_user_ids(raid.id)
             embed = build_raid_embed(
-                updated, signups, self.config.raid_timezone, confirmed, no_shows
+                updated,
+                signups,
+                self.config.raid_timezone,
+                confirmed,
+                no_shows,
+                bench_preferences=bench_preferences,
             )
             await interaction.message.edit(embed=embed, view=self)
 
@@ -2462,10 +2484,18 @@ class RaidManageView(discord.ui.View):
                 updated = await self.raid_store.get_raid(raid.id)
                 if updated:
                     signups = await self.raid_store.get_signups_by_role(raid.id)
+                    bench_preferences = await self.raid_store.get_bench_preferences(
+                        raid.id
+                    )
                     confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
                     no_shows = await self.raid_store.get_no_show_user_ids(raid.id)
                     embed = build_raid_embed(
-                        updated, signups, self.config.raid_timezone, confirmed, no_shows
+                        updated,
+                        signups,
+                        self.config.raid_timezone,
+                        confirmed,
+                        no_shows,
+                        bench_preferences=bench_preferences,
                     )
                     await interaction.message.edit(embed=embed, view=self)
                     try:
@@ -2525,10 +2555,18 @@ class RaidManageView(discord.ui.View):
                 updated = await self.raid_store.get_raid(raid.id)
                 if updated:
                     signups = await self.raid_store.get_signups_by_role(raid.id)
+                    bench_preferences = await self.raid_store.get_bench_preferences(
+                        raid.id
+                    )
                     confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
                     no_shows = await self.raid_store.get_no_show_user_ids(raid.id)
                     embed = build_raid_embed(
-                        updated, signups, self.config.raid_timezone, confirmed, no_shows
+                        updated,
+                        signups,
+                        self.config.raid_timezone,
+                        confirmed,
+                        no_shows,
+                        bench_preferences=bench_preferences,
                     )
                     await interaction.message.edit(embed=embed, view=self)
                     try:
@@ -2870,6 +2908,7 @@ class RaidCommand(commands.Cog):
         if not raid:
             return
         signups = await self.raid_store.get_signups_by_role(raid.id)
+        bench_preferences = await self.raid_store.get_bench_preferences(raid.id)
         confirmation_message_id = await self.raid_store.get_confirmation_message_id(
             raid.id
         )
@@ -2879,7 +2918,12 @@ class RaidCommand(commands.Cog):
             confirmed = await self.raid_store.get_confirmed_user_ids(raid.id)
             no_shows = await self.raid_store.get_no_show_user_ids(raid.id)
         embed = build_raid_embed(
-            raid, signups, self.config.raid_timezone, confirmed, no_shows
+            raid,
+            signups,
+            self.config.raid_timezone,
+            confirmed,
+            no_shows,
+            bench_preferences=bench_preferences,
         )
         try:
             await message.edit(embed=embed)
@@ -3148,6 +3192,7 @@ class RaidCommand(commands.Cog):
                 )
 
             signups = await self.raid_store.get_signups_by_role(raid.id)
+            bench_preferences = await self.raid_store.get_bench_preferences(raid.id)
             signups_raw = await self.raid_store.list_signups(raid.id)
             bench_missing: list[int] = []
             for entry in signups_raw:
@@ -3172,7 +3217,12 @@ class RaidCommand(commands.Cog):
                 no_shows = await self.raid_store.get_no_show_user_ids(raid.id)
 
             embed = build_raid_embed(
-                raid, signups, self.config.raid_timezone, confirmed, no_shows
+                raid,
+                signups,
+                self.config.raid_timezone,
+                confirmed,
+                no_shows,
+                bench_preferences=bench_preferences,
             )
             view = RaidManageView(self.config, self.raid_store, self.template_store)
             try:
