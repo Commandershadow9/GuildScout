@@ -1,0 +1,127 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Base Colors - Preparation Board */
+    --bg-0: #060812;
+    --bg-1: #0A1020;
+    
+    /* Surfaces */
+    --surface-0: #0C1426;
+    --surface-1: rgba(16, 26, 46, 0.72);
+    --surface-2: rgba(18, 34, 66, 0.82);
+    
+    /* Borders & Text */
+    --border: rgba(140, 170, 255, 0.16);
+    --text: #EAF0FF;
+    --muted: #A7B3D1;
+    --muted-2: rgba(167, 179, 209, 0.65);
+
+    /* Accents (UI) */
+    --primary: #2DE2E6;  /* Cyan */
+    --secondary: #5865F2; /* Blurple */
+    --warning: #FBBF24; /* Amber */
+    --danger: #F43F5E; /* Rose */
+    --success: #34D399; /* Emerald */
+
+    /* Role Colors (Gaming Semantics) */
+    --role-tank: #60A5FA;
+    --role-healer: #34D399;
+    --role-dps: #F97316;
+    --role-bench: #A78BFA;
+
+    /* Effects */
+    --glow-primary: 0 0 22px rgba(45, 226, 230, 0.22);
+    --shadow-soft: 0 12px 30px rgba(0, 0, 0, 0.35);
+
+    /* Shadcn/Tailwind Mapping */
+    --background: 224 71% 4%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
+    --primary-hsl: 181 80% 54%;
+    --primary-foreground: 222 47% 11%;
+    --secondary-hsl: 235 86% 65%;
+    --secondary-foreground: 210 40% 98%;
+    --muted-hsl: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent-hsl: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border-hsl: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 181 80% 54%;
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply text-foreground;
+    background-color: var(--bg-0);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    /* Static texture background */
+    background-image: 
+        radial-gradient(circle at 50% 0%, var(--bg-1), transparent 70%),
+        url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Space Grotesk', sans-serif;
+  }
+}
+
+@layer components {
+  /* Panel / Card Styles */
+  .panel-glass {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(12px);
+    border-radius: 18px;
+    box-shadow: var(--shadow-soft);
+  }
+  
+  .panel-hover {
+    transition: transform 0.15s ease-out, box-shadow 0.15s ease-out, border-color 0.15s ease-out;
+  }
+  
+  .panel-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 15px 35px rgba(0,0,0,0.4), var(--glow-primary);
+    border-color: rgba(45, 226, 230, 0.3);
+  }
+
+  /* Role Chips */
+  .role-chip {
+    @apply flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold uppercase tracking-wider border transition-colors;
+  }
+  .role-tank { @apply border-blue-400/30 text-blue-400 bg-blue-400/10 hover:bg-blue-400/20; }
+  .role-healer { @apply border-green-400/30 text-green-400 bg-green-400/10 hover:bg-green-400/20; }
+  .role-dps { @apply border-orange-400/30 text-orange-400 bg-orange-400/10 hover:bg-orange-400/20; }
+  .role-bench { @apply border-violet-400/30 text-violet-400 bg-violet-400/10 hover:bg-violet-400/20; }
+
+  /* Navigation Item Active State */
+  .nav-item-active {
+    background: linear-gradient(90deg, rgba(45, 226, 230, 0.1) 0%, transparent 100%);
+    border-left: 3px solid var(--primary);
+    color: var(--text);
+  }
+  
+  .nav-item-inactive {
+    border-left: 3px solid transparent;
+    color: var(--muted);
+  }
+  .nav-item-inactive:hover {
+    color: var(--text);
+    border-left-color: rgba(140, 170, 255, 0.3);
+  }
+}

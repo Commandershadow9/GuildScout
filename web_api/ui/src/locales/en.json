@@ -1,0 +1,60 @@
+{
+  "nav": {
+    "guilds": "Guilds",
+    "raid_board": "Raid Board",
+    "create_raid": "Create Raid",
+    "templates": "Templates",
+    "control_center": "Control Center",
+    "analytics": "Analytics",
+    "settings": "Settings",
+    "logout": "Logout"
+  },
+  "dashboard": {
+    "active_raids": "Active Raids",
+    "next_raid": "Next Raid",
+    "check_in": "Check-in",
+    "bot_health": "Bot Health",
+    "live_raids": "Live Raids",
+    "activity_feed": "Activity Feed",
+    "no_active_raids": "No active raids. Create one from a template to get started."
+  },
+  "status": {
+    "live": "LIVE",
+    "open": "OPEN",
+    "locked": "LOCKED",
+    "closed": "CLOSED"
+  },
+  "actions": {
+    "create_raid": "Create Raid",
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "cancel": "Cancel",
+    "search_placeholder": "Search raids, templates, members..."
+  },
+  "hero": {
+    "headline": "Run every raid from one clean command deck.",
+    "subline": "Create raids, manage slots, and keep everything synced with Discord — without touching YAML.",
+    "cta": "Sign in with Discord"
+  },
+  "analytics": {
+    "title": "Tactical Analytics",
+    "subtitle": "Performance metrics and member activity reports.",
+    "messages_per_minute": "Messages / Minute",
+    "voice_activity": "Voice Activity (Hours)",
+    "member_ranking": "Member Ranking",
+    "export_csv": "Export CSV",
+    "score": "Score",
+    "messages": "Messages",
+    "voice": "Voice"
+  },
+  "templates": {
+    "title": "Raid Templates",
+    "subtitle": "Manage preset compositions for quick deployment.",
+    "create_new": "Create Template",
+    "edit_template": "Edit Template",
+    "default_badge": "Default",
+    "set_default": "Set Default",
+    "delete_confirm": "Delete this template?"
+  }
+}

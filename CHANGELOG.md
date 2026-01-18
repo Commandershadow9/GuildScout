@@ -1,5 +1,25 @@
 # Changelog - GuildScout Bot
 
+## Version 2.5.0 - Web UI Foundation & Templates (2026-01-18)
+
+> **Major Update:** Grundsteinlegung für das Web-Interface und Einführung eines Template-Systems für Raids.
+
+### 🌐 Web UI (Preview)
+- **FastAPI Backend**: Neuer `web_api/` Ordner mit Backend-Logik für das kommende Web-Interface.
+- **Discord OAuth**: Authentifizierung via Discord für sicheren Zugriff.
+- **Raid Management**: Vorbereitung für das Erstellen und Verwalten von Raids über den Browser.
+- **Konzept**: Detailliertes Konzept in `WEB_UI_CONCEPT.md` hinterlegt.
+
+### 📋 Raid Templates
+- **Template Store**: Neues Datenbanksystem (`RaidTemplateStore`) zum Speichern von Raid-Aufstellungen (Tanks, Healers, DPS).
+- **Wiederverwendbarkeit**: Raids können künftig basierend auf gespeicherten Vorlagen erstellt werden.
+
+### 🛠️ Infrastructure
+- **Web UI Script**: Neues Start-Skript `scripts/run_web_ui.sh`.
+- **Database**: Erweiterung der Datenbank-Module in `src/database/`.
+
+---
+
 ## Version 2.4.0 - Activity & Visuals Update (2025-12-06)
 
 > **Major Update:** Einführung von Voice Tracking, visuellen Rank Cards und einem fairen 3-Säulen-Scoring-System.

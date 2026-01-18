@@ -1,0 +1,17 @@
+{% extends "react_base.html" %}
+
+{% block data %}
+<script>
+    window.PAGE_ID = 'dashboard';
+    window.SERVER_DATA = {
+        raids: {{ raids | tojson | safe }},
+        health: {{ health | tojson | safe }},
+        guild: {{ guild | tojson | safe }},
+        settings: {{ settings | tojson | safe }},
+        control: {{ control | tojson | safe }},
+        session: {{ session | tojson | safe }},
+        avatar_url: "{{ avatar_url }}",
+        templates: {{ templates | tojson | safe }}
+    };
+</script>
+{% endblock %}

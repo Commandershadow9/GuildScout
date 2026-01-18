@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GuildScout Command Deck</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/app.css?v=20260116m">
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="bg-topo"></div>
+  <div class="bg-crest"></div>
+  <div class="bg-orb orb-1"></div>
+  <div class="bg-orb orb-2"></div>
+  <div class="bg-orb orb-3"></div>
+  <div class="bg-veil"></div>
+  <div class="bg-spark"></div>
+  <div class="bg-ink"></div>
+  <div class="bg-paper"></div>
+  <div class="bg-mountains layer-back"></div>
+  <div class="bg-mountains layer-mid"></div>
+  <div class="bg-mountains layer-front"></div>
+
+  <header class="topbar">
+    <div class="shell topbar-inner">
+      <div class="brand">
+        <span class="brand-mark">GS</span>
+        <div>
+          <div class="brand-title">GuildScout</div>
+          <div class="brand-sub">Command deck for raid operations</div>
+        </div>
+      </div>
+      {% if session %}
+      <div class="user-bar">
+        {% if avatar_url %}
+          <img class="avatar" src="{{ avatar_url }}" alt="User avatar">
+        {% endif %}
+        <div class="user-meta">
+          <div class="user-name">{{ session.username }}</div>
+          {% if guild %}
+            <div class="user-guild">{{ guild.name }}</div>
+          {% endif %}
+        </div>
+        <form method="post" action="/auth/logout">
+          <button class="btn ghost" type="submit">Logout</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </header>
+
+  {% if guild %}
+  <nav class="nav-shell">
+    <div class="shell nav-inner">
+      <a class="nav-link" href="/guilds">Guilds</a>
+      <a class="nav-link" href="/guilds/{{ guild.id }}">Dashboard</a>
+      <a class="nav-link" href="/guilds/{{ guild.id }}/raids/new">Create Raid</a>
+      <a class="nav-link" href="/guilds/{{ guild.id }}/templates">Templates</a>
+      <a class="nav-link" href="/guilds/{{ guild.id }}/settings">Control Center</a>
+    </div>
+  </nav>
+  {% endif %}
+
+  <main class="page">
+    <div class="shell">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</body>
+</html>

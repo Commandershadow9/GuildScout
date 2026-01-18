@@ -1,5 +1,0 @@
-logrotate state -- version 2
-"/home/cmdshadow/GuildScout/logs/bot_stdout.log" 2025-12-1-1:0:0
-"/home/cmdshadow/GuildScout/logs/guildscout.log" 2025-12-5-0:0:2
-"/home/cmdshadow/GuildScout/logs/bot.log" 2025-12-5-0:0:2
-"/home/cmdshadow/GuildScout/logs/bot-service.log" 2025-12-5-0:0:2

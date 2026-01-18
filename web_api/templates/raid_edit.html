@@ -1,0 +1,16 @@
+{% extends "react_base.html" %}
+
+{% block data %}
+<script>
+    window.PAGE_ID = 'raid_edit';
+    window.SERVER_DATA = {
+        guild: {{ guild | tojson | safe }},
+        settings: {{ settings | tojson | safe }},
+        session: {{ session | tojson | safe }},
+        avatar_url: "{{ avatar_url }}",
+        raid: {{ raid | tojson | safe }},
+        templates: {{ templates | tojson | safe }},
+        prefill: {{ prefill | tojson | safe }}
+    };
+</script>
+{% endblock %}

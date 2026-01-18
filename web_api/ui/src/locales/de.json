@@ -1,0 +1,60 @@
+{
+  "nav": {
+    "guilds": "Gilden",
+    "raid_board": "Raid-Board",
+    "create_raid": "Raid erstellen",
+    "templates": "Vorlagen",
+    "control_center": "Kontrollzentrum",
+    "analytics": "Statistiken",
+    "settings": "Einstellungen",
+    "logout": "Abmelden"
+  },
+  "dashboard": {
+    "active_raids": "Aktive Raids",
+    "next_raid": "Nächster Raid",
+    "check_in": "Check-in",
+    "bot_health": "Bot-Status",
+    "live_raids": "Live Raids",
+    "activity_feed": "Aktivitäten",
+    "no_active_raids": "Keine aktiven Raids. Erstellen Sie einen Raid aus einer Vorlage, um zu starten."
+  },
+  "status": {
+    "live": "LIVE",
+    "open": "OFFEN",
+    "locked": "GESCHLOSSEN",
+    "closed": "BEENDET"
+  },
+  "actions": {
+    "create_raid": "Raid erstellen",
+    "edit": "Bearbeiten",
+    "delete": "Löschen",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "search_placeholder": "Suche Raids, Vorlagen, Mitglieder..."
+  },
+  "hero": {
+    "headline": "Steuere jeden Raid aus einem klaren Command Deck.",
+    "subline": "Raids erstellen, Slots verwalten und alles mit Discord synchron halten — ohne YAML.",
+    "cta": "Mit Discord anmelden"
+  },
+  "analytics": {
+    "title": "Taktische Analysen",
+    "subtitle": "Leistungskennzahlen und Mitglieder-Aktivitätsberichte.",
+    "messages_per_minute": "Nachrichten / Minute",
+    "voice_activity": "Sprachaktivität (Stunden)",
+    "member_ranking": "Mitglieder-Ranking",
+    "export_csv": "CSV Exportieren",
+    "score": "Punktzahl",
+    "messages": "Nachrichten",
+    "voice": "Voice"
+  },
+  "templates": {
+    "title": "Raid-Vorlagen",
+    "subtitle": "Verwalte vordefinierte Aufstellungen für schnelle Einsätze.",
+    "create_new": "Vorlage erstellen",
+    "edit_template": "Vorlage bearbeiten",
+    "default_badge": "Standard",
+    "set_default": "Als Standard",
+    "delete_confirm": "Diese Vorlage löschen?"
+  }
+}

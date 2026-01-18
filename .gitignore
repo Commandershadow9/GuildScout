@@ -58,6 +58,11 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Runtime & Temporary
+guildscout.lock
+logrotate.state
+Video/
+
 # Testing
 .pytest_cache/
 .coverage

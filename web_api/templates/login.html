@@ -1,0 +1,10 @@
+{% extends "react_base.html" %}
+
+{% block data %}
+<script>
+    window.PAGE_ID = 'login';
+    window.SERVER_DATA = {
+        client_id: "{{ client_id }}"
+    };
+</script>
+{% endblock %}

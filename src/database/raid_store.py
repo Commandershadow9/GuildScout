@@ -525,6 +525,36 @@ class RaidStore:
             )
             await db.commit()
 
+    async def update_raid_game_mode(
+        self,
+        raid_id: int,
+        game: str,
+        mode: str,
+    ) -> None:
+        """Update game/mode for a raid."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE raids SET game = ?, mode = ? WHERE id = ?",
+                (game, mode, raid_id),
+            )
+            await db.commit()
+
+    async def update_raid_message_location(
+        self,
+        raid_id: int,
+        channel_id: int,
+        message_id: int,
+    ) -> None:
+        """Update the channel/message location for a raid."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE raids SET channel_id = ?, message_id = ? WHERE id = ?",
+                (channel_id, message_id, raid_id),
+            )
+            await db.commit()
+
     async def list_raids_to_close(self, now_ts: int) -> List[RaidRecord]:
         """Return open/locked raids with start_time <= now_ts."""
         await self.initialize()
@@ -633,6 +663,34 @@ class RaidStore:
             rows = await cursor.fetchall()
 
         return [self._row_to_record(row) for row in rows]
+
+    async def get_latest_raid_activity(
+        self,
+        guild_id: int,
+    ) -> Optional[Dict[str, int]]:
+        """Return the most recent raid activity (created/closed) for a guild."""
+        await self.initialize()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """
+                SELECT id, title, status, created_at, closed_at
+                FROM raids
+                WHERE guild_id = ?
+                ORDER BY COALESCE(closed_at, created_at) DESC
+                LIMIT 1
+                """,
+                (guild_id,),
+            )
+            row = await cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "id": int(row[0]),
+            "title": str(row[1]),
+            "status": str(row[2]),
+            "created_at": int(row[3]),
+            "closed_at": int(row[4]) if row[4] is not None else None,
+        }
 
     async def list_signups(self, raid_id: int) -> List[Dict[str, Optional[str]]]:
         """Return signups with role details."""

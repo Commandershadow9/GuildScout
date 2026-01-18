@@ -1,0 +1,18 @@
+{% extends "react_base.html" %}
+
+{% block data %}
+<script>
+    window.PAGE_ID = 'raid_create';
+    window.SERVER_DATA = {
+        guild: {{ guild | tojson | safe }},
+        settings: {{ settings | tojson | safe }},
+        session: {{ session | tojson | safe }},
+        avatar_url: "{{ avatar_url }}",
+        templates: {{ templates | tojson | safe }},
+        games: {{ games | tojson | safe }},
+        modes: {{ modes | tojson | safe }},
+        prefill: {{ prefill | tojson | safe }},
+        prefill_has_slots: {{ prefill_has_slots | tojson | safe }}
+    };
+</script>
+{% endblock %}

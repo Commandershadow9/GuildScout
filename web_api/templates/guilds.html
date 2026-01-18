@@ -1,0 +1,12 @@
+{% extends "react_base.html" %}
+
+{% block data %}
+<script>
+    window.PAGE_ID = 'guilds';
+    window.SERVER_DATA = {
+        guilds: {{ guilds | tojson | safe }},
+        session: {{ session | tojson | safe }},
+        avatar_url: "{{ avatar_url }}"
+    };
+</script>
+{% endblock %}
