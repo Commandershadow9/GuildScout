@@ -32,6 +32,7 @@ from src.utils.raid_utils import (
     build_raid_embed,
     build_raid_log_embed,
     get_role_limit,
+    get_notice_delete_after,
     parse_raid_datetime,
 )
 
@@ -1229,6 +1230,26 @@ class RaidSlotEditView(discord.ui.View):
         except Exception:
             pass
 
+    async def _cleanup_slot_pings(
+        self,
+        channel: discord.TextChannel,
+        raid_title: str,
+        limit: int = 50,
+    ) -> None:
+        title_key = (raid_title or "").lower()
+        async for message in channel.history(limit=limit):
+            if not message.author or not message.author.bot:
+                continue
+            content = (message.content or "").lower()
+            if "open slots" not in content and "slots frei" not in content:
+                continue
+            if title_key and title_key not in content:
+                continue
+            try:
+                await message.delete()
+            except Exception:
+                pass
+
     async def _promote_from_bench(
         self,
         raid,
@@ -1288,8 +1309,7 @@ class RaidSlotEditView(discord.ui.View):
         role_id = self.config.raid_participant_role_id
         if not role_id:
             return
-        role = guild.get_role(role_id)
-        if not role:
+        if not guild.get_role(role_id):
             return
 
         signups = await self.raid_store.get_signups_by_role(raid.id)
@@ -1298,6 +1318,8 @@ class RaidSlotEditView(discord.ui.View):
         open_dps = max(raid.dps_needed - len(signups.get(ROLE_DPS, [])), 0)
         total_open = open_tanks + open_healers + open_dps
         if total_open <= 0:
+            if message and isinstance(message.channel, discord.TextChannel):
+                await self._cleanup_slot_pings(message.channel, raid.title)
             return
 
         cooldown = self.config.raid_open_slot_ping_minutes * 60
@@ -1314,10 +1336,21 @@ class RaidSlotEditView(discord.ui.View):
         if open_dps:
             parts.append(f"DPS: {open_dps}")
         slot_text = " | ".join(parts)
-        content = f"{role.mention} Open slots for **{raid.title}**: {slot_text}"
+        content = f"Open slots for **{raid.title}**: {slot_text}"
+        delete_after = get_notice_delete_after(
+            raid.start_time,
+            now_ts,
+            self.config.raid_notice_delete_minutes,
+            max_seconds=cooldown if cooldown > 0 else None,
+        )
         try:
             if message:
-                await message.channel.send(content)
+                if isinstance(message.channel, discord.TextChannel):
+                    await self._cleanup_slot_pings(message.channel, raid.title)
+                if delete_after:
+                    await message.channel.send(content, delete_after=delete_after)
+                else:
+                    await message.channel.send(content)
                 await self.raid_store.mark_alert_sent(raid.id, "open_slots")
         except Exception:
             logger.warning("Failed to send open slot ping", exc_info=True)

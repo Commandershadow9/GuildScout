@@ -132,8 +132,10 @@ If disabled, raids stay open until manual close or `auto_close_after_hours`.
 ## 🧹 Cleanup
 
 If a raid is **closed or cancelled**, the bot deletes the post
-so only open raids remain in the channel. Related reminder posts
-are also removed.
+so only open raids remain in the channel. Related reminder/open-slot
+notices are removed as well. Only the newest reminder/open-slot notice
+is kept; older ones are deleted automatically. Open-slot notices are
+cleared as soon as all slots are filled.
 Restart notices auto-delete after ~2 hours.
 
 ---
@@ -170,6 +172,11 @@ Reminders before start (default: 24h and 1h):
 - Posted in the raid channel
 - Optional mention of participant role
 
+Open-slot notices (optional):
+- Posted when roles open up
+- No role mention
+- Replaces older notices and is cleared when all slots are filled
+
 DM reminder (default: 15 minutes before start):
 - Bot sends a DM to all signed-up participants.
 
@@ -195,6 +202,7 @@ raid_management:
   dm_reminder_minutes: [15, 5]
   checkin_enabled: true
   open_slot_ping_enabled: true
+  notice_delete_minutes: 60
   auto_close_at_start: true
   auto_close_after_hours: 12
   confirmation_minutes: 15
@@ -265,6 +273,7 @@ raid_management:
   auto_close_after_hours: 12
   confirmation_minutes: 15
   confirmation_reminder_minutes: 5
+  notice_delete_minutes: 60
   open_slot_ping_minutes: 30
 ```
 

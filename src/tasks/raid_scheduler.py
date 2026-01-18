@@ -10,7 +10,12 @@ from discord.ext import commands, tasks
 
 from src.database.raid_store import RaidStore
 from src.utils.config import Config
-from src.utils.raid_utils import CONFIRM_EMOJI, build_raid_embed, build_raid_log_embed
+from src.utils.raid_utils import (
+    CONFIRM_EMOJI,
+    build_raid_embed,
+    build_raid_log_embed,
+    get_notice_delete_after,
+)
 
 
 logger = logging.getLogger("guildscout.tasks.raid_scheduler")
@@ -165,8 +170,17 @@ class RaidScheduler(commands.Cog):
                 if jump_url:
                     content = f"{content}\n{jump_url}"
 
+                await self._cleanup_reminder_messages(channel, raid.title)
+                delete_after = get_notice_delete_after(
+                    raid.start_time,
+                    now_ts,
+                    self.config.raid_notice_delete_minutes,
+                )
                 try:
-                    await channel.send(content)
+                    if delete_after:
+                        await channel.send(content, delete_after=delete_after)
+                    else:
+                        await channel.send(content)
                     await self.raid_store.mark_reminder_sent(raid.id, hours)
                 except Exception:
                     logger.warning(

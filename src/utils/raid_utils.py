@@ -87,6 +87,27 @@ def get_role_limit(raid: RaidRecord, role: str) -> int:
     return 0
 
 
+def get_notice_delete_after(
+    start_time: int,
+    now_ts: int,
+    delete_minutes: int,
+    max_seconds: Optional[int] = None,
+) -> Optional[int]:
+    """Return delete_after seconds for raid notices, bounded by start time."""
+    if delete_minutes <= 0:
+        return None
+    remaining = start_time - now_ts
+    if remaining <= 0:
+        return None
+    delete_after = delete_minutes * 60
+    if max_seconds is not None and max_seconds > 0:
+        delete_after = min(delete_after, max_seconds)
+    delete_after = min(delete_after, remaining)
+    if delete_after <= 0:
+        return None
+    return int(delete_after)
+
+
 def _format_user_list(user_ids: List[int]) -> str:
     if not user_ids:
         return "—"

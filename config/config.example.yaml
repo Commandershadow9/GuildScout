@@ -126,6 +126,9 @@ raid_management:
   # Enable open-slot pings
   open_slot_ping_enabled: true
 
+  # Auto-delete reminder/open-slot notices after X minutes (0 = keep)
+  notice_delete_minutes: 60
+
   # Auto-close raids at start time
   auto_close_at_start: true
 

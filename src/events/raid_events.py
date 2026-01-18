@@ -22,6 +22,7 @@ from src.utils.raid_utils import (
     ROLE_TANK,
     ROLE_EMOJIS,
     build_raid_embed,
+    get_notice_delete_after,
     get_role_limit,
 )
 
@@ -310,6 +311,26 @@ class RaidEvents(commands.Cog):
         except Exception:
             return None
 
+    async def _cleanup_slot_pings(
+        self,
+        channel: discord.TextChannel,
+        raid_title: str,
+        limit: int = 50,
+    ) -> None:
+        title_key = (raid_title or "").lower()
+        async for message in channel.history(limit=limit):
+            if not message.author or not message.author.bot:
+                continue
+            content = (message.content or "").lower()
+            if "open slots" not in content and "slots frei" not in content:
+                continue
+            if title_key and title_key not in content:
+                continue
+            try:
+                await message.delete()
+            except Exception:
+                pass
+
     async def _update_raid_message(
         self,
         message: discord.Message,
@@ -326,6 +347,13 @@ class RaidEvents(commands.Cog):
         if confirmation_message_id:
             confirmed = await self.raid_store.get_confirmed_user_ids(raid_id)
             no_shows = await self.raid_store.get_no_show_user_ids(raid_id)
+        if isinstance(message.channel, discord.TextChannel):
+            open_tanks = max(raid.tanks_needed - len(signups.get(ROLE_TANK, [])), 0)
+            open_healers = max(raid.healers_needed - len(signups.get(ROLE_HEALER, [])), 0)
+            open_dps = max(raid.dps_needed - len(signups.get(ROLE_DPS, [])), 0)
+            total_open = open_tanks + open_healers + open_dps
+            if total_open <= 0:
+                await self._cleanup_slot_pings(message.channel, raid.title)
         embed = build_raid_embed(
             raid,
             signups,
@@ -471,8 +499,7 @@ class RaidEvents(commands.Cog):
             return
         if raid.status != "open":
             return
-        role = self._get_participant_role(guild)
-        if not role:
+        if not self._get_participant_role(guild):
             return
 
         signups = await self.raid_store.get_signups_by_role(raid.id)
@@ -481,6 +508,8 @@ class RaidEvents(commands.Cog):
         open_dps = max(raid.dps_needed - len(signups.get(ROLE_DPS, [])), 0)
         total_open = open_tanks + open_healers + open_dps
         if total_open <= 0:
+            if isinstance(message.channel, discord.TextChannel):
+                await self._cleanup_slot_pings(message.channel, raid.title)
             return
 
         cooldown = self.config.raid_open_slot_ping_minutes * 60
@@ -497,9 +526,20 @@ class RaidEvents(commands.Cog):
         if open_dps:
             parts.append(f"DPS: {open_dps}")
         slot_text = " | ".join(parts)
-        content = f"{role.mention} Open slots for **{raid.title}**: {slot_text}"
+        content = f"Open slots for **{raid.title}**: {slot_text}"
+        delete_after = get_notice_delete_after(
+            raid.start_time,
+            now_ts,
+            self.config.raid_notice_delete_minutes,
+            max_seconds=cooldown if cooldown > 0 else None,
+        )
         try:
-            await message.channel.send(content)
+            if isinstance(message.channel, discord.TextChannel):
+                await self._cleanup_slot_pings(message.channel, raid.title)
+            if delete_after:
+                await message.channel.send(content, delete_after=delete_after)
+            else:
+                await message.channel.send(content)
             await self.raid_store.mark_alert_sent(raid.id, "open_slots")
         except Exception:
             logger.warning("Failed to send open slot ping", exc_info=True)

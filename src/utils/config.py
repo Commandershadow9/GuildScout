@@ -528,6 +528,16 @@ class Config:
         return max(0, minutes)
 
     @property
+    def raid_notice_delete_minutes(self) -> int:
+        """Minutes before auto-deleting raid notices (0 = keep)."""
+        value = self.get("raid_management.notice_delete_minutes", 60)
+        try:
+            minutes = int(value)
+        except (TypeError, ValueError):
+            minutes = 60
+        return max(0, minutes)
+
+    @property
     def raid_log_channel_id(self) -> Optional[int]:
         """Channel ID for raid logs."""
         channel_id = self.get("raid_management.log_channel_id")
