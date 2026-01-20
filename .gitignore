@@ -62,6 +62,7 @@ Thumbs.db
 guildscout.lock
 logrotate.state
 Video/
+node_modules/
 
 # Testing
 .pytest_cache/
