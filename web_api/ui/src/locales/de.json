@@ -4,6 +4,8 @@
     "raid_board": "Raid-Board",
     "create_raid": "Raid erstellen",
     "templates": "Vorlagen",
+    "members": "Mitglieder",
+    "my_score": "Mein Score",
     "control_center": "Kontrollzentrum",
     "analytics": "Statistiken",
     "settings": "Einstellungen",
@@ -16,13 +18,24 @@
     "bot_health": "Bot-Status",
     "live_raids": "Live Raids",
     "activity_feed": "Aktivitäten",
-    "no_active_raids": "Keine aktiven Raids. Erstellen Sie einen Raid aus einer Vorlage, um zu starten."
+    "no_active_raids": "Keine aktiven Raids. Erstellen Sie einen Raid aus einer Vorlage, um zu starten.",
+    "total_signups": "Anmeldungen",
+    "open_slots": "Offene Slots",
+    "this_week": "Diese Woche",
+    "quick_actions": "Schnellaktionen",
+    "from_template": "Aus Vorlage",
+    "quick_attendance": "Schnelle Anwesenheit",
+    "view_details": "Details ansehen",
+    "no_raids_scheduled": "Keine Raids geplant",
+    "history": "Verlauf",
+    "roster": "Aufstellung"
   },
   "status": {
     "live": "LIVE",
     "open": "OFFEN",
-    "locked": "GESCHLOSSEN",
-    "closed": "BEENDET"
+    "locked": "GESPERRT",
+    "closed": "BEENDET",
+    "ready": "BEREIT"
   },
   "actions": {
     "create_raid": "Raid erstellen",
@@ -30,7 +43,11 @@
     "delete": "Löschen",
     "save": "Speichern",
     "cancel": "Abbrechen",
-    "search_placeholder": "Suche Raids, Vorlagen, Mitglieder..."
+    "search_placeholder": "Suche Raids, Vorlagen, Mitglieder...",
+    "search_short": "Suchen...",
+    "back": "Zurück",
+    "next": "Weiter",
+    "use_template": "Vorlage nutzen"
   },
   "hero": {
     "headline": "Steuere jeden Raid aus einem klaren Command Deck.",
@@ -40,13 +57,20 @@
   "analytics": {
     "title": "Taktische Analysen",
     "subtitle": "Leistungskennzahlen und Mitglieder-Aktivitätsberichte.",
-    "messages_per_minute": "Nachrichten / Minute",
+    "messages_per_minute": "Nachrichten / Tag",
     "voice_activity": "Sprachaktivität (Stunden)",
     "member_ranking": "Mitglieder-Ranking",
     "export_csv": "CSV Exportieren",
     "score": "Punktzahl",
     "messages": "Nachrichten",
-    "voice": "Voice"
+    "voice": "Voice",
+    "loading": "Lade Analysedaten...",
+    "hourly_activity": "Stündliche Aktivität",
+    "total_messages": "Nachrichten gesamt",
+    "active_users": "Aktive Nutzer",
+    "voice_hours": "Voice-Stunden",
+    "channels": "Kanäle",
+    "scoring_formula": "Bewertungsformel"
   },
   "templates": {
     "title": "Raid-Vorlagen",
@@ -55,6 +79,59 @@
     "edit_template": "Vorlage bearbeiten",
     "default_badge": "Standard",
     "set_default": "Als Standard",
-    "delete_confirm": "Diese Vorlage löschen?"
+    "delete_confirm": "Diese Vorlage löschen?",
+    "no_templates": "Noch keine Vorlagen",
+    "no_templates_desc": "Erstelle deine erste Raid-Aufstellungsvorlage für schnelle Einsätze.",
+    "template_name": "Vorlagenname",
+    "slots": "Slots"
+  },
+  "guilds": {
+    "title": "Deine Gilden",
+    "subtitle": "Wähle eine Gilde, um auf das Raid-Board zuzugreifen und deine Operationen zu verwalten.",
+    "system_online": "System Online",
+    "no_guilds": "Keine Gilden gefunden",
+    "no_guilds_desc": "Du hast keinen Zugriff auf Gilden-Kontrollknoten. Stelle sicher, dass du die erforderlichen Berechtigungen auf deinem Discord-Server hast.",
+    "open_board": "Board öffnen",
+    "new_raid": "Neuer Raid"
+  },
+  "roles": {
+    "tank": "Tank",
+    "tanks": "Tanks",
+    "healer": "Heiler",
+    "healers": "Heiler",
+    "dps": "DPS",
+    "bench": "Ersatzbank"
+  },
+  "create_raid": {
+    "title": "Neue Operation",
+    "step_details": "Details",
+    "step_composition": "Aufstellung",
+    "step_review": "Überprüfung",
+    "raid_details": "Raid-Details",
+    "title_label": "Titel",
+    "description_label": "Beschreibung",
+    "game": "Spiel",
+    "mode": "Modus",
+    "date": "Datum",
+    "time": "Uhrzeit",
+    "load_template": "Aus Vorlage laden",
+    "slot_config": "Slot-Konfiguration",
+    "total_roster": "Gesamte Aufstellungsgröße",
+    "ready_to_deploy": "Bereit zum Einsatz",
+    "discord_preview": "Discord-Vorschau"
+  },
+  "empty_states": {
+    "no_active_operations": "Keine aktiven Operationen",
+    "initialize_raid": "Initialisiere einen neuen Raid, um mit der Planung zu beginnen.",
+    "no_locked_raids": "Keine gesperrten Raids",
+    "locked_raids_here": "Gesperrte Raids erscheinen hier.",
+    "no_raid_history": "Kein Raid-Verlauf",
+    "completed_raids_here": "Abgeschlossene Raids erscheinen hier.",
+    "no_recent_activity": "Keine kürzlichen Aktivitäten"
+  },
+  "time": {
+    "just_now": "gerade eben",
+    "minutes_ago": "vor {{count}} Min.",
+    "hours_ago": "vor {{count}} Std."
   }
 }

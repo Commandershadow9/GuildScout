@@ -1,6 +1,19 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash2, Star, Save, X, Edit2, Shield, Heart, Sword, Users } from 'lucide-react';
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Star,
+  Copy,
+  Shield,
+  Heart,
+  Sword,
+  UserPlus,
+  Layers,
+  X,
+  Save
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface Template {
@@ -22,192 +35,375 @@ interface TemplatesProps {
 
 const Templates: React.FC<TemplatesProps> = ({ data }) => {
   const { t } = useTranslation();
-  const [templates, setTemplates] = useState<Template[]>(data.templates);
-  const [isCreating, setIsCreating] = useState(false);
-  
-  // New template state
-  const [newTmpl, setNewTmpl] = useState({ name: '', tanks: 2, healers: 2, dps: 6, bench: 0, is_default: false });
+  const { templates } = data;
+  const [showCreate, setShowCreate] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8">
-      <div className="flex items-center justify-between">
+    <div className="max-w-[1200px] mx-auto space-y-8">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-[var(--border)]">
         <div>
-          <h1 className="text-3xl font-heading font-bold tracking-tight text-white">{t('templates.title')}</h1>
-          <p className="text-[var(--muted)] mt-1">{t('templates.subtitle')}</p>
+          <div className="flex items-center gap-2 text-[var(--secondary)] mb-3">
+            <Layers className="h-5 w-5" />
+            <span className="text-xs font-bold uppercase tracking-widest">{t('templates.title')}</span>
+          </div>
+          <h1 className="text-3xl md:text-4xl font-heading font-black text-white tracking-tight">
+            {t('templates.title')}
+          </h1>
+          <p className="text-[var(--muted)] mt-2 max-w-xl">
+            {t('templates.subtitle')}
+          </p>
         </div>
-        <button 
-          onClick={() => setIsCreating(true)}
-          className="flex items-center gap-2 bg-[var(--primary)] text-black px-4 py-2 rounded-lg font-bold shadow-[var(--glow-primary)] hover:bg-[var(--primary)]/90 transition-all uppercase text-sm tracking-wide"
+
+        {/* Create Button - Always visible */}
+        <button
+          onClick={() => setShowCreate(true)}
+          className="btn-primary self-start md:self-auto"
         >
-          <Plus className="h-5 w-5" />
+          <Plus className="h-4 w-4" />
           {t('templates.create_new')}
         </button>
       </div>
 
-      {/* Creation Form */}
-      {isCreating && (
-        <form action={`/guilds/${data.guild.id}/templates`} method="POST" className="animate-in fade-in slide-in-from-top-4 panel-glass p-6 border-[var(--primary)]/30 shadow-[var(--glow-primary)]">
-            <input type="hidden" name="return_to" value="templates" />
-            <div className="flex items-center justify-between mb-6 border-b border-[var(--border)] pb-4">
-               <h3 className="font-bold text-lg text-white flex items-center gap-2">
-                  <span className="w-2 h-6 bg-[var(--primary)] rounded-sm" />
-                  {t('templates.create_new')}
-               </h3>
-               <button type="button" onClick={() => setIsCreating(false)} className="text-[var(--muted)] hover:text-white transition-colors">
-                 <X className="h-6 w-6" />
-               </button>
-            </div>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-end">
-                <div className="lg:col-span-4 space-y-2">
-                    <label className="text-xs font-bold uppercase text-[var(--muted)] tracking-wider">Name</label>
-                    <input 
-                      name="name" 
-                      type="text" 
-                      required
-                      placeholder="e.g. Mythic Standard"
-                      className="w-full bg-[var(--bg-0)] border border-[var(--border)] rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-[var(--primary)]/50 focus:border-[var(--primary)] outline-none transition-all font-medium"
-                      value={newTmpl.name}
-                      onChange={e => setNewTmpl({...newTmpl, name: e.target.value})}
-                    />
-                </div>
+      {/* Templates Grid */}
+      {templates.length === 0 && !showCreate ? (
+        <EmptyState onCreateClick={() => setShowCreate(true)} />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Create New Template Card */}
+          {showCreate && (
+            <TemplateForm
+              guildId={data.guild.id}
+              onCancel={() => setShowCreate(false)}
+            />
+          )}
 
-                <div className="lg:col-span-6 grid grid-cols-4 gap-4">
-                     <SlotInput label="Tank" name="tanks" value={newTmpl.tanks} onChange={(v:any) => setNewTmpl({...newTmpl, tanks: v})} color="text-blue-400" />
-                     <SlotInput label="Heal" name="healers" value={newTmpl.healers} onChange={(v:any) => setNewTmpl({...newTmpl, healers: v})} color="text-green-400" />
-                     <SlotInput label="DPS" name="dps" value={newTmpl.dps} onChange={(v:any) => setNewTmpl({...newTmpl, dps: v})} color="text-orange-400" />
-                     <SlotInput label="Bench" name="bench" value={newTmpl.bench} onChange={(v:any) => setNewTmpl({...newTmpl, bench: v})} color="text-violet-400" />
-                </div>
+          {/* Existing Templates */}
+          {templates.map((template, index) => (
+            editingId === template.template_id ? (
+              <TemplateForm
+                key={template.template_id}
+                template={template}
+                guildId={data.guild.id}
+                onCancel={() => setEditingId(null)}
+              />
+            ) : (
+              <TemplateCard
+                key={template.template_id}
+                template={template}
+                guildId={data.guild.id}
+                index={index}
+                onEdit={() => setEditingId(template.template_id)}
+                isDeleting={deleteConfirm === template.template_id}
+                onDeleteStart={() => setDeleteConfirm(template.template_id)}
+                onDeleteCancel={() => setDeleteConfirm(null)}
+              />
+            )
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
-                <div className="lg:col-span-2 flex items-center justify-end pb-1 gap-4">
-                    <label className="flex items-center gap-2 cursor-pointer group">
-                        <input type="checkbox" name="is_default" className="peer sr-only" checked={newTmpl.is_default} onChange={e => setNewTmpl({...newTmpl, is_default: e.target.checked})} />
-                        <div className="w-4 h-4 border border-[var(--border)] rounded bg-[var(--bg-0)] peer-checked:bg-[var(--primary)] peer-checked:border-[var(--primary)] flex items-center justify-center transition-colors">
-                            <Star className="h-3 w-3 text-black opacity-0 peer-checked:opacity-100" />
-                        </div>
-                        <span className="text-sm font-bold text-[var(--muted)] group-hover:text-white transition-colors">Default</span>
-                    </label>
-                    <button type="submit" className="bg-[var(--primary)] text-black p-2.5 rounded-lg hover:bg-[var(--primary)]/90 shadow-lg">
-                        <Save className="h-5 w-5" />
-                    </button>
-                </div>
-            </div>
-        </form>
+// Empty State Component
+const EmptyState: React.FC<{ onCreateClick: () => void }> = ({ onCreateClick }) => {
+  const { t } = useTranslation();
+
+  return (
+    <div className="panel-glass p-12 md:p-16 flex flex-col items-center justify-center text-center border-dashed relative">
+      <div className="w-20 h-20 bg-[var(--bg-1)] rounded-2xl flex items-center justify-center mb-6 relative z-10">
+        <Layers className="h-10 w-10 text-[var(--muted)]" />
+      </div>
+      <h3 className="text-xl font-bold text-white mb-2 relative z-10">No Templates Yet</h3>
+      <p className="text-[var(--muted)] text-sm mb-6 max-w-sm relative z-10">
+        Create your first raid composition template for quick deployment.
+      </p>
+      <button onClick={onCreateClick} className="btn-primary relative z-10">
+        <Plus className="h-4 w-4" />
+        {t('templates.create_new')}
+      </button>
+    </div>
+  );
+};
+
+// Template Card Component
+const TemplateCard: React.FC<{
+  template: Template;
+  guildId: string;
+  index: number;
+  onEdit: () => void;
+  isDeleting: boolean;
+  onDeleteStart: () => void;
+  onDeleteCancel: () => void;
+}> = ({ template, guildId, index, onEdit, isDeleting, onDeleteStart, onDeleteCancel }) => {
+  const { t } = useTranslation();
+  const totalSlots = template.tanks + template.healers + template.dps;
+
+  return (
+    <div
+      className="panel-glass group relative overflow-hidden fade-in"
+      style={{ animationDelay: `${index * 50}ms` }}
+    >
+      {/* Delete Confirmation Overlay */}
+      {isDeleting && (
+        <div className="absolute inset-0 bg-[var(--bg-0)]/95 backdrop-blur-sm z-20 flex flex-col items-center justify-center p-6">
+          <Trash2 className="h-8 w-8 text-[var(--danger)] mb-4" />
+          <p className="text-white font-bold text-center mb-2">{t('templates.delete_confirm')}</p>
+          <p className="text-[var(--muted)] text-sm text-center mb-6">{template.name}</p>
+          <div className="flex gap-3">
+            <button onClick={onDeleteCancel} className="btn-ghost">
+              Cancel
+            </button>
+            <form action={`/guilds/${guildId}/templates/${template.template_id}/delete`} method="POST">
+              <input type="hidden" name="return_to" value="templates" />
+              <button type="submit" className="btn-primary bg-[var(--danger)] shadow-none hover:bg-[var(--danger-light)]">
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </button>
+            </form>
+          </div>
+        </div>
       )}
 
-      {/* Grid of Templates */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {templates.map((tmpl) => (
-            <TemplateCard key={tmpl.template_id} tmpl={tmpl} guildId={data.guild.id} />
-        ))}
+      {/* Header */}
+      <div className="p-4 border-b border-[var(--border)] flex items-center justify-between relative z-10">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-[var(--secondary)]/15 flex items-center justify-center text-[var(--secondary)]">
+            <Layers className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="font-bold text-white truncate">{template.name}</h3>
+            <div className="flex items-center gap-2">
+              {template.is_default && (
+                <span className="badge badge-pending">
+                  <Star className="h-3 w-3 mr-1" />
+                  {t('templates.default_badge')}
+                </span>
+              )}
+              <span className="text-xs text-[var(--muted)] font-mono">{totalSlots} slots</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Actions - Always visible on mobile */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onEdit}
+            className="btn-icon md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+            title={t('actions.edit')}
+          >
+            <Edit className="h-4 w-4" />
+          </button>
+          <button
+            onClick={onDeleteStart}
+            className="btn-icon md:opacity-0 md:group-hover:opacity-100 transition-opacity hover:text-[var(--danger)] hover:border-[var(--danger)]"
+            title={t('actions.delete')}
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Composition Grid */}
+      <div className="p-4 grid grid-cols-4 gap-3 relative z-10">
+        <RoleDisplay icon={Shield} count={template.tanks} label="Tanks" color="blue" />
+        <RoleDisplay icon={Heart} count={template.healers} label="Healers" color="emerald" />
+        <RoleDisplay icon={Sword} count={template.dps} label="DPS" color="orange" />
+        <RoleDisplay icon={UserPlus} count={template.bench} label="Bench" color="violet" />
+      </div>
+
+      {/* Footer Actions */}
+      <div className="px-4 pb-4 flex gap-2 relative z-10">
+        <a
+          href={`/guilds/${guildId}/raids/new?template=${template.template_id}`}
+          className="flex-1 btn-ghost text-xs justify-center"
+        >
+          <Copy className="h-3.5 w-3.5" />
+          Use Template
+        </a>
+        {!template.is_default && (
+          <form action={`/guilds/${guildId}/templates/${template.template_id}/default`} method="POST" className="flex-1">
+            <input type="hidden" name="return_to" value="templates" />
+            <button type="submit" className="w-full btn-ghost text-xs justify-center">
+              <Star className="h-3.5 w-3.5" />
+              {t('templates.set_default')}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );
 };
 
-const SlotInput = ({ label, name, value, onChange, color }: any) => (
-    <div className="space-y-2 text-center">
-        <label className={cn("text-[10px] font-black uppercase tracking-widest", color)}>{label}</label>
-        <input name={name} type="number" min="0" className="w-full bg-[var(--bg-0)] border border-[var(--border)] rounded-md px-2 py-2 text-center font-mono font-bold text-lg text-white focus:border-[var(--primary)] outline-none transition-colors" value={value} onChange={e => onChange(parseInt(e.target.value))} />
-    </div>
-)
+// Template Form Component
+const TemplateForm: React.FC<{
+  template?: Template;
+  guildId: string;
+  onCancel: () => void;
+}> = ({ template, guildId, onCancel }) => {
+  const { t } = useTranslation();
+  const isEdit = !!template;
 
-const TemplateCard = ({ tmpl, guildId }: { tmpl: Template, guildId: number }) => {
-    const { t } = useTranslation();
-    const [isEditing, setIsEditing] = useState(false);
-    // Local edit state
-    const [editData, setEditData] = useState({...tmpl});
+  const [formData, setFormData] = useState({
+    name: template?.name || '',
+    tanks: template?.tanks || 2,
+    healers: template?.healers || 2,
+    dps: template?.dps || 6,
+    bench: template?.bench || 0,
+  });
 
-    if (isEditing) {
-        return (
-            <form action={`/guilds/${guildId}/templates/${tmpl.template_id}/update`} method="POST" className="relative panel-glass p-5 flex flex-col gap-4 border-[var(--primary)]/50">
-                <input type="hidden" name="return_to" value="templates" />
-                
-                <div className="flex items-center justify-between">
-                   <input 
-                      name="name" 
-                      className="bg-[var(--bg-0)] border border-[var(--border)] rounded px-3 py-1.5 text-sm font-bold w-full mr-2 text-white focus:border-[var(--primary)] outline-none" 
-                      value={editData.name} 
-                      onChange={e => setEditData({...editData, name: e.target.value})}
-                   />
-                   <button type="button" onClick={() => setIsEditing(false)}><X className="h-5 w-5 text-[var(--muted)] hover:text-white" /></button>
-                </div>
+  const action = isEdit
+    ? `/guilds/${guildId}/templates/${template.template_id}/update`
+    : `/guilds/${guildId}/templates`;
 
-                <div className="grid grid-cols-4 gap-2">
-                     <SlotEdit label="T" name="tanks" value={editData.tanks} onChange={(v:any) => setEditData({...editData, tanks: v})} color="text-blue-400" />
-                     <SlotEdit label="H" name="healers" value={editData.healers} onChange={(v:any) => setEditData({...editData, healers: v})} color="text-green-400" />
-                     <SlotEdit label="D" name="dps" value={editData.dps} onChange={(v:any) => setEditData({...editData, dps: v})} color="text-orange-400" />
-                     <SlotEdit label="B" name="bench" value={editData.bench} onChange={(v:any) => setEditData({...editData, bench: v})} color="text-violet-400" />
-                </div>
+  return (
+    <div className="panel-gradient relative overflow-hidden">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-[var(--primary)]/10 rounded-full blur-3xl -mr-16 -mt-16" />
 
-                <div className="flex items-center justify-between pt-3 border-t border-[var(--border)]">
-                   <label className="flex items-center gap-2 text-xs font-bold text-[var(--muted)] cursor-pointer hover:text-white">
-                      <input type="checkbox" name="is_default" checked={editData.is_default} onChange={e => setEditData({...editData, is_default: e.target.checked})} className="accent-[var(--primary)]" />
-                      Default
-                   </label>
-                   <button type="submit" className="bg-[var(--primary)]/10 text-[var(--primary)] border border-[var(--primary)]/30 px-4 py-1 rounded text-xs font-bold hover:bg-[var(--primary)] hover:text-black transition-all uppercase">Save</button>
-                </div>
-            </form>
-        )
-    }
+      <form action={action} method="POST" className="relative z-10">
+        <input type="hidden" name="return_to" value="templates" />
 
-    return (
-        <div className="group relative panel-glass panel-hover p-6">
-            {tmpl.is_default && (
-                <div className="absolute top-0 right-0 p-2 bg-[var(--warning)]/10 rounded-bl-xl border-b border-l border-[var(--warning)]/30">
-                    <Star className="h-4 w-4 text-[var(--warning)] fill-current" />
-                </div>
-            )}
-            
-            <h3 className="font-heading font-bold text-lg mb-4 pr-8 truncate text-white group-hover:text-[var(--primary)] transition-colors">{tmpl.name}</h3>
-
-            <div className="grid grid-cols-4 gap-2 mb-6">
-                <SlotBadge icon={Shield} count={tmpl.tanks} color="text-blue-400" bg="bg-blue-400/10 border-blue-400/20" />
-                <SlotBadge icon={Heart} count={tmpl.healers} color="text-green-400" bg="bg-green-400/10 border-green-400/20" />
-                <SlotBadge icon={Sword} count={tmpl.dps} color="text-orange-400" bg="bg-orange-400/10 border-orange-400/20" />
-                <SlotBadge icon={Users} count={tmpl.bench} color="text-violet-400" bg="bg-violet-400/10 border-violet-400/20" />
-            </div>
-
-            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity translate-y-2 group-hover:translate-y-0 duration-300">
-                <button onClick={() => setIsEditing(true)} className="flex-1 flex items-center justify-center gap-2 bg-[var(--surface-2)] hover:bg-[var(--bg-1)] border border-[var(--border)] py-2 rounded text-xs font-bold transition-all uppercase text-white">
-                    <Edit2 className="h-3 w-3" /> {t('actions.edit')}
-                </button>
-                
-                <form action={`/guilds/${guildId}/templates/${tmpl.template_id}/delete`} method="POST" onSubmit={(e) => !confirm(n("templates.delete_confirm")) && e.preventDefault()}>
-                    <input type="hidden" name="return_to" value="templates" />
-                    <button type="submit" className="p-2 bg-[var(--danger)]/10 text-[var(--danger)] hover:bg-[var(--danger)] hover:text-white border border-[var(--danger)]/30 rounded transition-all">
-                        <Trash2 className="h-4 w-4" />
-                    </button>
-                </form>
-
-                {!tmpl.is_default && (
-                    <form action={`/guilds/${guildId}/templates/${tmpl.template_id}/default`} method="POST">
-                        <button type="submit" className="p-2 bg-[var(--warning)]/10 text-[var(--warning)] hover:bg-[var(--warning)] hover:text-black border border-[var(--warning)]/30 rounded transition-all" title={t('templates.set_default')}>
-                            <Star className="h-4 w-4" />
-                        </button>
-                    </form>
-                )}
-            </div>
+        {/* Header */}
+        <div className="p-4 border-b border-[var(--border)] flex items-center justify-between">
+          <h3 className="font-bold text-white flex items-center gap-2">
+            {isEdit ? <Edit className="h-4 w-4 text-[var(--secondary)]" /> : <Plus className="h-4 w-4 text-[var(--primary)]" />}
+            {isEdit ? t('templates.edit_template') : t('templates.create_new')}
+          </h3>
+          <button type="button" onClick={onCancel} className="btn-icon">
+            <X className="h-4 w-4" />
+          </button>
         </div>
-    )
-}
 
-const SlotBadge = ({ icon: Icon, count, color, bg }: any) => (
-    <div className={cn("flex flex-col items-center justify-center rounded-lg p-2 border", bg)}>
-        <Icon className={cn("h-4 w-4 mb-1", color)} />
-        <span className="font-mono font-bold text-sm text-white">{count}</span>
-    </div>
-)
+        {/* Form Fields */}
+        <div className="p-4 space-y-4">
+          <div>
+            <label className="block text-xs font-bold uppercase text-[var(--muted)] tracking-wider mb-2">
+              Template Name
+            </label>
+            <input
+              type="text"
+              name="name"
+              required
+              placeholder="e.g. 20-Man Mythic"
+              className="input-field"
+              value={formData.name}
+              onChange={e => setFormData({ ...formData, name: e.target.value })}
+            />
+          </div>
 
-const SlotEdit = ({ label, name, value, onChange, color }: any) => (
-    <div className="text-center">
-        <label className={cn("block text-[10px] font-black mb-1", color)}>{label}</label>
-        <input 
-            type="number" name={name} 
-            className="w-full bg-[var(--bg-0)] border border-[var(--border)] rounded text-center text-xs font-bold py-1.5 text-white outline-none focus:border-[var(--primary)]"
-            value={value} onChange={e => onChange(parseInt(e.target.value))}
-        />
+          <div className="grid grid-cols-2 gap-3">
+            <SlotInput
+              label="Tanks"
+              name="tanks"
+              value={formData.tanks}
+              onChange={(v) => setFormData({ ...formData, tanks: v })}
+              icon={Shield}
+              color="blue"
+            />
+            <SlotInput
+              label="Healers"
+              name="healers"
+              value={formData.healers}
+              onChange={(v) => setFormData({ ...formData, healers: v })}
+              icon={Heart}
+              color="emerald"
+            />
+            <SlotInput
+              label="DPS"
+              name="dps"
+              value={formData.dps}
+              onChange={(v) => setFormData({ ...formData, dps: v })}
+              icon={Sword}
+              color="orange"
+            />
+            <SlotInput
+              label="Bench"
+              name="bench"
+              value={formData.bench}
+              onChange={(v) => setFormData({ ...formData, bench: v })}
+              icon={UserPlus}
+              color="violet"
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-4 pb-4 flex gap-2">
+          <button type="button" onClick={onCancel} className="flex-1 btn-ghost justify-center">
+            {t('actions.cancel')}
+          </button>
+          <button type="submit" className="flex-1 btn-primary justify-center">
+            <Save className="h-4 w-4" />
+            {t('actions.save')}
+          </button>
+        </div>
+      </form>
     </div>
-)
+  );
+};
+
+// Role Display Component
+const RoleDisplay: React.FC<{
+  icon: React.ElementType;
+  count: number;
+  label: string;
+  color: 'blue' | 'emerald' | 'orange' | 'violet';
+}> = ({ icon: Icon, count, label, color }) => {
+  const colorClasses = {
+    blue: 'text-blue-400 bg-blue-500/10 border-blue-500/30',
+    emerald: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
+    orange: 'text-orange-400 bg-orange-500/10 border-orange-500/30',
+    violet: 'text-violet-400 bg-violet-500/10 border-violet-500/30',
+  };
+
+  return (
+    <div className={cn(
+      "flex flex-col items-center justify-center p-3 rounded-xl border transition-all",
+      colorClasses[color]
+    )}>
+      <Icon className="h-4 w-4 mb-1" />
+      <span className="text-lg font-bold font-mono text-white">{count}</span>
+      <span className="text-[9px] font-bold uppercase tracking-wider text-[var(--muted)]">{label}</span>
+    </div>
+  );
+};
+
+// Slot Input Component
+const SlotInput: React.FC<{
+  label: string;
+  name: string;
+  value: number;
+  onChange: (v: number) => void;
+  icon: React.ElementType;
+  color: 'blue' | 'emerald' | 'orange' | 'violet';
+}> = ({ label, name, value, onChange, icon: Icon, color }) => {
+  const colorClasses = {
+    blue: 'text-blue-400',
+    emerald: 'text-emerald-400',
+    orange: 'text-orange-400',
+    violet: 'text-violet-400',
+  };
+
+  return (
+    <div>
+      <label className={cn("block text-xs font-bold uppercase tracking-wider mb-2 flex items-center gap-1.5", colorClasses[color])}>
+        <Icon className="h-3.5 w-3.5" />
+        {label}
+      </label>
+      <input
+        type="number"
+        name={name}
+        min="0"
+        max="20"
+        className="w-full bg-[var(--bg-0)] border border-[var(--border)] rounded-lg px-3 py-2.5 text-center text-lg font-mono font-bold text-white focus:border-[var(--primary)] outline-none transition-colors"
+        value={value}
+        onChange={e => onChange(parseInt(e.target.value) || 0)}
+      />
+    </div>
+  );
+};
 
 export default Templates;

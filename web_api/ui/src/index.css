@@ -4,58 +4,128 @@
 
 @layer base {
   :root {
-    /* Base Colors - Preparation Board */
-    --bg-0: #060812;
-    --bg-1: #0A1020;
-    
-    /* Surfaces */
-    --surface-0: #0C1426;
-    --surface-1: rgba(16, 26, 46, 0.72);
-    --surface-2: rgba(18, 34, 66, 0.82);
-    
-    /* Borders & Text */
-    --border: rgba(140, 170, 255, 0.16);
-    --text: #EAF0FF;
-    --muted: #A7B3D1;
-    --muted-2: rgba(167, 179, 209, 0.65);
+    /* ========================================
+       GUILDSCOUT MEDIEVAL THEME v2.2
+       Dark Tavern / Guild Hall Atmosphere
 
-    /* Accents (UI) */
-    --primary: #2DE2E6;  /* Cyan */
-    --secondary: #5865F2; /* Blurple */
-    --warning: #FBBF24; /* Amber */
-    --danger: #F43F5E; /* Rose */
-    --success: #34D399; /* Emerald */
+       ZENTRALE FARBVERWALTUNG
+       Alle Farben hier ändern für globale Anpassung
+       ======================================== */
+
+    /* === CORE PALETTE === */
+    /* Diese 5 Farben definieren das gesamte Farbschema */
+    --color-base: #0a0908;           /* Basis-Schwarz */
+    --color-dark: #12100d;           /* Dunkler Ton */
+    --color-mid: #1a1510;            /* Mittlerer Ton */
+    --color-light: #2a1f15;          /* Heller Ton */
+    --color-highlight: #3d2a1a;      /* Highlight-Ton */
+
+    /* === UI COLORS (abgeleitet von Core) === */
+    /* Background Colors */
+    --bg-0: var(--color-base);
+    --bg-1: var(--color-dark);
+
+    /* Surfaces - Elevated Elements */
+    --surface-0: var(--color-mid);
+    --surface-1: rgba(26, 23, 20, 0.9);
+    --surface-2: rgba(35, 30, 25, 0.92);
+
+    /* Borders & Text */
+    --border: rgba(180, 140, 80, 0.2);
+    --border-hover: rgba(200, 160, 90, 0.35);
+
+    /* === SCENE COLORS (Hintergrund-Szene) === */
+    /* Himmel-Gradient */
+    --scene-sky-top: var(--color-base);
+    --scene-sky-mid: var(--color-mid);
+    --scene-sky-bottom: var(--color-highlight);
+
+    /* Berge (von fern nach nah) */
+    --scene-mountain-far: var(--color-mid);
+    --scene-mountain-mid: #231a14;
+    --scene-mountain-near: var(--color-light);
+
+    /* Boden & Silhouetten */
+    --scene-ground: var(--color-mid);
+    --scene-silhouette: var(--color-base);
+    --scene-silhouette-distant: var(--color-mid);
+
+    /* Burg */
+    --scene-castle: var(--color-mid);
+
+    /* Lichteffekte */
+    --scene-moon-color: #ffe4c4;
+    --scene-torch-color: #ff9933;
+    --scene-torch-color-alt: #ff6600;
+
+    /* === PARTICLE COLORS (Funken, Staub) === */
+    --ember-color-1: #ff9633;
+    --ember-color-2: #ffb366;
+    --ember-color-3: #ff6622;
+    --dust-color: rgba(200, 180, 150, 0.3);
+    --text: #F0F0FF;
+    --muted: #A5A0C8;
+    --muted-2: rgba(165, 160, 200, 0.6);
+
+    /* Primary Accent Colors */
+    --primary: #F59E0B;       /* Gold/Amber - Raids & Actions */
+    --primary-light: #FBBF24;
+    --primary-dark: #D97706;
+
+    --secondary: #8B5CF6;     /* Violet - Gilden & UI */
+    --secondary-light: #A78BFA;
+    --secondary-dark: #7C3AED;
+
+    --accent: #EC4899;        /* Pink - Highlights */
+    --accent-light: #F472B6;
+
+    /* Semantic Colors */
+    --success: #10B981;       /* Grün - Online/Erfolg */
+    --success-light: #34D399;
+    --warning: #F59E0B;       /* Amber - Warnung (same as primary) */
+    --danger: #EF4444;        /* Rot - Fehler */
+    --danger-light: #F87171;
+    --info: #3B82F6;          /* Blau - Info */
 
     /* Role Colors (Gaming Semantics) */
-    --role-tank: #60A5FA;
-    --role-healer: #34D399;
-    --role-dps: #F97316;
-    --role-bench: #A78BFA;
+    --role-tank: #3B82F6;     /* Blau - Tank */
+    --role-healer: #10B981;   /* Grün - Healer */
+    --role-dps: #F97316;      /* Orange - DPS */
+    --role-bench: #8B5CF6;    /* Violet - Bench */
 
     /* Effects */
-    --glow-primary: 0 0 22px rgba(45, 226, 230, 0.22);
-    --shadow-soft: 0 12px 30px rgba(0, 0, 0, 0.35);
+    --glow-primary: 0 0 25px rgba(245, 158, 11, 0.3);
+    --glow-secondary: 0 0 25px rgba(180, 140, 80, 0.25);
+    --glow-success: 0 0 20px rgba(16, 185, 129, 0.25);
+    --shadow-soft: 0 12px 40px rgba(0, 0, 0, 0.6);
+    --shadow-glow: 0 0 60px rgba(200, 140, 60, 0.1);
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+    --gradient-secondary: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%);
+    --gradient-surface: linear-gradient(180deg, rgba(200, 150, 80, 0.05) 0%, transparent 100%);
+    --gradient-border: linear-gradient(135deg, rgba(200, 150, 80, 0.3) 0%, rgba(245, 158, 11, 0.15) 100%);
 
     /* Shadcn/Tailwind Mapping */
-    --background: 224 71% 4%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 11%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222 47% 11%;
-    --popover-foreground: 210 40% 98%;
-    --primary-hsl: 181 80% 54%;
-    --primary-foreground: 222 47% 11%;
-    --secondary-hsl: 235 86% 65%;
-    --secondary-foreground: 210 40% 98%;
-    --muted-hsl: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
-    --accent-hsl: 217 33% 17%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border-hsl: 217 33% 17%;
-    --input: 217 33% 17%;
-    --ring: 181 80% 54%;
+    --background: 260 45% 7%;
+    --foreground: 240 20% 97%;
+    --card: 260 35% 12%;
+    --card-foreground: 240 20% 97%;
+    --popover: 260 35% 12%;
+    --popover-foreground: 240 20% 97%;
+    --primary-hsl: 38 92% 50%;
+    --primary-foreground: 260 35% 8%;
+    --secondary-hsl: 262 83% 58%;
+    --secondary-foreground: 240 20% 97%;
+    --muted-hsl: 260 25% 25%;
+    --muted-foreground: 260 20% 70%;
+    --accent-hsl: 262 83% 58%;
+    --accent-foreground: 240 20% 97%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 240 20% 97%;
+    --border-hsl: 262 50% 30%;
+    --input: 260 25% 20%;
+    --ring: 38 92% 50%;
     --radius: 0.75rem;
   }
 }
@@ -64,64 +134,849 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply text-foreground;
     background-color: var(--bg-0);
-    font-family: 'Inter', sans-serif;
+    font-family: 'Inter', system-ui, sans-serif;
     min-height: 100vh;
-    /* Static texture background */
-    background-image: 
-        radial-gradient(circle at 50% 0%, var(--bg-1), transparent 70%),
-        url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
+    /* Medieval ambient - warm torch glow from below */
+    background-image:
+        radial-gradient(ellipse at 50% 100%, rgba(180, 100, 40, 0.06) 0%, transparent 50%),
+        radial-gradient(ellipse at 20% 90%, rgba(200, 120, 50, 0.04) 0%, transparent 40%),
+        url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
+    background-attachment: fixed;
   }
-  
+
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+    letter-spacing: -0.02em;
+  }
+
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Selection styling */
+  ::selection {
+    background: rgba(200, 140, 60, 0.35);
+    color: white;
   }
 }
 
 @layer components {
-  /* Panel / Card Styles */
+  /* ========================================
+     PANEL / CARD STYLES
+     ======================================== */
+
   .panel-glass {
     background: var(--surface-1);
     border: 1px solid var(--border);
-    backdrop-filter: blur(12px);
-    border-radius: 18px;
+    backdrop-filter: blur(16px);
+    border-radius: 16px;
     box-shadow: var(--shadow-soft);
+    position: relative;
+    overflow: hidden;
   }
-  
+
+  .panel-glass::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--gradient-surface);
+    pointer-events: none;
+  }
+
+  /* Gradient border effect for special cards */
+  .panel-gradient {
+    position: relative;
+    background: var(--surface-0);
+    border-radius: 16px;
+  }
+
+  .panel-gradient::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    padding: 1px;
+    border-radius: 16px;
+    background: var(--gradient-border);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
   .panel-hover {
-    transition: transform 0.15s ease-out, box-shadow 0.15s ease-out, border-color 0.15s ease-out;
+    transition: transform 0.2s ease-out, box-shadow 0.2s ease-out, border-color 0.2s ease-out;
   }
-  
+
   .panel-hover:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-soft), var(--shadow-glow);
+    border-color: var(--border-hover);
+  }
+
+  /* ========================================
+     BUTTON STYLES
+     ======================================== */
+
+  /* Primary Button - Gold with Glow */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 font-bold text-sm uppercase tracking-wide;
+    background: var(--gradient-primary);
+    color: #0D0A1A;
+    padding: 0.75rem 1.5rem;
+    border-radius: 10px;
+    border: none;
+    box-shadow: var(--glow-primary);
+    transition: all 0.2s ease;
+  }
+
+  .btn-primary:hover {
     transform: translateY(-2px);
-    box-shadow: 0 15px 35px rgba(0,0,0,0.4), var(--glow-primary);
-    border-color: rgba(45, 226, 230, 0.3);
+    box-shadow: 0 0 35px rgba(245, 158, 11, 0.5);
+    filter: brightness(1.1);
   }
 
-  /* Role Chips */
+  .btn-primary:active {
+    transform: translateY(0);
+    box-shadow: var(--glow-primary);
+  }
+
+  /* Secondary Button - Violet */
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 font-bold text-sm uppercase tracking-wide;
+    background: var(--gradient-secondary);
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 10px;
+    border: none;
+    box-shadow: var(--glow-secondary);
+    transition: all 0.2s ease;
+  }
+
+  .btn-secondary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 35px rgba(139, 92, 246, 0.5);
+  }
+
+  /* Ghost Button - Transparent with Border */
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 font-bold text-sm uppercase tracking-wide;
+    background: transparent;
+    color: var(--text);
+    padding: 0.75rem 1.5rem;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    transition: all 0.2s ease;
+  }
+
+  .btn-ghost:hover {
+    background: rgba(200, 140, 60, 0.1);
+    border-color: var(--primary);
+    color: var(--primary-light);
+  }
+
+  /* Icon Button */
+  .btn-icon {
+    @apply flex items-center justify-center;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    transition: all 0.2s ease;
+  }
+
+  .btn-icon:hover {
+    background: var(--surface-0);
+    border-color: var(--primary);
+    color: var(--primary-light);
+  }
+
+  /* Touch-friendly button base */
+  .btn-touch {
+    @apply min-h-[44px] min-w-[44px] flex items-center justify-center;
+  }
+
+  /* ========================================
+     ROLE CHIPS
+     ======================================== */
+
   .role-chip {
-    @apply flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold uppercase tracking-wider border transition-colors;
+    @apply flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider border transition-all;
   }
-  .role-tank { @apply border-blue-400/30 text-blue-400 bg-blue-400/10 hover:bg-blue-400/20; }
-  .role-healer { @apply border-green-400/30 text-green-400 bg-green-400/10 hover:bg-green-400/20; }
-  .role-dps { @apply border-orange-400/30 text-orange-400 bg-orange-400/10 hover:bg-orange-400/20; }
-  .role-bench { @apply border-violet-400/30 text-violet-400 bg-violet-400/10 hover:bg-violet-400/20; }
 
-  /* Navigation Item Active State */
+  .role-tank {
+    @apply border-blue-500/30 text-blue-400 bg-blue-500/10;
+  }
+  .role-tank:hover {
+    @apply bg-blue-500/20 border-blue-400/50;
+  }
+
+  .role-healer {
+    @apply border-emerald-500/30 text-emerald-400 bg-emerald-500/10;
+  }
+  .role-healer:hover {
+    @apply bg-emerald-500/20 border-emerald-400/50;
+  }
+
+  .role-dps {
+    @apply border-orange-500/30 text-orange-400 bg-orange-500/10;
+  }
+  .role-dps:hover {
+    @apply bg-orange-500/20 border-orange-400/50;
+  }
+
+  .role-bench {
+    @apply border-violet-500/30 text-violet-400 bg-violet-500/10;
+  }
+  .role-bench:hover {
+    @apply bg-violet-500/20 border-violet-400/50;
+  }
+
+  /* ========================================
+     NAVIGATION STYLES
+     ======================================== */
+
   .nav-item-active {
-    background: linear-gradient(90deg, rgba(45, 226, 230, 0.1) 0%, transparent 100%);
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.15) 0%, transparent 100%);
     border-left: 3px solid var(--primary);
     color: var(--text);
   }
-  
+
   .nav-item-inactive {
     border-left: 3px solid transparent;
     color: var(--muted);
   }
+
   .nav-item-inactive:hover {
     color: var(--text);
-    border-left-color: rgba(140, 170, 255, 0.3);
+    border-left-color: rgba(200, 140, 60, 0.5);
+    background: linear-gradient(90deg, rgba(200, 140, 60, 0.08) 0%, transparent 100%);
+  }
+
+  /* ========================================
+     FORM INPUTS
+     ======================================== */
+
+  .input-field {
+    @apply w-full rounded-lg px-4 py-3 text-sm font-medium outline-none transition-all;
+    background: var(--bg-0);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+
+  .input-field::placeholder {
+    color: var(--muted-2);
+  }
+
+  .input-field:focus {
+    border-color: var(--secondary);
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
+  }
+
+  .input-field:hover:not(:focus) {
+    border-color: var(--border-hover);
+  }
+
+  /* ========================================
+     STATUS BADGES
+     ======================================== */
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border;
+  }
+
+  .badge-open {
+    @apply border-emerald-500/30 text-emerald-400 bg-emerald-500/10;
+  }
+
+  .badge-locked {
+    @apply border-rose-500/30 text-rose-400 bg-rose-500/10;
+  }
+
+  .badge-pending {
+    @apply border-amber-500/30 text-amber-400 bg-amber-500/10;
+  }
+
+  .badge-info {
+    @apply border-blue-500/30 text-blue-400 bg-blue-500/10;
+  }
+
+  /* ========================================
+     LOADING & SKELETON
+     ======================================== */
+
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--surface-0) 0%,
+      var(--surface-2) 50%,
+      var(--surface-0) 100%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s infinite;
+    border-radius: 8px;
+  }
+
+  @keyframes skeleton-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* Pulsing glow loader */
+  .loader-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% {
+      box-shadow: 0 0 20px rgba(200, 140, 60, 0.3);
+    }
+    50% {
+      box-shadow: 0 0 40px rgba(245, 158, 11, 0.5);
+    }
+  }
+
+  /* ========================================
+     ANIMATIONS
+     ======================================== */
+
+  /* Fade in with stagger support */
+  .fade-in {
+    animation: fadeIn 0.3s ease-out forwards;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Slide in from left */
+  .slide-in-left {
+    animation: slideInLeft 0.3s ease-out forwards;
+  }
+
+  @keyframes slideInLeft {
+    from {
+      opacity: 0;
+      transform: translateX(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  /* Scale in */
+  .scale-in {
+    animation: scaleIn 0.2s ease-out forwards;
+  }
+
+  @keyframes scaleIn {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  /* Number counter animation */
+  .counter-animate {
+    animation: counterPop 0.5s ease-out;
+  }
+
+  @keyframes counterPop {
+    0% { transform: scale(0.8); opacity: 0; }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  /* Glow pulse on hover */
+  .hover-glow {
+    transition: box-shadow 0.3s ease;
+  }
+
+  .hover-glow:hover {
+    box-shadow: var(--glow-primary);
+  }
+
+  /* ========================================
+     SCROLLBAR
+     ======================================== */
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: var(--primary);
+  }
+
+  /* ========================================
+     SAFE AREA (Mobile Notches)
+     ======================================== */
+
+  .safe-area-inset {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* ========================================
+     STAT CARDS
+     ======================================== */
+
+  .stat-card {
+    @apply panel-glass p-5 flex items-center gap-4;
+  }
+
+  .stat-icon {
+    @apply p-3 rounded-xl;
+  }
+
+  .stat-icon-primary {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--primary);
+  }
+
+  .stat-icon-secondary {
+    background: rgba(139, 92, 246, 0.15);
+    color: var(--secondary);
+  }
+
+  .stat-icon-success {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--success);
+  }
+
+  .stat-icon-info {
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--info);
+  }
+
+  /* ========================================
+     PROGRESS BARS
+     ======================================== */
+
+  .progress-bar {
+    @apply h-2 rounded-full overflow-hidden;
+    background: var(--bg-0);
+  }
+
+  .progress-fill {
+    @apply h-full rounded-full transition-all duration-500;
+  }
+
+  .progress-fill-primary {
+    background: var(--gradient-primary);
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
+  }
+
+  .progress-fill-secondary {
+    background: var(--gradient-secondary);
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+  }
+
+  .progress-fill-success {
+    background: linear-gradient(90deg, #10B981 0%, #34D399 100%);
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+  }
+}
+
+/* ========================================
+   MOBILE OVERRIDES
+   ======================================== */
+
+@media (max-width: 640px) {
+  .panel-glass {
+    border-radius: 12px;
+  }
+
+  /* Prevent text selection on buttons for touch */
+  button {
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+
+  /* Larger touch targets */
+  .btn-primary,
+  .btn-secondary,
+  .btn-ghost {
+    min-height: 48px;
+    padding: 0.875rem 1.5rem;
+  }
+}
+
+/* ========================================
+   ANIMATED BACKGROUND PARTICLES
+   ======================================== */
+
+.particles-container {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: rgba(255, 150, 60, 0.4);
+  border-radius: 50%;
+  animation: float-particle 20s infinite ease-in-out;
+}
+
+.particle:nth-child(odd) {
+  background: rgba(200, 120, 50, 0.3);
+}
+
+@keyframes float-particle {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  50% {
+    transform: translate(var(--drift-x, 100px), var(--drift-y, -200px)) scale(0.5);
+  }
+}
+
+/* Ambient glow orbs */
+.glow-orb {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  z-index: 0;
+  animation: orb-drift 30s infinite ease-in-out;
+}
+
+.glow-orb-1 {
+  width: 400px;
+  height: 400px;
+  background: rgba(180, 100, 40, 0.06);
+  top: -100px;
+  left: -100px;
+}
+
+.glow-orb-2 {
+  width: 300px;
+  height: 300px;
+  background: rgba(200, 120, 50, 0.05);
+  bottom: -50px;
+  right: -50px;
+  animation-delay: -15s;
+}
+
+@keyframes orb-drift {
+  0%, 100% {
+    transform: translate(0, 0);
+  }
+  33% {
+    transform: translate(30px, 20px);
+  }
+  66% {
+    transform: translate(-20px, 30px);
+  }
+}
+
+/* ========================================
+   MEDIEVAL / MYSTICAL GUILD BACKGROUND
+   Atmosphere: Dark tavern, guild hall, torch-lit stone walls
+   ======================================== */
+
+.medieval-bg {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  background: #0a0908;
+}
+
+/* Epic Scene SVG */
+.epic-scene {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.85;
+}
+
+/* Overlay for blending scene with UI */
+.scene-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(10, 9, 8, 0.3) 0%,
+    rgba(10, 9, 8, 0.1) 30%,
+    rgba(10, 9, 8, 0.4) 70%,
+    rgba(10, 9, 8, 0.7) 100%
+  );
+}
+
+/* Stone/Parchment Texture - subtle noise */
+.stone-texture {
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  opacity: 0.8;
+}
+
+/* Torch-light gradient overlay */
+.torch-gradient {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 100%, rgba(180, 100, 30, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 20% 80%, rgba(200, 120, 40, 0.05) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 40% at 80% 80%, rgba(200, 120, 40, 0.05) 0%, transparent 50%);
+}
+
+/* Mystical Mist/Fog Layers */
+.mist-layer {
+  position: absolute;
+  inset: 0;
+  opacity: 0.3;
+}
+
+.mist-1 {
+  background: radial-gradient(ellipse at 30% 70%, rgba(80, 60, 40, 0.2) 0%, transparent 50%);
+  animation: mist-drift-1 40s infinite ease-in-out;
+}
+
+.mist-2 {
+  background: radial-gradient(ellipse at 70% 60%, rgba(60, 50, 35, 0.15) 0%, transparent 45%);
+  animation: mist-drift-2 50s infinite ease-in-out;
+}
+
+@keyframes mist-drift-1 {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.3; }
+  50% { transform: translate(30px, -20px) scale(1.1); opacity: 0.4; }
+}
+
+@keyframes mist-drift-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.25; }
+  50% { transform: translate(-25px, 15px) scale(1.15); opacity: 0.35; }
+}
+
+/* Warm Torch Glows - like distant fire/torches */
+.torch-glow {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(60px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.torch-glow-1 {
+  width: 300px;
+  height: 300px;
+  background: rgba(255, 140, 50, 0.08);
+  bottom: -50px;
+  left: 10%;
+  animation: torch-flicker-1 4s infinite ease-in-out;
+}
+
+.torch-glow-2 {
+  width: 250px;
+  height: 250px;
+  background: rgba(255, 120, 40, 0.06);
+  bottom: -30px;
+  right: 15%;
+  animation: torch-flicker-2 5s infinite ease-in-out;
+}
+
+.torch-glow-3 {
+  width: 200px;
+  height: 200px;
+  background: rgba(255, 160, 60, 0.05);
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  animation: torch-flicker-3 3.5s infinite ease-in-out;
+}
+
+@keyframes torch-flicker-1 {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  25% { opacity: 0.9; transform: scale(1.05); }
+  50% { opacity: 0.6; transform: scale(0.98); }
+  75% { opacity: 0.85; transform: scale(1.02); }
+}
+
+@keyframes torch-flicker-2 {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  33% { opacity: 0.8; transform: scale(1.03); }
+  66% { opacity: 0.55; transform: scale(0.97); }
+}
+
+@keyframes torch-flicker-3 {
+  0%, 100% { opacity: 0.5; transform: translateX(-50%) scale(1); }
+  50% { opacity: 0.75; transform: translateX(-50%) scale(1.08); }
+}
+
+/* Floating Embers - like from a fireplace
+   Colors controlled by: --ember-color-1, --ember-color-2, --ember-color-3 */
+.embers-container {
+  position: absolute;
+  inset: 0;
+}
+
+.ember {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--ember-color-1) 0%, var(--ember-color-2) 40%, transparent 70%);
+  box-shadow: 0 0 6px var(--ember-color-1);
+  animation: ember-rise infinite ease-out;
+}
+
+.ember:nth-child(odd) {
+  background: radial-gradient(circle, var(--ember-color-2) 0%, var(--ember-color-1) 40%, transparent 70%);
+}
+
+.ember:nth-child(3n) {
+  background: radial-gradient(circle, var(--ember-color-3) 0%, var(--ember-color-1) 40%, transparent 70%);
+}
+
+@keyframes ember-rise {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.3);
+  }
+  10% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--drift, 20px), -200px) scale(0);
+  }
+}
+
+/* Dust Particles - floating in torchlight
+   Color controlled by: --dust-color */
+.dust-container {
+  position: absolute;
+  inset: 0;
+}
+
+.dust-particle {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--dust-color);
+  animation: dust-float infinite ease-in-out;
+}
+
+.dust-particle:nth-child(odd) {
+  background: var(--dust-color);
+  opacity: 0.8;
+}
+
+@keyframes dust-float {
+  0%, 100% {
+    opacity: 0;
+    transform: translate(0, 0);
+  }
+  20% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.6;
+    transform: translate(15px, -10px);
+  }
+  80% {
+    opacity: 0.3;
+  }
+}
+
+/* Corner Shadows - like old wooden beams casting shadows */
+.corner-shadow {
+  position: absolute;
+  width: 200px;
+  height: 200px;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.corner-shadow.corner-tl {
+  top: 0;
+  left: 0;
+  background: radial-gradient(ellipse at 0% 0%, rgba(0, 0, 0, 0.4) 0%, transparent 70%);
+}
+
+.corner-shadow.corner-tr {
+  top: 0;
+  right: 0;
+  background: radial-gradient(ellipse at 100% 0%, rgba(0, 0, 0, 0.4) 0%, transparent 70%);
+}
+
+.corner-shadow.corner-bl {
+  bottom: 0;
+  left: 0;
+  background: radial-gradient(ellipse at 0% 100%, rgba(0, 0, 0, 0.3) 0%, transparent 70%);
+}
+
+.corner-shadow.corner-br {
+  bottom: 0;
+  right: 0;
+  background: radial-gradient(ellipse at 100% 100%, rgba(0, 0, 0, 0.3) 0%, transparent 70%);
+}
+
+/* Vignette - darker edges like being in an old room */
+.vignette-medieval {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 0%, transparent 50%, rgba(0, 0, 0, 0.5) 100%);
+  pointer-events: none;
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .ember,
+  .dust-particle,
+  .mist-layer,
+  .torch-glow {
+    animation: none !important;
   }
 }

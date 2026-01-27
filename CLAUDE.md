@@ -1,7 +1,7 @@
 # GuildScout - Project Instructions for AI Assistants
 
-**Version:** 2.3.0
-**Last Updated:** 2025-12-01
+**Version:** 2.7.0
+**Last Updated:** 2026-01-27
 **Owner:** cmdshadow
 
 This file contains important project-specific instructions, conventions, and constraints for AI assistants working on GuildScout.
@@ -10,21 +10,144 @@ This file contains important project-specific instructions, conventions, and con
 
 ## 🎯 Project Overview
 
-**GuildScout** is a production Discord bot for guild management and member ranking based on activity and membership duration.
+**GuildScout** is a production Discord bot for guild management and member ranking based on activity and membership duration, with a full web dashboard for raid management and analytics.
 
 **Core Purpose:**
-- Rank Discord users by activity (60%) and membership duration (40%)
+- Rank Discord users by activity (55% messages, 35% voice, 10% days)
 - Manage guild roles and spots
 - Track messages across all channels and threads
 - Verify data accuracy with scheduled checks
+- Web dashboard for raid planning and analytics
 
 **Tech Stack:**
 - Python 3.11+
 - discord.py 2.3+
 - aiosqlite (async SQLite)
+- FastAPI (Web API)
+- React 19 + TypeScript + Vite (Frontend)
 - systemd service management
 
 **Production Status:** ✅ LIVE on JustMemplex Community Discord (1390695394777890897)
+
+---
+
+## 🌐 Web Dashboard
+
+The web dashboard (`web_api/`) provides a full-featured interface for raid management and analytics.
+
+### Architecture
+
+```
+web_api/
+├── app.py                 # FastAPI main application
+├── analytics_api.py       # Score calculation service
+├── activity_api.py        # Activity feed service
+├── websocket_manager.py   # WebSocket connection handling
+├── templates/             # Jinja2 templates
+└── ui/                    # React frontend (src/)
+```
+
+### Key Files
+
+| File | Purpose | Modify? |
+|------|---------|---------|
+| `web_api/app.py` | API endpoints, routes | ✅ Add endpoints |
+| `web_api/analytics_api.py` | Score calculation | ⚠️ Match bot algorithm |
+| `web_api/websocket_manager.py` | Real-time events | ✅ Add event types |
+| `web_api/ui/src/pages/*.tsx` | React pages | ✅ UI changes |
+| `web_api/ui/src/hooks/useWebSocket.ts` | WS client | ✅ Event handling |
+
+### API Endpoints
+
+```
+GET  /api/guilds/{guild_id}/analytics/rankings
+GET  /api/guilds/{guild_id}/analytics/overview
+GET  /api/guilds/{guild_id}/my-score
+GET  /api/guilds/{guild_id}/activity
+GET  /api/guilds/{guild_id}/status
+WS   /ws
+```
+
+### Multi-Guild Security
+
+All API endpoints must use `_require_guild_access()` for consistent access control:
+
+```python
+session, guild, error = await _require_guild_access(request, guild_id)
+if error:
+    return error
+```
+
+### Frontend Development
+
+```bash
+cd web_api/ui
+npm install
+npm run dev    # Development server
+npm run build  # Production build
+```
+
+### Design System - Zentrale Farbverwaltung
+
+Das gesamte UI-Design wird **zentral über CSS-Variablen** in `web_api/ui/src/index.css` gesteuert.
+
+**Datei:** `web_api/ui/src/index.css` (`:root` Sektion)
+
+#### Struktur der Variablen
+
+```
+:root
+├── CORE PALETTE (5 Basis-Farben - hier ändern für globales Theme)
+│   ├── --color-base        #0a0908   Basis-Schwarz
+│   ├── --color-dark        #12100d   Dunkler Ton
+│   ├── --color-mid         #1a1510   Mittlerer Ton
+│   ├── --color-light       #2a1f15   Heller Ton
+│   └── --color-highlight   #3d2a1a   Highlight-Ton
+│
+├── UI COLORS (abgeleitet von Core)
+│   ├── --bg-0, --bg-1              Hintergründe
+│   ├── --surface-0/1/2             Karten, Panels, Glass-Effekte
+│   ├── --border, --border-hover    Ränder
+│   ├── --primary, --secondary      Akzentfarben (Gold, Violett)
+│   └── --text, --muted             Textfarben
+│
+├── SCENE COLORS (Hintergrund-Szene mit Kriegern)
+│   ├── --scene-sky-top/mid/bottom  Himmel-Gradient
+│   ├── --scene-mountain-far/mid/near  Berge (3 Ebenen)
+│   ├── --scene-silhouette          Krieger-Silhouetten
+│   ├── --scene-castle              Burg
+│   ├── --scene-torch-color         Fackel-Licht
+│   └── --scene-moon-color          Mond/Sonne
+│
+└── PARTICLE COLORS (Animationen)
+    ├── --ember-color-1/2/3         Funken/Glut
+    └── --dust-color                Staubpartikel
+```
+
+#### Theme ändern
+
+**Schnelle Änderung:** Ändere die 5 `--color-*` Variablen in der CORE PALETTE - der Rest leitet sich davon ab.
+
+**Feintuning:** Überschreibe spezifische Variablen (Scene, Particles, UI) für detaillierte Kontrolle.
+
+#### Komponenten
+
+| Datei | Verwendet Variablen für |
+|-------|------------------------|
+| `AnimatedBackground.tsx` | Szene, Partikel (alle `--scene-*`, `--ember-*`) |
+| `AppShell.tsx` | Navigation, Layout |
+| `pages/*.tsx` | UI-Komponenten, Cards, Buttons |
+
+#### Hintergrund-Szene
+
+Die epische Hintergrund-Illustration (`AnimatedBackground.tsx`) zeigt:
+- Berglandschaft mit Burg
+- 6 Krieger-Silhouetten (Samurai, Ritter, Bogenschütze, etc.)
+- Fackel-Lichteffekte
+- Aufsteigende Funken
+- Atmosphärischer Nebel
+
+Alle Farben werden über CSS-Variablen gesteuert - keine hardcodierten Werte.
 
 ---
 
@@ -696,7 +819,7 @@ FROM pragma_page_count(), pragma_page_size();
 
 ## ⚡ Quick Reference
 
-### Most Important Files
+### Most Important Files (Bot)
 
 | File | Purpose | Modify? |
 |------|---------|---------|
@@ -706,6 +829,16 @@ FROM pragma_page_count(), pragma_page_size();
 | `src/database/message_store.py` | Database layer | 🚫 Schema |
 | `src/tasks/health_monitor.py` | Health checks | ✅ Add checks |
 | `config/config.yaml` | Configuration | ✅ Settings only |
+
+### Most Important Files (Web API)
+
+| File | Purpose | Modify? |
+|------|---------|---------|
+| `web_api/app.py` | FastAPI endpoints | ✅ Add routes |
+| `web_api/analytics_api.py` | Score calculation | ⚠️ Match bot |
+| `web_api/websocket_manager.py` | Real-time events | ✅ Add events |
+| `web_api/ui/src/pages/*.tsx` | React pages | ✅ UI changes |
+| `web_api/ui/src/components/AppShell.tsx` | Navigation | ✅ Add pages |
 
 ### Performance Targets
 
@@ -723,9 +856,10 @@ FROM pragma_page_count(), pragma_page_size();
 **Database:** `/home/cmdshadow/GuildScout/data/`
 **Backups:** `/home/cmdshadow/GuildScout/backups/`
 **Config:** `/home/cmdshadow/GuildScout/config/`
+**Web UI:** `/home/cmdshadow/GuildScout/web_api/`
 
 ---
 
 **Remember:** This is a production bot serving real users. Prioritize stability over new features. Test thoroughly. Monitor actively. Document everything.
 
-**Version:** 2.3.0 | **Last Updated:** 2025-12-01
+**Version:** 2.6.0 | **Last Updated:** 2026-01-27

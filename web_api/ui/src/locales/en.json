@@ -4,6 +4,8 @@
     "raid_board": "Raid Board",
     "create_raid": "Create Raid",
     "templates": "Templates",
+    "members": "Members",
+    "my_score": "My Score",
     "control_center": "Control Center",
     "analytics": "Analytics",
     "settings": "Settings",
@@ -16,13 +18,24 @@
     "bot_health": "Bot Health",
     "live_raids": "Live Raids",
     "activity_feed": "Activity Feed",
-    "no_active_raids": "No active raids. Create one from a template to get started."
+    "no_active_raids": "No active raids. Create one from a template to get started.",
+    "total_signups": "Total Signups",
+    "open_slots": "Open Slots",
+    "this_week": "This Week",
+    "quick_actions": "Quick Actions",
+    "from_template": "From template",
+    "quick_attendance": "Quick attendance",
+    "view_details": "View Details",
+    "no_raids_scheduled": "No Raids Scheduled",
+    "history": "History",
+    "roster": "Roster"
   },
   "status": {
     "live": "LIVE",
     "open": "OPEN",
     "locked": "LOCKED",
-    "closed": "CLOSED"
+    "closed": "CLOSED",
+    "ready": "READY"
   },
   "actions": {
     "create_raid": "Create Raid",
@@ -30,7 +43,11 @@
     "delete": "Delete",
     "save": "Save",
     "cancel": "Cancel",
-    "search_placeholder": "Search raids, templates, members..."
+    "search_placeholder": "Search raids, templates, members...",
+    "search_short": "Search...",
+    "back": "Back",
+    "next": "Next",
+    "use_template": "Use Template"
   },
   "hero": {
     "headline": "Run every raid from one clean command deck.",
@@ -40,13 +57,20 @@
   "analytics": {
     "title": "Tactical Analytics",
     "subtitle": "Performance metrics and member activity reports.",
-    "messages_per_minute": "Messages / Minute",
+    "messages_per_minute": "Messages / Day",
     "voice_activity": "Voice Activity (Hours)",
     "member_ranking": "Member Ranking",
     "export_csv": "Export CSV",
     "score": "Score",
     "messages": "Messages",
-    "voice": "Voice"
+    "voice": "Voice",
+    "loading": "Loading analytics data...",
+    "hourly_activity": "Hourly Activity",
+    "total_messages": "Total Messages",
+    "active_users": "Active Users",
+    "voice_hours": "Voice Hours",
+    "channels": "Channels",
+    "scoring_formula": "Scoring Formula"
   },
   "templates": {
     "title": "Raid Templates",
@@ -55,6 +79,59 @@
     "edit_template": "Edit Template",
     "default_badge": "Default",
     "set_default": "Set Default",
-    "delete_confirm": "Delete this template?"
+    "delete_confirm": "Delete this template?",
+    "no_templates": "No Templates Yet",
+    "no_templates_desc": "Create your first raid composition template for quick deployment.",
+    "template_name": "Template Name",
+    "slots": "slots"
+  },
+  "guilds": {
+    "title": "Your Guilds",
+    "subtitle": "Select a guild to access the raid board and manage your operations.",
+    "system_online": "System Online",
+    "no_guilds": "No Guilds Found",
+    "no_guilds_desc": "You don't have access to any guild command nodes. Make sure you have the required permissions on your Discord server.",
+    "open_board": "Open Board",
+    "new_raid": "New Raid"
+  },
+  "roles": {
+    "tank": "Tank",
+    "tanks": "Tanks",
+    "healer": "Healer",
+    "healers": "Healers",
+    "dps": "DPS",
+    "bench": "Bench"
+  },
+  "create_raid": {
+    "title": "New Operation",
+    "step_details": "Details",
+    "step_composition": "Composition",
+    "step_review": "Review",
+    "raid_details": "Raid Details",
+    "title_label": "Title",
+    "description_label": "Description",
+    "game": "Game",
+    "mode": "Mode",
+    "date": "Date",
+    "time": "Time",
+    "load_template": "Load from Template",
+    "slot_config": "Slot Configuration",
+    "total_roster": "Total roster size",
+    "ready_to_deploy": "Ready to Deploy",
+    "discord_preview": "Discord Preview"
+  },
+  "empty_states": {
+    "no_active_operations": "No Active Operations",
+    "initialize_raid": "Initialize a new raid to begin planning.",
+    "no_locked_raids": "No Locked Raids",
+    "locked_raids_here": "Locked raids will appear here.",
+    "no_raid_history": "No Raid History",
+    "completed_raids_here": "Completed raids will appear here.",
+    "no_recent_activity": "No recent activity"
+  },
+  "time": {
+    "just_now": "just now",
+    "minutes_ago": "{{count}}m ago",
+    "hours_ago": "{{count}}h ago"
   }
 }
