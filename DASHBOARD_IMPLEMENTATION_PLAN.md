@@ -199,26 +199,43 @@ async def _require_guild_access(request, guild_id):
 
 ---
 
-## Nächste Schritte (Phase 6)
+## Phase 6: Release Vorbereitung (In Arbeit)
 
 ### Release Vorbereitung
 
-- [ ] End-to-End Testing aller Features
-- [ ] Performance-Tests unter Last
-- [ ] Security Review (OWASP Top 10)
-- [ ] API-Dokumentation (OpenAPI/Swagger)
+| Aufgabe | Status | Beschreibung |
+|---------|--------|--------------|
+| End-to-End Testing | ⏳ | Manuelle Tests aller Seiten und Flows |
+| Performance-Tests | ✅ | Cache-TTLs optimiert, Font-Loading async |
+| Security Review | ⏳ | OWASP Top 10 Checkliste durchgehen |
+| API-Dokumentation | ⏳ | OpenAPI/Swagger Spezifikation |
 
 ### Deployment
 
-- [ ] Docker-Support (optional)
-- [ ] Deployment-Anleitung finalisieren
-- [ ] Backup-Strategie dokumentieren
+| Aufgabe | Status | Beschreibung |
+|---------|--------|--------------|
+| Docker-Support | ⏳ | Optional - Dockerfile erstellen |
+| Deployment-Anleitung | ⏳ | Schritt-für-Schritt Guide |
+| Backup-Strategie | ⏳ | messages.db und raids.db Backups |
 
 ### Post-Release
 
-- [ ] Monitoring einrichten
-- [ ] Feedback-Kanal einrichten
-- [ ] Bug-Tracking vorbereiten
+| Aufgabe | Status | Beschreibung |
+|---------|--------|--------------|
+| Monitoring | ⏳ | Health-Checks, Error-Tracking |
+| Feedback-Kanal | ⏳ | Discord Channel oder GitHub Issues |
+| Bug-Tracking | ⏳ | Issue-Templates vorbereiten |
+
+### Performance-Optimierungen (Erledigt)
+
+✅ **Frontend:**
+- Google Fonts async laden (`media="print" onload`)
+- CSS/JS preloading
+- Preconnect zu Discord CDN
+
+✅ **Backend:**
+- Cache-TTLs erhöht (Guilds: 5min, Bot: 10min, Member: 5min)
+- Weniger Discord API-Calls bei Page-Refresh
 
 ---
 
@@ -234,6 +251,6 @@ async def _require_guild_access(request, guild_id):
 
 ---
 
-**Version:** 2.6.0
+**Version:** 2.7.0
 **Build Status:** ✅ Stable
-**Production Ready:** ✅ Yes
+**Production Ready:** ✅ Yes (Phase 6 in Vorbereitung)

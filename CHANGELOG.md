@@ -1,5 +1,47 @@
 # Changelog - GuildScout Bot
 
+## Version 2.7.0 - Design System & Performance (2026-01-27)
+
+> **Update:** Zentrales Design-System, epischer Medieval-Hintergrund und Performance-Optimierungen.
+
+### 🎨 Design System
+
+#### Zentrale Farbverwaltung
+- **CSS-Variablen**: Alle Farben zentral in `index.css` definiert
+- **Core Palette**: 5 Basis-Farben steuern das gesamte Theme
+- **Scene Variables**: Separate Variablen für Hintergrund-Szene
+- **Dokumentation**: Design-System in CLAUDE.md dokumentiert
+
+#### Medieval Theme
+- **Epische Hintergrund-Szene**: SVG-Illustration mit Bergen, Burg, Kriegern
+- **6 Krieger-Silhouetten**: Samurai, Ritter, Bogenschütze, Ronin, etc.
+- **Atmosphäre**: Fackel-Licht, aufsteigende Funken, Nebel
+- **Warme Farbpalette**: Braun/Gold statt kalt-technisch
+
+### ⚡ Performance-Optimierungen
+
+#### Frontend
+- **Font Loading**: Google Fonts laden jetzt asynchron (nicht-blockierend)
+- **Preloading**: Kritische CSS/JS-Assets werden preloaded
+- **Preconnect**: Discord CDN und Google Fonts vorverbunden
+
+#### Backend
+- **Cache TTLs erhöht**:
+  - Guild-Liste: 2 Min → 5 Min
+  - Bot-Guild-Info: 5 Min → 10 Min
+  - Member-Info: 3 Min → 5 Min
+- **Weniger Discord API-Calls** bei Seiten-Refresh
+
+### 📁 Geänderte Dateien
+
+- `web_api/ui/src/index.css` - Zentrales Design-System
+- `web_api/ui/src/components/AnimatedBackground.tsx` - Medieval-Szene
+- `web_api/templates/react_base.html` - Preload/Async-Optimierungen
+- `web_api/app.py` - Erhöhte Cache-TTLs
+- `CLAUDE.md` - Design-System Dokumentation
+
+---
+
 ## Version 2.6.0 - Web Dashboard Complete (2026-01-27)
 
 > **Major Update:** Vollständiges Web-Dashboard mit Analytics, Member Rankings, WebSocket-Echtzeit-Updates und Multi-Guild-Support.

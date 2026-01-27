@@ -4,10 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GuildScout Command Deck</title>
-    <link rel="stylesheet" href="/static/dist/assets/main.css">
+
+    <!-- Preload critical assets -->
+    <link rel="preload" href="/static/dist/assets/main.css" as="style">
+    <link rel="preload" href="/static/dist/assets/main.js" as="script" crossorigin>
+
+    <!-- Preconnect to external resources -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://cdn.discordapp.com">
+
+    <!-- Critical CSS first -->
+    <link rel="stylesheet" href="/static/dist/assets/main.css">
+
+    <!-- Fonts with display=swap for non-blocking load -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    </noscript>
+
     {% block head %}{% endblock %}
 </head>
 <body class="bg-background text-foreground antialiased overflow-hidden">

@@ -84,9 +84,10 @@ template_store = RaidTemplateStore(str(web_config.web_db_path))
 
 signer = TimestampSigner(web_config.session_secret)
 
-ACCESSIBLE_GUILDS_TTL = 120
-BOT_GUILD_TTL = 300
-MEMBER_TTL = 180
+# Cache TTLs (seconds) - increased for better performance
+ACCESSIBLE_GUILDS_TTL = 300   # 5 minutes (was 2 min) - user's accessible guilds
+BOT_GUILD_TTL = 600           # 10 minutes (was 5 min) - bot guild info
+MEMBER_TTL = 300              # 5 minutes (was 3 min) - member info
 
 _accessible_guilds_cache: dict[int, tuple[int, list[dict[str, Any]]]] = {}
 _bot_guild_cache: dict[int, tuple[int, Optional[dict[str, Any]]]] = {}
