@@ -1,16 +1,20 @@
-import React from 'react'
+import React, { Suspense, lazy } from 'react'
 import ReactDOM from 'react-dom/client'
 import AppShell from './components/AppShell'
-import Dashboard from './pages/Dashboard'
-import Guilds from './pages/Guilds'
-import CreateRaid from './pages/CreateRaid'
-import Login from './pages/Login'
-import Templates from './pages/Templates'
-import Analytics from './pages/Analytics'
-import RaidDetail from './pages/RaidDetail'
-import Settings from './pages/Settings'
 import './index.css'
 import './i18n'
+
+// Lazy load all pages for code splitting
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Guilds = lazy(() => import('./pages/Guilds'))
+const CreateRaid = lazy(() => import('./pages/CreateRaid'))
+const Login = lazy(() => import('./pages/Login'))
+const Templates = lazy(() => import('./pages/Templates'))
+const Analytics = lazy(() => import('./pages/Analytics'))
+const RaidDetail = lazy(() => import('./pages/RaidDetail'))
+const Settings = lazy(() => import('./pages/Settings'))
+const MyScore = lazy(() => import('./pages/MyScore'))
+const Members = lazy(() => import('./pages/Members'))
 
 // Types for the global data injected by Jinja
 declare global {
@@ -20,50 +24,65 @@ declare global {
   }
 }
 
+// Loading spinner component
+const PageLoader = () => (
+  <div className="flex items-center justify-center min-h-[400px]">
+    <div className="flex flex-col items-center gap-4">
+      <div className="w-10 h-10 border-4 border-[var(--primary)]/20 border-t-[var(--primary)] rounded-full animate-spin" />
+      <p className="text-[var(--muted)] text-sm font-medium">Loading...</p>
+    </div>
+  </div>
+)
+
 const pageId = window.PAGE_ID || 'dashboard';
 const data = window.SERVER_DATA || {};
 
-let PageComponent;
-let useShell = true;
-
-switch (pageId) {
-  case 'dashboard':
-    PageComponent = <Dashboard data={data} />;
-    break;
-  case 'guilds':
-    PageComponent = <Guilds data={data} />;
-    break;
-  case 'raid_create':
-    PageComponent = <CreateRaid data={data} />;
-    break;
-  case 'raid_edit':
-    PageComponent = <RaidDetail data={data} />;
-    break;
-  case 'settings':
-    PageComponent = <Settings data={data} />;
-    break;
-  case 'templates':
-    PageComponent = <Templates data={data} />;
-    break;
-  case 'analytics':
-    PageComponent = <Analytics data={data} />;
-    break;
-  case 'login':
-    PageComponent = <Login data={data} />;
-    useShell = false;
-    break;
-  default:
-    PageComponent = <div className="p-10 text-center text-muted-foreground">Page not implemented in React yet: {pageId}</div>;
+// Map of page IDs to their lazy-loaded components
+const pageComponents: Record<string, React.LazyExoticComponent<React.ComponentType<any>>> = {
+  dashboard: Dashboard,
+  guilds: Guilds,
+  raid_create: CreateRaid,
+  raid_edit: RaidDetail,
+  settings: Settings,
+  templates: Templates,
+  analytics: Analytics,
+  my_score: MyScore,
+  members: Members,
+  login: Login,
 }
 
-const content = useShell ? (
-    <AppShell pageId={pageId} data={data}>
-      {PageComponent}
-    </AppShell>
-) : PageComponent;
+const PageComponent = pageComponents[pageId]
+const useShell = pageId !== 'login'
+
+// Fallback for unknown pages
+const UnknownPage = () => (
+  <div className="p-10 text-center text-[var(--muted)]">
+    Page not implemented: {pageId}
+  </div>
+)
+
+const App = () => {
+  const content = PageComponent ? (
+    <Suspense fallback={<PageLoader />}>
+      <PageComponent data={data} />
+    </Suspense>
+  ) : (
+    <UnknownPage />
+  )
+
+  if (useShell) {
+    return (
+      <AppShell pageId={pageId} data={data}>
+        {content}
+      </AppShell>
+    )
+  }
+
+  return content
+}
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {content}
+    <App />
   </React.StrictMode>,
 )

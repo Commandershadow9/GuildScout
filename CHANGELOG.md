@@ -1,5 +1,97 @@
 # Changelog - GuildScout Bot
 
+## Version 2.6.0 - Web Dashboard Complete (2026-01-27)
+
+> **Major Update:** Vollständiges Web-Dashboard mit Analytics, Member Rankings, WebSocket-Echtzeit-Updates und Multi-Guild-Support.
+
+### 🎯 Dashboard Features
+
+#### Analytics & Rankings
+- **Member Rankings API**: Vollständige Integration mit `messages.db` für echte Scoring-Daten.
+- **Analytics Page**: Tägliche/stündliche Aktivitätscharts, Statistiken, CSV-Export.
+- **Members Page**: Paginierte Mitglieder-Tabelle mit Sortierung und Suche.
+- **My Score Page**: Persönliche Score-Anzeige mit Breakdown (Days/Messages/Voice).
+
+#### Echtzeit-Updates
+- **WebSocket Server**: `/ws` Endpoint für Live-Updates (FastAPI).
+- **Event Types**: `raid:created`, `raid:updated`, `raid:signup`, `raid:closed`, `activity:new`.
+- **Auto-Reconnect**: Automatische Wiederverbindung bei Verbindungsabbruch.
+- **Ping/Pong**: Keep-Alive für stabile Verbindungen.
+
+#### Activity Feed
+- **Echte Daten**: Activity Feed lädt jetzt echte Events aus `raids.db`.
+- **Event-Typen**: Raid-Erstellung, Sign-ups, Lock/Close-Events.
+- **Live-Updates**: Neue Events erscheinen via WebSocket in Echtzeit.
+
+### 📱 Mobile Responsive Design
+
+- **Collapsible Sidebar**: Hamburger-Menü auf Mobile (< 768px).
+- **Touch-Friendly**: Buttons mit min. 44px Touch-Target.
+- **Responsive Tabellen**: Spalten werden auf kleinen Bildschirmen ausgeblendet.
+- **Safe-Area-Support**: Padding für Geräte mit Notches.
+
+### 🔒 Multi-Guild Database Isolation
+
+- **Zentrale Zugriffsprüfung**: `_require_guild_access()` Hilfsfunktion.
+- **Guild-Filter**: Alle Datenbank-Queries filtern nach `guild_id`.
+- **WebSocket-Subscriptions**: Benutzer erhalten nur Events ihrer Guilds.
+- **Session-Validierung**: Strenge Prüfung auf Guild-Mitgliedschaft.
+
+### 📁 Neue Dateien
+
+**Backend:**
+- `web_api/analytics_api.py` - Analytics Service mit Score-Berechnung
+- `web_api/activity_api.py` - Activity Feed Service
+- `web_api/websocket_manager.py` - WebSocket-Verbindungsverwaltung
+
+**Frontend:**
+- `ui/src/pages/Members.tsx` - Mitglieder-Ranking Page
+- `ui/src/pages/MyScore.tsx` - Persönliche Score Page
+- `ui/src/hooks/useWebSocket.ts` - WebSocket React Hook
+- `ui/src/context/WebSocketContext.tsx` - WebSocket Context Provider
+- `ui/templates/members.html` - Jinja Template
+- `ui/templates/my_score.html` - Jinja Template
+
+### 🛠️ API Endpoints
+
+```
+GET  /api/guilds/{guild_id}/analytics/rankings
+GET  /api/guilds/{guild_id}/analytics/overview
+GET  /api/guilds/{guild_id}/members/{user_id}/score
+GET  /api/guilds/{guild_id}/my-score
+GET  /api/guilds/{guild_id}/status
+GET  /api/guilds/{guild_id}/activity
+WS   /ws
+```
+
+### ⚡ Performance-Optimierungen
+
+- **Bundle-Größe reduziert**: Main Bundle von **842 KB** auf **194 KB** (-77%) durch Code-Splitting.
+- **Lazy Loading**: Alle Pages werden erst bei Bedarf geladen (4-11 KB pro Page).
+- **Vendor Chunks**: Große Bibliotheken (recharts, framer-motion) werden in separate Chunks aufgeteilt.
+- **Unbenutzte Dependencies entfernt**: Three.js (3D-Bibliothek) wurde entfernt - war nie verwendet.
+- **Vite Manifest**: Hash-basierte Asset-URLs für optimales Browser-Caching.
+- **ES2020 Target**: Moderner JavaScript-Output für kleinere Dateien.
+
+### 🐛 Bugfixes
+
+- **JavaScript BigInt Safety**: Discord Guild-IDs (64-bit Integers) werden jetzt als Strings an das Frontend übertragen, um JavaScript-Rundungsfehler zu vermeiden (JavaScript kann Integers > 2^53-1 nicht sicher darstellen).
+- **Navigation Menu**: Guild-spezifische Menüpunkte werden jetzt nur angezeigt, wenn eine Guild ausgewählt ist.
+- **WebSocket Guild IDs**: WebSocket-Events senden `guild_id` als String für konsistente Vergleiche.
+- **Template Typo**: `n()` zu `t()` in Templates.tsx korrigiert.
+
+### 🔧 Änderungen
+
+- `web_api/app.py` - Neue API-Endpunkte, WebSocket, Multi-Guild, BigInt-Fix mit `_guild_for_frontend()`
+- `web_api/websocket_manager.py` - Guild-IDs als Strings für BigInt-Sicherheit
+- `ui/src/pages/Analytics.tsx` - Echte API-Daten statt Mock, String-IDs
+- `ui/src/pages/Dashboard.tsx` - WebSocket-Integration, Activity Feed, String-IDs
+- `ui/src/components/AppShell.tsx` - Mobile Responsive Sidebar, Guild-Filter für Navigation
+- `ui/src/hooks/useWebSocket.ts` - String-IDs für BigInt-Sicherheit
+- `ui/src/index.css` - Mobile Utilities
+
+---
+
 ## Version 2.5.0 - Web UI Foundation & Templates (2026-01-18)
 
 > **Major Update:** Grundsteinlegung für das Web-Interface und Einführung eines Template-Systems für Raids.

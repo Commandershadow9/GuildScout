@@ -12,7 +12,7 @@ from typing import Any, Optional
 from zoneinfo import ZoneInfo
 from urllib.parse import quote
 
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Form, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -38,6 +38,14 @@ from web_api.discord_client import (
 )
 from src.database.raid_store import RaidRecord, RaidStore
 from src.database.raid_template_store import RaidTemplateStore
+from web_api.analytics_api import get_analytics_service
+from web_api.activity_api import get_activity_service
+from web_api.websocket_manager import (
+    get_websocket_manager,
+    broadcast_raid_event,
+    broadcast_activity,
+    EventType,
+)
 from src.utils.raid_utils import (
     GAME_LABELS,
     GAME_WWM,
@@ -555,6 +563,12 @@ async def _user_can_manage(
 
 
 async def _accessible_guilds(session: WebSession) -> list[dict[str, Any]]:
+    """Get list of guilds the user can access.
+
+    Note: Guild IDs are stored as integers internally for database operations,
+    but a separate "id_str" field is provided for safe JSON serialization
+    to JavaScript (which cannot handle integers > 2^53-1).
+    """
     cached = _cache_get(_accessible_guilds_cache, session.user_id)
     if cached is not None:
         return cached
@@ -570,7 +584,8 @@ async def _accessible_guilds(session: WebSession) -> list[dict[str, Any]]:
             continue
         visible.append(
             {
-                "id": guild_id,
+                "id": guild_id,  # Integer for backend operations
+                "id_str": str(guild_id),  # String for frontend (BigInt safe)
                 "name": guild.get("name", "Unknown"),
                 "icon": _build_icon_url(guild_id, guild.get("icon")),
                 "permissions": permissions,
@@ -578,6 +593,44 @@ async def _accessible_guilds(session: WebSession) -> list[dict[str, Any]]:
         )
     _cache_set(_accessible_guilds_cache, session.user_id, ACCESSIBLE_GUILDS_TTL, visible)
     return visible
+
+
+def _guild_for_frontend(guild: dict[str, Any]) -> dict[str, Any]:
+    """Convert guild dict to frontend-safe format with string ID.
+
+    JavaScript cannot safely handle integers > 2^53-1, so we use id_str
+    for the frontend while keeping the original integer id for backend ops.
+    """
+    return {**guild, "id": guild["id_str"]}
+
+
+async def _require_guild_access(
+    request: Request, guild_id: int
+) -> tuple[Optional[WebSession], Optional[dict[str, Any]], Optional[dict[str, Any]]]:
+    """Require session and guild access.
+
+    This is the centralized function for checking guild access in all
+    API endpoints, ensuring consistent multi-guild isolation.
+
+    Args:
+        request: The FastAPI request
+        guild_id: The guild ID to check access for
+
+    Returns:
+        Tuple of (session, guild, error_response)
+        If error_response is not None, return it immediately.
+        Otherwise, session and guild are guaranteed to be valid.
+    """
+    session = await _require_session(request)
+    if not session:
+        return None, None, {"error": "Unauthorized", "success": False}
+
+    guilds = await _accessible_guilds(session)
+    guild = next((g for g in guilds if g["id"] == guild_id), None)
+    if not guild:
+        return session, None, {"error": "Guild not accessible", "success": False}
+
+    return session, guild, None
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -671,13 +724,19 @@ async def guilds(request: Request) -> HTMLResponse:
         return RedirectResponse("/login")
     guild_list = await _accessible_guilds(session)
     avatar_url = build_avatar_url(session.user_id, session.avatar)
+
+    # Use id_str for frontend to avoid JavaScript BigInt issues
+    guilds_for_frontend = [
+        {**g, "id": g["id_str"]} for g in guild_list
+    ]
+
     return templates.TemplateResponse(
         "guilds.html",
         {
             "request": request,
             "session": session,
             "avatar_url": avatar_url,
-            "guilds": guild_list,
+            "guilds": guilds_for_frontend,
         },
     )
 
@@ -778,7 +837,7 @@ async def dashboard(request: Request, guild_id: int) -> HTMLResponse:
             "request": request,
             "session": session,
             "avatar_url": build_avatar_url(session.user_id, session.avatar),
-            "guild": guild,
+            "guild": _guild_for_frontend(guild),
             "settings": settings,
             "control": control,
             "games": [{"id": GAME_WWM, "label": GAME_LABELS.get(GAME_WWM, GAME_WWM)}],
@@ -844,7 +903,7 @@ async def new_raid(request: Request, guild_id: int) -> HTMLResponse:
             "request": request,
             "session": session,
             "avatar_url": build_avatar_url(session.user_id, session.avatar),
-            "guild": guild,
+            "guild": _guild_for_frontend(guild),
             "settings": settings,
             "templates": template_cards,
             "games": [{"id": GAME_WWM, "label": GAME_LABELS.get(GAME_WWM, GAME_WWM)}],
@@ -980,7 +1039,7 @@ async def edit_raid_page(request: Request, guild_id: int, raid_id: int) -> HTMLR
             "request": request,
             "session": session,
             "avatar_url": build_avatar_url(session.user_id, session.avatar),
-            "guild": guild,
+            "guild": _guild_for_frontend(guild),
             "settings": settings,
             "raid": raid,
             "templates": templates_list,
@@ -1224,7 +1283,7 @@ async def templates_page(request: Request, guild_id: int) -> HTMLResponse:
             "request": request,
             "session": session,
             "avatar_url": build_avatar_url(session.user_id, session.avatar),
-            "guild": guild,
+            "guild": _guild_for_frontend(guild),
             "templates": templates_list,
         },
     )
@@ -1241,15 +1300,59 @@ async def analytics_page(request: Request, guild_id: int) -> HTMLResponse:
     if not guild:
         return RedirectResponse("/guilds")
 
-    # Mock data for analytics since backend logic is preserved
-    # In a real scenario, we'd fetch this from a database or cache
     return templates.TemplateResponse(
         "analytics.html",
         {
             "request": request,
             "session": session,
             "avatar_url": build_avatar_url(session.user_id, session.avatar),
-            "guild": guild,
+            "guild": _guild_for_frontend(guild),
+        },
+    )
+
+
+@app.get("/guilds/{guild_id}/my-score", response_class=HTMLResponse)
+async def my_score_page(request: Request, guild_id: int) -> HTMLResponse:
+    """User's personal score page."""
+    session = await _require_session(request)
+    if not session:
+        return RedirectResponse("/login")
+
+    guilds = await _accessible_guilds(session)
+    guild = next((g for g in guilds if g["id"] == guild_id), None)
+    if not guild:
+        return RedirectResponse("/guilds")
+
+    return templates.TemplateResponse(
+        "my_score.html",
+        {
+            "request": request,
+            "session": session,
+            "avatar_url": build_avatar_url(session.user_id, session.avatar),
+            "guild": _guild_for_frontend(guild),
+        },
+    )
+
+
+@app.get("/guilds/{guild_id}/members", response_class=HTMLResponse)
+async def members_page(request: Request, guild_id: int) -> HTMLResponse:
+    """Member ranking page."""
+    session = await _require_session(request)
+    if not session:
+        return RedirectResponse("/login")
+
+    guilds = await _accessible_guilds(session)
+    guild = next((g for g in guilds if g["id"] == guild_id), None)
+    if not guild:
+        return RedirectResponse("/guilds")
+
+    return templates.TemplateResponse(
+        "members.html",
+        {
+            "request": request,
+            "session": session,
+            "avatar_url": build_avatar_url(session.user_id, session.avatar),
+            "guild": _guild_for_frontend(guild),
         },
     )
 
@@ -1367,7 +1470,7 @@ async def settings_page(request: Request, guild_id: int) -> HTMLResponse:
             "request": request,
             "session": session,
             "avatar_url": build_avatar_url(session.user_id, session.avatar),
-            "guild": guild,
+            "guild": _guild_for_frontend(guild),
             "settings": settings,
             "control": control,
         },
@@ -1573,6 +1676,306 @@ async def update_config(request: Request, guild_id: int) -> RedirectResponse:
     return RedirectResponse(
         f"/guilds/{guild_id}/settings?saved=1{anchor}", status_code=302
     )
+
+
+# =============================================================================
+# API ENDPOINTS (JSON)
+# =============================================================================
+
+
+@app.get("/api/guilds/{guild_id}/analytics/rankings")
+async def api_analytics_rankings(
+    request: Request,
+    guild_id: int,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """Get member rankings with scores.
+
+    Multi-Guild Isolation: Rankings are filtered by guild_id in all
+    database queries. User must have access to the guild.
+    """
+    session, guild, error = await _require_guild_access(request, guild_id)
+    if error:
+        return error
+
+    # Load scoring weights from config
+    config_data = load_bot_config(web_config.config_path)
+    scoring_cfg = config_data.get("scoring", {})
+    weights = scoring_cfg.get("weights", {})
+
+    analytics = get_analytics_service(str(ROOT / "data" / "messages.db"))
+    analytics.set_weights(
+        days=weights.get("days_in_server", 0.10),
+        messages=weights.get("message_count", 0.55),
+        voice=weights.get("voice_activity", 0.35),
+    )
+
+    result = await analytics.get_member_rankings(
+        guild_id=guild_id,
+        limit=limit,
+        offset=offset,
+        days_lookback=scoring_cfg.get("max_days_lookback"),
+    )
+
+    return {"success": True, "data": result}
+
+
+@app.get("/api/guilds/{guild_id}/analytics/overview")
+async def api_analytics_overview(
+    request: Request,
+    guild_id: int,
+    days: int = 7,
+):
+    """Get activity overview (daily/hourly stats).
+
+    Multi-Guild Isolation: All activity data is filtered by guild_id.
+    """
+    session, guild, error = await _require_guild_access(request, guild_id)
+    if error:
+        return error
+
+    analytics = get_analytics_service(str(ROOT / "data" / "messages.db"))
+    result = await analytics.get_activity_overview(guild_id=guild_id, days=days)
+
+    return {"success": True, "data": result}
+
+
+@app.get("/api/guilds/{guild_id}/members/{user_id}/score")
+async def api_member_score(
+    request: Request,
+    guild_id: int,
+    user_id: int,
+):
+    """Get score for a specific member.
+
+    Multi-Guild Isolation: Score is calculated only using data from the
+    specified guild. User must have access to the guild.
+    """
+    session, guild, error = await _require_guild_access(request, guild_id)
+    if error:
+        return error
+
+    # Load scoring weights from config
+    config_data = load_bot_config(web_config.config_path)
+    scoring_cfg = config_data.get("scoring", {})
+    weights = scoring_cfg.get("weights", {})
+
+    analytics = get_analytics_service(str(ROOT / "data" / "messages.db"))
+    analytics.set_weights(
+        days=weights.get("days_in_server", 0.10),
+        messages=weights.get("message_count", 0.55),
+        voice=weights.get("voice_activity", 0.35),
+    )
+
+    result = await analytics.get_member_score(
+        guild_id=guild_id,
+        user_id=user_id,
+        days_lookback=scoring_cfg.get("max_days_lookback"),
+    )
+
+    if result is None:
+        return {"error": "Member not found", "success": False}
+
+    return {"success": True, "data": result}
+
+
+@app.get("/api/guilds/{guild_id}/my-score")
+async def api_my_score(request: Request, guild_id: int):
+    """Get the current user's score.
+
+    Multi-Guild Isolation: Returns the user's score only for the specified
+    guild. The user must be a member of the guild.
+    """
+    session, guild, error = await _require_guild_access(request, guild_id)
+    if error:
+        return error
+
+    # Load scoring weights from config
+    config_data = load_bot_config(web_config.config_path)
+    scoring_cfg = config_data.get("scoring", {})
+    weights = scoring_cfg.get("weights", {})
+
+    analytics = get_analytics_service(str(ROOT / "data" / "messages.db"))
+    analytics.set_weights(
+        days=weights.get("days_in_server", 0.10),
+        messages=weights.get("message_count", 0.55),
+        voice=weights.get("voice_activity", 0.35),
+    )
+
+    result = await analytics.get_member_score(
+        guild_id=guild_id,
+        user_id=session.user_id,
+        days_lookback=scoring_cfg.get("max_days_lookback"),
+    )
+
+    if result is None:
+        return {"error": "Score not found", "success": False}
+
+    return {"success": True, "data": result}
+
+
+@app.get("/api/guilds/{guild_id}/status")
+async def api_guild_status(request: Request, guild_id: int):
+    """Get system status for a guild.
+
+    Multi-Guild Isolation: Returns status information specific to the guild.
+    """
+    session, guild, error = await _require_guild_access(request, guild_id)
+    if error:
+        return error
+
+    # Bot status from PID file
+    bot_pid_path = ROOT / "bot-service.pid"
+    bot_running = bot_pid_path.exists()
+    bot_started_at = None
+    if bot_running:
+        try:
+            bot_started_at = datetime.fromtimestamp(
+                bot_pid_path.stat().st_mtime, timezone.utc
+            ).isoformat()
+        except OSError:
+            pass
+
+    # Database stats
+    db_path = ROOT / "data" / "messages.db"
+    db_size_mb = 0
+    if db_path.exists():
+        db_size_mb = round(db_path.stat().st_size / 1024 / 1024, 2)
+
+    # Config last modified
+    config_path = web_config.config_path
+    config_modified = None
+    if config_path.exists():
+        try:
+            config_modified = datetime.fromtimestamp(
+                config_path.stat().st_mtime, timezone.utc
+            ).isoformat()
+        except OSError:
+            pass
+
+    # Latest raid activity
+    latest_activity = await raid_store.get_latest_raid_activity(guild_id)
+
+    return {
+        "success": True,
+        "data": {
+            "bot": {
+                "running": bot_running,
+                "started_at": bot_started_at,
+            },
+            "database": {
+                "size_mb": db_size_mb,
+                "path": str(db_path),
+            },
+            "config": {
+                "modified_at": config_modified,
+            },
+            "latest_raid": latest_activity,
+        }
+    }
+
+
+@app.get("/api/guilds/{guild_id}/activity")
+async def api_guild_activity(
+    request: Request,
+    guild_id: int,
+    limit: int = 20,
+    hours: int = 48,
+):
+    """Get recent activity events for a guild.
+
+    Multi-Guild Isolation: Activity events are filtered by guild_id.
+    User must have access to the guild.
+    """
+    session, guild, error = await _require_guild_access(request, guild_id)
+    if error:
+        return error
+
+    activity_service = get_activity_service(
+        messages_db_path=str(ROOT / "data" / "messages.db"),
+        raids_db_path=str(ROOT / "data" / "raids.db"),
+    )
+
+    activities = await activity_service.get_recent_activity(
+        guild_id=guild_id,
+        limit=limit,
+        hours=hours,
+    )
+
+    summary = await activity_service.get_activity_summary(
+        guild_id=guild_id,
+        days=7,
+    )
+
+    return {
+        "success": True,
+        "data": {
+            "activities": activities,
+            "summary": summary,
+        }
+    }
+
+
+# =============================================================================
+# WEBSOCKET ENDPOINT
+# =============================================================================
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for real-time updates."""
+    # Get session from cookie
+    session_cookie = websocket.cookies.get("session")
+    if not session_cookie:
+        await websocket.close(code=4001, reason="No session")
+        return
+
+    try:
+        session_id = signer.unsign(session_cookie, max_age=86400 * 7).decode()
+    except BadSignature:
+        await websocket.close(code=4001, reason="Invalid session")
+        return
+
+    session = await web_store.get_session(session_id)
+    if not session:
+        await websocket.close(code=4001, reason="Session expired")
+        return
+
+    # Get user's accessible guilds
+    guilds = await _accessible_guilds(session)
+    guild_ids = [g["id"] for g in guilds]
+
+    # Connect to WebSocket manager
+    ws_manager = get_websocket_manager()
+    connection_id = await ws_manager.connect(
+        websocket=websocket,
+        user_id=session.user_id,
+        guild_ids=guild_ids,
+    )
+
+    try:
+        while True:
+            # Receive and handle messages
+            message = await websocket.receive_text()
+            response = await ws_manager.handle_message(connection_id, message)
+            if response:
+                await websocket.send_text(response.to_json())
+    except WebSocketDisconnect:
+        await ws_manager.disconnect(connection_id)
+    except Exception as e:
+        await ws_manager.disconnect(connection_id)
+
+
+@app.get("/api/ws/stats")
+async def websocket_stats(request: Request):
+    """Get WebSocket connection statistics."""
+    session = await _require_session(request)
+    if not session:
+        return {"error": "Unauthorized", "success": False}
+
+    ws_manager = get_websocket_manager()
+    return {"success": True, "data": ws_manager.get_stats()}
 
 
 if os.getenv("WEB_UI_DEBUG"):

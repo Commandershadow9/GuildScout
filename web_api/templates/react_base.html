@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GuildScout Command Deck</title>
-    <link rel="stylesheet" href="/static/dist/assets/main.css?v={{ range(110000, 120000) | random }}">
+    <link rel="stylesheet" href="/static/dist/assets/main.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
@@ -12,9 +12,9 @@
 </head>
 <body class="bg-background text-foreground antialiased overflow-hidden">
     <div id="root"></div>
-    
+
     {% block data %}{% endblock %}
 
-    <script type="module" src="/static/dist/assets/main.js?v={{ range(110000, 120000) | random }}"></script>
+    <script type="module" src="/static/dist/assets/main.js"></script>
 </body>
 </html>

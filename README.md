@@ -120,25 +120,59 @@ Perfect for communities who need to fairly select members for limited guild spot
    python run.py
    ```
 
-## 🌐 Web UI (Raid Control Room)
+## 🌐 Web UI (GuildScout Dashboard)
 
-The web UI adds a Discord-authenticated dashboard for raid creation, templates, and settings.
+The web UI provides a full-featured Discord-authenticated dashboard for raid management, analytics, member rankings, and real-time updates.
+
+### Features
+
+| Feature | Description |
+|---------|-------------|
+| **Raid Management** | Create, edit, lock/unlock, close raids |
+| **Templates** | Reusable raid templates (Tank/Healer/DPS/Bench) |
+| **Analytics** | Daily/hourly activity charts, statistics, CSV export |
+| **Member Rankings** | Full ranking table with scores, pagination, search |
+| **My Score** | Personal score breakdown with percentile |
+| **Real-time Updates** | WebSocket for live raid sign-ups and events |
+| **Mobile Responsive** | Works on phones and tablets |
+| **Multi-Guild** | Switch between servers you manage |
+
+### Pages
+
+- `/guilds` - Server selection
+- `/guilds/{id}` - Dashboard with Live Board and Activity Feed
+- `/guilds/{id}/analytics` - Analytics with charts and ranking table
+- `/guilds/{id}/members` - Full member ranking with export
+- `/guilds/{id}/my-score` - Personal score breakdown
+- `/guilds/{id}/templates` - Raid template management
+- `/guilds/{id}/settings` - Guild settings
 
 ### Setup
 
 1. **Create OAuth credentials** in the Discord Developer Portal and add the redirect URL
    (example: `https://guildscout.zerodox.de/auth/callback`).
+
 2. **Copy env template**
    ```bash
    cp .env.example .env
    ```
+
 3. **Fill in** `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI`,
    and `SESSION_SECRET`.
+
 4. **Install web dependencies**
    ```bash
    pip install -r web_api/requirements.txt
    ```
-5. **Run the web server**
+
+5. **Build the frontend** (React + TypeScript)
+   ```bash
+   cd web_api/ui
+   npm install
+   npm run build
+   ```
+
+6. **Run the web server**
    ```bash
    uvicorn web_api.app:app --host 0.0.0.0 --port 8090
    ```
@@ -147,10 +181,22 @@ The web UI adds a Discord-authenticated dashboard for raid creation, templates, 
    ./scripts/run_web_ui.sh
    ```
 
+### API Endpoints
+
+```
+GET  /api/guilds/{guild_id}/analytics/rankings   # Member rankings with scores
+GET  /api/guilds/{guild_id}/analytics/overview   # Daily/hourly activity stats
+GET  /api/guilds/{guild_id}/my-score             # Current user's score
+GET  /api/guilds/{guild_id}/activity             # Recent activity events
+GET  /api/guilds/{guild_id}/status               # System status
+WS   /ws                                         # WebSocket for real-time updates
+```
+
 ### Notes
 - Web settings sync to `config/config.yaml` for the configured guild.
 - Template changes apply to new raid creations immediately.
 - If you change channels/roles, restart the bot so it reloads config.
+- WebSocket requires authentication via session cookie.
 
 ## ⚙️ Configuration
 
